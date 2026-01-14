@@ -7,11 +7,10 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-# Fourier coefficients in state vector: modes 1-15, real and imaginary parts.
-N_COEFFS = 30
+from .constants import N_COEFFS
 
 
-def _load_library() -> CDLL:
+def load_library() -> CDLL:
     """Load libks2py.so from the package directory."""
     package_dir = Path(__file__).parent
     lib_path = package_dir / "libks2py.so"
@@ -35,9 +34,9 @@ def _load_library() -> CDLL:
 
 
 @cache
-def _get_lib() -> CDLL:
+def get_lib() -> CDLL:
     """Return the cached library singleton."""
-    return _load_library()
+    return load_library()
 
 
 def ksint(
@@ -66,7 +65,7 @@ def ksint(
     if initial_state.shape != (N_COEFFS,):
         raise ValueError(f"initial_state must have shape ({N_COEFFS},), got {initial_state.shape}")
 
-    lib = _get_lib()
+    lib = get_lib()
 
     n_out = steps // save_every + 1
     # Eigen uses column-major: C++ returns (N_COEFFS, n_out)

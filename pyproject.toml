@@ -32,6 +32,9 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["A", "B", "C4", "E", "F", "I", "UP", "SIM", "PTH", "PL", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PLR2004"]  # Magic values in tests
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short --strict-markers"

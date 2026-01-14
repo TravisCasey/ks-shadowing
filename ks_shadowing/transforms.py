@@ -45,16 +45,45 @@ def l2_distance_all_shifts(
     Uses the identity ||u - S_phi(v)||^2 = ||u||^2 + ||v||^2 - 2<u, S_phi(v)>
     where the cross-correlation for all shifts is computed via FFT in O(N log N).
 
-    Returns array of length N with distances for each shift index.
+    Supports batched computation: if field_v has shape (M, N), computes distances
+    for each of the M fields against field_u, returning shape (M, N).
+
+    Args:
+        field_u: Shape (N,) - single reference field
+        field_v: Shape (N,) or (M, N) - one or more fields to compare
+
+    Returns:
+        Shape (N,) if field_v is 1D, or (M, N) if field_v is 2D.
+        Each row contains distances for all N spatial shifts.
     """
-    n = len(field_u)
+    n = field_u.shape[-1]
     norm_u_sq = np.sum(field_u**2)
-    norm_v_sq = np.sum(field_v**2)
+    norm_v_sq = np.sum(field_v**2, axis=-1, keepdims=True)
 
     # Cross-correlation via FFT: IFFT(conj(FFT(u)) * FFT(v))
     u_fft = fft.rfft(field_u)
-    v_fft = fft.rfft(field_v)
-    cross_corr = fft.irfft(np.conj(u_fft) * v_fft, n)
+    v_fft = fft.rfft(field_v, axis=-1)
+    cross_corr = fft.irfft(np.conj(u_fft) * v_fft, n, axis=-1)
 
     dist_sq = np.maximum(norm_u_sq + norm_v_sq - 2 * cross_corr, 0.0)
     return np.sqrt(dist_sq)
+
+
+def min_distance_over_shifts(
+    field_u: NDArray[np.float64],
+    field_v: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Compute minimum L2 distance over all spatial shifts.
+
+    Convenience function that computes l2_distance_all_shifts and takes the
+    minimum. Supports batched field_v: if shape is (M, N), returns shape (M,).
+
+    Args:
+        field_u: Shape (N,) - single reference field
+        field_v: Shape (N,) or (M, N) - one or more fields to compare
+
+    Returns:
+        Scalar if field_v is 1D, or shape (M,) if field_v is 2D.
+    """
+    all_distances = l2_distance_all_shifts(field_u, field_v)
+    return np.min(all_distances, axis=-1)

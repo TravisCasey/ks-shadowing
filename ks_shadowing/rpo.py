@@ -40,7 +40,7 @@ def load_rpo(mat_path: Path, index: int) -> RPO:
     if index < 0 or index >= len(rpo_cell):
         raise IndexError(f"RPO index {index} out of range [0, {len(rpo_cell)})")
 
-    return _parse_rpo_struct(rpo_cell[index], index)
+    return parse_rpo_struct(rpo_cell[index], index)
 
 
 def load_all_rpos(mat_path: Path) -> list[RPO]:
@@ -48,10 +48,10 @@ def load_all_rpos(mat_path: Path) -> list[RPO]:
     data = scipy.io.loadmat(mat_path)
     rpo_cell = data["rpo"][0]
 
-    return [_parse_rpo_struct(rpo_cell[i], i) for i in range(len(rpo_cell))]
+    return [parse_rpo_struct(rpo_cell[i], i) for i in range(len(rpo_cell))]
 
 
-def _parse_rpo_struct(rpo_data: np.ndarray, index: int) -> RPO:
+def parse_rpo_struct(rpo_data, index: int) -> RPO:
     """Parse a single RPO struct from the array."""
     return RPO(
         index=index,

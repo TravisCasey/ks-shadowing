@@ -1,15 +1,13 @@
 """RPO Shadowing detection for Kuramoto-Sivashinsky system."""
 
-from ks_shadowing.integrator import ksint
+from ks_shadowing.detection import ShadowingEvent
 from ks_shadowing.rpo import RPO, load_all_rpos, load_rpo
-from ks_shadowing.transforms import interleaved_to_complex, l2_distance_all_shifts, to_physical
+from ks_shadowing.ssa import SSADetector
 
 __all__ = [
     "RPO",
-    "interleaved_to_complex",
-    "ksint",
-    "l2_distance_all_shifts",
+    "SSADetector",
+    "ShadowingEvent",
     "load_all_rpos",
     "load_rpo",
-    "to_physical",
 ]

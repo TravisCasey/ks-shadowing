@@ -3,7 +3,11 @@
 import numpy as np
 import pytest
 
-from ks_shadowing import interleaved_to_complex, l2_distance_all_shifts, to_physical
+from ks_shadowing.transforms import (
+    interleaved_to_complex,
+    l2_distance_all_shifts,
+    to_physical,
+)
 
 
 class TestInterleavedToComplex:
@@ -81,3 +85,17 @@ class TestL2DistanceAllShifts:
         min_idx = np.argmin(distances)
         assert min_idx == shift
         assert distances[min_idx] == pytest.approx(0, abs=1e-10)
+
+    def test_batched_field_v(self, rng: np.random.Generator):
+        """Supports batched field_v with shape (M, N)."""
+        n = 64
+        u = rng.standard_normal(n)
+        v_batch = rng.standard_normal((5, n))
+
+        distances = l2_distance_all_shifts(u, v_batch)
+        assert distances.shape == (5, n)
+
+        # Verify each row matches unbatched computation
+        for i in range(5):
+            single = l2_distance_all_shifts(u, v_batch[i])
+            np.testing.assert_allclose(distances[i], single)
