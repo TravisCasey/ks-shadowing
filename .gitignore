@@ -1,1 +1,18 @@
-build
+# Build artifacts
+build/
+dist/
+csrc/CMakeFiles/
+csrc/cmake_install.cmake
+csrc/*.so
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# Built shared library
+ks_shadowing/*.so
+
+# pytest
+.pytest_cache/

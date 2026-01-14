@@ -7,8 +7,30 @@ Implements two methods for detecting when trajectories closely follow unstable R
 - **State Space Approach (SSA)**: L2 distance with spatial shift optimization
 - **Persistent Homology Approach (PHA)**: Wasserstein distance between persistence diagrams
 
-The goal is to compare computational efficiency and validate that PHA achieves equivalent detection with reduced complexity.
+## Installation
 
-## Status
+Requires Python 3.12+, CMake, FFTW3, and Eigen3.
 
-In very early development.
+```bash
+# Install package
+uv sync
+```
+
+## Development
+
+```bash
+# Install with dev dependencies
+uv sync --extra dev
+
+# Run tests
+uv run pytest
+
+# Linting and formatting
+uv run ruff check .
+uv run ruff format .
+
+# Type checking
+uv run ty check
+```
+
+Note: After a clean checkout, run `uv cache clean ks-shadowing` if the C++ library fails to build.
