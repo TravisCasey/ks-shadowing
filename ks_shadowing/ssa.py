@@ -1,8 +1,7 @@
 """State Space Approach (SSA) for shadowing detection.
 
 The SSA detects shadowing by computing L2 distances in physical space between
-trajectory snapshots and RPO phases, optimizing over all spatial shifts using
-FFT-based cross-correlation.
+trajectory snapshots and RPO phases with compatible spatial shifting.
 """
 
 from collections.abc import Iterator, Sequence
@@ -14,34 +13,31 @@ from .constants import DEFAULT_RESOLUTION
 from .detection import ShadowingEvent, extract_shadowing_events
 from .integrator import ksint
 from .rpo import RPO
-from .transforms import interleaved_to_complex, min_distance_over_shifts, to_physical
+from .transforms import interleaved_to_complex, l2_distance_all_shifts, to_physical
 
 
-def state_space_distances(
+def compute_distances_to_rpo(
     trajectory_physical: NDArray[np.float64],
-    rpo_trajectories: list[NDArray[np.float64]],
+    rpo_physical: NDArray[np.float64],
 ) -> Iterator[NDArray[np.float64]]:
-    """Yield distance arrays for timesteps of the trajectory against the RPOs
+    """Yield distance arrays for each trajectory timestep against one RPO.
 
-    Each yielded array is of the shape `(rpo_count, max_period)`, where
-    `max_period` is the maximum period of all the RPOs. Any entries for a given
-    RPO that exceeds the period of that RPO is filled with infinity.
+    Each yielded array has shape `(period, spatial_resolution)` containing the
+    L2 distance from the trajectory snapshot to each RPO phase at each spatial
+    shift.
 
-    The yielded arrays (one for each timestep of `trajectory_physical`) contain
-    the minimum L2 distance over all spatial shifts of the trajectory snapshot
-    against a phase of the RPO: one entry for each phase of each RPO.
+    Args:
+        trajectory_physical: Shape `(trajectory_length, spatial_resolution)`
+            trajectory in physical space.
+        rpo_physical: Shape `(period, resolution)` RPO trajectory in physical
+            space.
+
+    Yields:
+        `(period, spatial_resolution)` distance arrays, one per trajectory
+            timestep.
     """
-    rpo_count = len(rpo_trajectories)
-    if rpo_count != 0:
-        max_period = max(traj.shape[0] for traj in rpo_trajectories)
-
     for snapshot in trajectory_physical:
-        distances = np.full((rpo_count, max_period), np.inf, dtype=np.float64)
-        for rpo_index, traj in enumerate(rpo_trajectories):
-            phase_distances = min_distance_over_shifts(snapshot, traj)
-            distances[rpo_index, : traj.shape[0]] = phase_distances
-
-        yield distances
+        yield l2_distance_all_shifts(snapshot, rpo_physical)
 
 
 class SSADetector:
@@ -58,21 +54,16 @@ class SSADetector:
         resolution: int = DEFAULT_RESOLUTION,
     ):
         """Initialize detector with precomputed RPO trajectories."""
-        self.dt: float = dt
-        self.resolution: int = resolution
+        self.dt = dt
+        self.resolution = resolution
+        self.rpos = list(rpos)
 
         # Precompute each RPO's trajectory in physical space
         self.rpo_trajectories: list[NDArray[np.float64]] = []
         for rpo in rpos:
-            # Exclude endpoint of RPO trajectory as it is periodic
             fourier_traj: NDArray[np.float64] = ksint(rpo.fourier_coeffs, dt, rpo.time_steps)[:-1]
             complex_coeffs: NDArray[np.complex128] = interleaved_to_complex(fourier_traj)
             self.rpo_trajectories.append(to_physical(complex_coeffs, resolution))
-
-    @property
-    def rpo_periods(self) -> list[int]:
-        """List of period lengths (number of phases) for each RPO."""
-        return [traj.shape[0] for traj in self.rpo_trajectories]
 
     def detect(
         self,
@@ -80,38 +71,47 @@ class SSADetector:
         threshold: float,
         min_duration: int = 1,
     ) -> list[ShadowingEvent]:
-        """Detect shadowing events in trajectory.
+        """Detect shadowing events in trajectory for all RPOs.
 
-        Uses streaming DP to find contiguous time intervals where the trajectory
-        shadows an RPO with distance below the given threshold.
+        Uses streaming DP to find contiguous paths in the 3D distance space
+        where the trajectory shadows an RPO, enforcing both phase advancement
+        and spatial continuity constraints.
         """
-        complex_coeffs = interleaved_to_complex(trajectory_fourier)
-        trajectory_physical = to_physical(complex_coeffs, self.resolution)
+        complex_coeffs: NDArray[np.complex128] = interleaved_to_complex(trajectory_fourier)
+        trajectory_physical: NDArray[np.float64] = to_physical(complex_coeffs, self.resolution)
 
-        return extract_shadowing_events(
-            state_space_distances(trajectory_physical, self.rpo_trajectories),
-            self.rpo_periods,
-            threshold,
-            min_duration,
-        )
+        all_events: list[ShadowingEvent] = []
+
+        for rpo_index, traj in enumerate(self.rpo_trajectories):
+            period: int = traj.shape[0]
+            events = extract_shadowing_events(
+                compute_distances_to_rpo(trajectory_physical, traj),
+                rpo_index,
+                period,
+                threshold,
+                min_duration,
+            )
+            all_events.extend(events)
+
+        all_events.sort(key=lambda e: (e.start_time, e.rpo_index))
+        return all_events
 
     def compute_min_distances(
         self, trajectory_fourier: NDArray[np.floating]
     ) -> NDArray[np.float64]:
         """Compute minimum distance to any RPO at each trajectory timestep.
 
-        Returns shape `(M,)` where each entry is the minimum over all RPOs,
-        phases, and shifts. Useful for distance threshold selection in detect
-        methods.
+        Returns shape `(trajectory_length,)` where each entry is the minimum
+        over all RPOs, phases, and shifts. Useful for threshold selection.
         """
-        complex_coeffs = interleaved_to_complex(trajectory_fourier)
-        trajectory_physical = to_physical(complex_coeffs, self.resolution)
+        complex_coeffs: NDArray[np.complex128] = interleaved_to_complex(trajectory_fourier)
+        trajectory_physical: NDArray[np.float64] = to_physical(complex_coeffs, self.resolution)
 
-        min_dists = np.empty(len(trajectory_physical), dtype=np.float64)
-        for timestep, distances in enumerate(
-            state_space_distances(trajectory_physical, self.rpo_trajectories)
-        ):
-            min_dists[timestep] = np.min(distances)
+        min_dists: NDArray[np.float64] = np.full(len(trajectory_physical), np.inf, dtype=np.float64)
+
+        for rpo_traj in self.rpo_trajectories:
+            for t, distances in enumerate(compute_distances_to_rpo(trajectory_physical, rpo_traj)):
+                min_dists[t] = min(min_dists[t], np.min(distances))
 
         return min_dists
 
@@ -126,21 +126,7 @@ class SSADetector:
         Computes the threshold as the `f_close` quantile of minimum distances,
         then detects events. Returns both the events and the computed threshold.
         """
-        min_distances = self.compute_min_distances(trajectory_fourier)
-        threshold = float(np.quantile(min_distances, f_close))
+        min_distances: NDArray[np.float64] = self.compute_min_distances(trajectory_fourier)
+        threshold: float = float(np.quantile(min_distances, f_close))
         events = self.detect(trajectory_fourier, threshold, min_duration)
         return events, threshold
-
-    def state_space_distance_array(
-        self, trajectory_fourier: NDArray[np.floating]
-    ) -> NDArray[np.float64]:
-        """Return full 3D distance array for debugging or other analysis.
-
-        Returns shape `(len, rpo_count, max_period)` where `len` is the
-        trajectory length. Warning: This can be very, very large for long
-        trajectories. Prefer the `state_space_distances` generator.
-        """
-        complex_coeffs = interleaved_to_complex(trajectory_fourier)
-        trajectory_physical = to_physical(complex_coeffs, self.resolution)
-
-        return np.array(list(state_space_distances(trajectory_physical, self.rpo_trajectories)))

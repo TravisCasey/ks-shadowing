@@ -6,7 +6,7 @@ import numpy as np
 
 from ks_shadowing import load_rpo
 from ks_shadowing.integrator import ksint
-from ks_shadowing.ssa import SSADetector
+from ks_shadowing.ssa import SSADetector, compute_distances_to_rpo
 from ks_shadowing.transforms import interleaved_to_complex, to_physical
 
 
@@ -20,11 +20,11 @@ def make_rpo_trajectory(rpo, dt: float, resolution: int) -> np.ndarray:
 
 class TestSSADetector:
     def test_rpo_shadows_itself(self, rpo_mat_path: Path):
-        """RPO trajectory shadows itself with low threshold."""
+        """RPO trajectory shadows itself with high threshold."""
         rpo = load_rpo(rpo_mat_path, 0)
         dt = rpo.period / rpo.time_steps
 
-        detector = SSADetector([rpo], dt, resolution=256)
+        detector = SSADetector([rpo], dt, resolution=64)
 
         # Integrate RPO as trajectory
         trajectory = ksint(rpo.fourier_coeffs, dt, rpo.time_steps * 2)
@@ -62,18 +62,35 @@ class TestSSADetector:
         assert min_dists.shape == (15,)
         assert np.all(min_dists >= 0)
 
-    def test_compute_full_distance_matrix_shape(self, rpo_mat_path: Path):
-        """compute_full_distance_matrix returns correct 3D shape."""
+
+class TestComputeDistancesToRpo:
+    def test_yields_correct_shape(self, rpo_mat_path: Path):
+        """compute_distances_to_rpo yields arrays with correct shape."""
         rpo = load_rpo(rpo_mat_path, 0)
         dt = rpo.period / rpo.time_steps
+        resolution = 128
 
-        detector = SSADetector([rpo], dt, resolution=128)
+        rpo_traj = make_rpo_trajectory(rpo, dt, resolution)
+        trajectory = rpo_traj[:5]  # Just a few timesteps
 
-        n_steps = 10
-        trajectory = ksint(rpo.fourier_coeffs, dt, n_steps)
+        distances_list = list(compute_distances_to_rpo(trajectory, rpo_traj))
 
-        matrix = detector.state_space_distance_array(trajectory)
+        assert len(distances_list) == 5
+        for dist in distances_list:
+            assert dist.shape == (rpo_traj.shape[0], resolution)
 
-        assert matrix.shape[0] == n_steps + 1  # trajectory length
-        assert matrix.shape[1] == 1  # one RPO
-        assert matrix.shape[2] == detector.rpo_periods[0]  # period of RPO
+    def test_self_distance_near_zero(self, rpo_mat_path: Path):
+        """RPO snapshot has near-zero distance to itself at correct phase/shift."""
+        rpo = load_rpo(rpo_mat_path, 0)
+        dt = rpo.period / rpo.time_steps
+        resolution = 128
+
+        rpo_traj = make_rpo_trajectory(rpo, dt, resolution)
+
+        # Use first snapshot of RPO as trajectory
+        trajectory = rpo_traj[:1]
+
+        distances = next(compute_distances_to_rpo(trajectory, rpo_traj))
+
+        # Distance at phase=0, shift=0 should be near zero
+        assert distances[0, 0] < 1e-10

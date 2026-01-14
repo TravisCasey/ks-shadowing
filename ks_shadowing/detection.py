@@ -1,7 +1,7 @@
-"""Shadowing event detection utilities.
+"""Shadowing event detection for SSA (State Space Approach).
 
-This module provides generic event detection infrastructure that can be reused
-by both the State Space Approach (SSA) and Persistent Homology Approach (PHA).
+This module implements the streaming DP algorithm for detecting shadowing events
+in the 3D distance space `(trajectory_time, rpo_phase, spatial_shift)`.
 """
 
 from collections.abc import Iterator
@@ -20,9 +20,7 @@ class ShadowingEvent:
     trajectory closely follows an RPO, with the RPO phase advancing by 1 at
     each trajectory timestep (with wraparound at the period boundary).
 
-    Note that the start time is inclusive (the first timestep at which the
-    trajectory shadows the RPO) but the end time is exclusive (the first
-    timestep at which the trajectory no longer shadows the RPO).
+    The `start_time` is inclusive and `end_time` is exclusive.
     """
 
     rpo_index: int
@@ -42,189 +40,244 @@ class PathBuffer:
     """Tracks active shadowing paths for one timestep.
 
     Used by the streaming DP algorithm to maintain state for paths that are
-    currently being extended. Two buffers are alternated to correctly handle the
-    temporal dependency between timesteps.
+    currently being extended. Two buffers are alternated to handle temporal
+    dependencies between timesteps.
 
-    In other words, updating an entry of the buffer depends on other entries of
-    this buffer; it needs these values to be from the current timestep. However,
-    these entries are also update this timestep. We use a second buffer to write
-    current timestep values to and preserve previous timestep values in the
-    other.
+    Arrays have shape `(rpo_period, spatial_resolution)` for a single RPO.
     """
 
-    rpo_count: int
-    max_period: int
     path_length: NDArray[np.int32]
     distance_sum: NDArray[np.float64]
     min_distance: NDArray[np.float64]
     start_time: NDArray[np.int32]
 
     @classmethod
-    def empty(cls, rpo_count: int, max_period: int) -> Self:
+    def empty(cls, period: int, resolution: int) -> Self:
         """Create a buffer with no active paths."""
+        shape: tuple[int, int] = (period, resolution)
         return cls(
-            rpo_count=rpo_count,
-            max_period=max_period,
-            path_length=np.zeros((rpo_count, max_period), dtype=np.int32),
-            distance_sum=np.zeros((rpo_count, max_period), dtype=np.float64),
-            min_distance=np.full((rpo_count, max_period), np.inf, dtype=np.float64),
-            start_time=np.zeros((rpo_count, max_period), dtype=np.int32),
+            path_length=np.zeros(shape, dtype=np.int32),
+            distance_sum=np.zeros(shape, dtype=np.float64),
+            min_distance=np.full(shape, np.inf, dtype=np.float64),
+            start_time=np.zeros(shape, dtype=np.int32),
         )
 
     def reset(self) -> None:
-        """Clear all paths for reuse as the buffer to be written to."""
+        """Clear all paths for reuse."""
         self.path_length.fill(0)
         self.distance_sum.fill(0.0)
         self.min_distance.fill(np.inf)
         self.start_time.fill(0)
 
-    def start_path(self, rpo: int, phase: int, distance: float, time: int) -> None:
-        """Begin a new path at the given position."""
-        self.path_length[rpo, phase] = 1
-        self.distance_sum[rpo, phase] = distance
-        self.min_distance[rpo, phase] = distance
-        self.start_time[rpo, phase] = time
-
-    def extend_from(
-        self, prev: Self, rpo: int, phase: int, pred_phase: int, distance: float
-    ) -> None:
-        """Extend a path from the previous buffer into this buffer."""
-        self.path_length[rpo, phase] = prev.path_length[rpo, pred_phase] + 1
-        self.distance_sum[rpo, phase] = prev.distance_sum[rpo, pred_phase] + distance
-        self.min_distance[rpo, phase] = min(prev.min_distance[rpo, pred_phase], distance)
-        self.start_time[rpo, phase] = prev.start_time[rpo, pred_phase]
-
-    def to_event(self, rpo: int, phase: int) -> ShadowingEvent:
+    def to_event(self, rpo_index: int, phase: int, shift: int) -> ShadowingEvent:
         """Create a ShadowingEvent from an active path."""
-        length = int(self.path_length[rpo, phase])
-        start = int(self.start_time[rpo, phase])
+        length = int(self.path_length[phase, shift])
+        start = int(self.start_time[phase, shift])
         return ShadowingEvent(
-            rpo_index=rpo,
+            rpo_index=rpo_index,
             start_time=start,
             end_time=start + length,
-            mean_distance=float(self.distance_sum[rpo, phase] / length),
-            min_distance=float(self.min_distance[rpo, phase]),
-        )
-
-    def is_active(self, rpo: int, phase: int) -> bool:
-        """Check if there is an active path at this position."""
-        return self.path_length[rpo, phase] > 0
-
-    def is_continued_by(self, successor: Self, rpo: int, phase: int, period: int) -> bool:
-        """Check if the path at (rpo, phase) was continued in the successor buffer.
-
-        A path is continued if the successor buffer has an active path at the
-        next phase (with wraparound) that has length exactly one greater and
-        identical start time.
-        """
-        succ_phase = (phase + 1) % period
-        return (
-            successor.path_length[rpo, succ_phase] == self.path_length[rpo, phase] + 1
-            and successor.start_time[rpo, succ_phase] == self.start_time[rpo, phase]
+            mean_distance=float(self.distance_sum[phase, shift] / length),
+            min_distance=float(self.min_distance[phase, shift]),
         )
 
 
-def update_paths_for_timestep(  # noqa: PLR0913
+def compute_best_predecessors(
+    prev_buf: PathBuffer,
+) -> tuple[
+    NDArray[np.int32],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.int32],
+]:
+    """Compute best predecessor values for each `(phase, shift)` entry.
+
+    For each cell, finds the predecessor with the longest path among the three
+    valid predecessors:
+        - `(phase-1, shift-1)`,
+        - `(phase-1, shift)`,
+        - `(phase-1, shift+1)`.
+
+    Returns arrays for:
+        - best `path_length`,
+        - best `distance_sum`,
+        - best `min_distance`,
+        - best `start_time`.
+    """
+    # Roll phase dimension to get predecessor phase (phase-1) % period
+    pred_len = np.roll(prev_buf.path_length, 1, axis=0)
+
+    # Stack three shift-rolled versions and find best
+    len_stack = np.stack(
+        [np.roll(pred_len, 1, axis=1), pred_len, np.roll(pred_len, -1, axis=1)], axis=0
+    )
+    best_index = np.argmax(len_stack, axis=0)
+    best_length = np.take_along_axis(len_stack, best_index[np.newaxis, :, :], axis=0)[0]
+
+    # Apply same rolls to other arrays and select by best_index
+    pred_dist = np.roll(prev_buf.distance_sum, 1, axis=0)
+    dist_stack = np.stack(
+        [
+            np.roll(pred_dist, 1, axis=1),
+            pred_dist,
+            np.roll(pred_dist, -1, axis=1),
+        ],
+        axis=0,
+    )
+    best_dist_sum = np.take_along_axis(dist_stack, best_index[None, :, :], axis=0)[0]
+
+    pred_min = np.roll(prev_buf.min_distance, 1, axis=0)
+    min_stack = np.stack(
+        [
+            np.roll(pred_min, 1, axis=1),
+            pred_min,
+            np.roll(pred_min, -1, axis=1),
+        ],
+        axis=0,
+    )
+    best_min_dist = np.take_along_axis(min_stack, best_index[None, :, :], axis=0)[0]
+
+    pred_start = np.roll(prev_buf.start_time, 1, axis=0)
+    start_stack = np.stack(
+        [
+            np.roll(pred_start, 1, axis=1),
+            pred_start,
+            np.roll(pred_start, -1, axis=1),
+        ],
+        axis=0,
+    )
+    best_start = np.take_along_axis(start_stack, best_index[None, :, :], axis=0)[0]
+
+    return best_length, best_dist_sum, best_min_dist, best_start
+
+
+def update_paths_for_timestep(
     prev_buf: PathBuffer,
     curr_buf: PathBuffer,
     distances: NDArray[np.float64],
-    rpo_periods: list[int],
     threshold: float,
     current_time: int,
 ) -> None:
-    """Update curr_buf by extending or starting paths based on distances.
+    """Update `curr_buf` by extending or starting paths based on distances.
 
-    For each (rpo, phase) where the distance is below threshold, either extends
-    an existing path from the predecessor phase or starts a new path.
+    For each `(phase, shift)` where distance is below threshold, either extends
+    an existing path from a valid predecessor or starts a new path.
     """
-    for rpo_idx, period in enumerate(rpo_periods):
-        for phase in range(period):
-            if distances[rpo_idx, phase] < threshold:
-                pred_phase = (phase - 1) % period
-                dist = float(distances[rpo_idx, phase])
+    curr_buf.reset()
 
-                if prev_buf.is_active(rpo_idx, pred_phase):
-                    curr_buf.extend_from(prev_buf, rpo_idx, phase, pred_phase, dist)
-                else:
-                    curr_buf.start_path(rpo_idx, phase, dist, current_time)
+    best_length, best_dist_sum, best_min_dist, best_start = compute_best_predecessors(prev_buf)
+
+    below: NDArray[np.bool_] = distances < threshold
+    has_pred: NDArray[np.bool_] = best_length > 0
+    extend_mask: NDArray[np.bool_] = below & has_pred
+    start_mask: NDArray[np.bool_] = below & ~has_pred
+
+    # Extend existing paths
+    curr_buf.path_length[:] = np.where(extend_mask, best_length + 1, 0)
+    curr_buf.distance_sum[:] = np.where(extend_mask, best_dist_sum + distances, 0.0)
+    curr_buf.min_distance[:] = np.where(extend_mask, np.minimum(best_min_dist, distances), np.inf)
+    curr_buf.start_time[:] = np.where(extend_mask, best_start, 0)
+
+    # Start new paths
+    curr_buf.path_length[:] = np.where(start_mask, 1, curr_buf.path_length)
+    curr_buf.distance_sum[:] = np.where(start_mask, distances, curr_buf.distance_sum)
+    curr_buf.min_distance[:] = np.where(start_mask, distances, curr_buf.min_distance)
+    curr_buf.start_time[:] = np.where(start_mask, current_time, curr_buf.start_time)
 
 
 def collect_terminated_events(
     prev_buf: PathBuffer,
     curr_buf: PathBuffer,
-    rpo_periods: list[int],
+    rpo_index: int,
     min_duration: int,
 ) -> list[ShadowingEvent]:
-    """Collect events for paths in prev_buf that were not continued in curr_buf."""
-    events = []
-    for rpo_idx, period in enumerate(rpo_periods):
-        for phase in range(period):
-            if prev_buf.path_length[rpo_idx, phase] < min_duration:
-                continue
-            if not prev_buf.is_continued_by(curr_buf, rpo_idx, phase, period):
-                events.append(prev_buf.to_event(rpo_idx, phase))
+    """Collect events for paths in `prev_buf` that were not continued in `curr_buf`.
+
+    A path is continued if any valid successor entry `(phase+1, shift +/- 0/1)`
+    has a path with length equal to the previous length plus one and the same
+    start time.
+    """
+    candidates: NDArray[np.bool_] = prev_buf.path_length >= min_duration
+    if not np.any(candidates):
+        return []
+
+    # Check if each candidate was continued by any valid successor
+    succ_len: NDArray[np.int32] = np.roll(curr_buf.path_length, -1, axis=0)
+    succ_start: NDArray[np.int32] = np.roll(curr_buf.start_time, -1, axis=0)
+
+    continued: NDArray[np.bool_] = np.zeros_like(candidates)
+    for delta in (-1, 0, 1):
+        succ_len_shifted: NDArray[np.int32] = np.roll(succ_len, -delta, axis=1)
+        succ_start_shifted: NDArray[np.int32] = np.roll(succ_start, -delta, axis=1)
+        match: NDArray[np.bool_] = (succ_len_shifted == prev_buf.path_length + 1) & (
+            succ_start_shifted == prev_buf.start_time
+        )
+        continued |= match
+
+    terminated: NDArray[np.bool_] = candidates & ~continued
+
+    events: list[ShadowingEvent] = []
+    for phase, shift in np.argwhere(terminated):
+        events.append(prev_buf.to_event(rpo_index, phase, shift))
     return events
 
 
 def collect_active_events(
     buf: PathBuffer,
-    rpo_periods: list[int],
+    rpo_index: int,
     min_duration: int,
 ) -> list[ShadowingEvent]:
     """Collect events for all paths still active in the buffer."""
-    events = []
-    for rpo_idx, period in enumerate(rpo_periods):
-        for phase in range(period):
-            if buf.path_length[rpo_idx, phase] >= min_duration:
-                events.append(buf.to_event(rpo_idx, phase))
+    events: list[ShadowingEvent] = []
+    for phase, shift in np.argwhere(buf.path_length >= min_duration):
+        events.append(buf.to_event(rpo_index, phase, shift))
     return events
 
 
 def extract_shadowing_events(
     distance_generator: Iterator[NDArray[np.float64]],
-    rpo_periods: list[int],
+    rpo_index: int,
+    period: int,
     threshold: float,
     min_duration: int = 1,
 ) -> list[ShadowingEvent]:
-    """Extract shadowing events from streaming distance computation.
+    """Extract shadowing events for a single RPO using vectorized DP.
 
-    Uses dynamic programming to find contiguous paths through the distance array
-    where all distances are below `threshold` and RPO phase advances
-    by one each trajectory timestep (with wraparound at period boundary).
-
-    The algorithm processes distances one trajectory timestep at a time,
-    maintaining `PathBuffer` objects that track path lengths, accumulated
-    distances, and start times. Events are emitted when paths terminate
-    (distance exceeds threshold) or when the trajectory ends.
+    Finds longest paths through distance matrix entries below `threshold` where
+    RPO and trajectory phase advances by 1 and shift changes by at most 1.
 
     Args:
-        distance_generator: Yields `(rpo_count, max_period)` distance arrays,
-            one per trajectory timestep. Invalid phases (beyond an RPO's
-            period) should contain infinity.
-        rpo_periods: List of period lengths for each RPO.
+        distance_generator: Yields `(period, spatial_resolution)` distance
+            arrays, one per trajectory timestep.
+        rpo_index: Index of this RPO.
+        period: Number of phases in this RPO.
         threshold: Distance threshold for shadowing detection.
         min_duration: Minimum path length to report as an event.
 
     Returns:
         List of detected shadowing events, sorted by start time.
     """
-    rpo_count = len(rpo_periods)
-    if rpo_count == 0:
+    # Use first yielded array to get shape
+    first_distances: NDArray[np.float64] | None = next(distance_generator, None)
+    if first_distances is None:
         return []
 
-    max_period = max(rpo_periods)
-    prev_buf = PathBuffer.empty(rpo_count, max_period)
-    curr_buf = PathBuffer.empty(rpo_count, max_period)
+    resolution: int = first_distances.shape[1]
+
+    prev_buf = PathBuffer.empty(period, resolution)
+    curr_buf = PathBuffer.empty(period, resolution)
     events: list[ShadowingEvent] = []
 
-    for current_time, distances in enumerate(distance_generator):
-        curr_buf.reset()
-        update_paths_for_timestep(
-            prev_buf, curr_buf, distances, rpo_periods, threshold, current_time
-        )
-        events.extend(collect_terminated_events(prev_buf, curr_buf, rpo_periods, min_duration))
+    # Process first timestep
+    update_paths_for_timestep(prev_buf, curr_buf, first_distances, threshold, 0)
+    prev_buf, curr_buf = curr_buf, prev_buf
+
+    # Process remaining timesteps
+    for current_time, distances in enumerate(distance_generator, start=1):
+        update_paths_for_timestep(prev_buf, curr_buf, distances, threshold, current_time)
+        events.extend(collect_terminated_events(prev_buf, curr_buf, rpo_index, min_duration))
         prev_buf, curr_buf = curr_buf, prev_buf
 
-    events.extend(collect_active_events(prev_buf, rpo_periods, min_duration))
-    events.sort(key=lambda e: (e.start_time, e.rpo_index))
+    events.extend(collect_active_events(prev_buf, rpo_index, min_duration))
+    events.sort(key=lambda e: e.start_time)
     return events

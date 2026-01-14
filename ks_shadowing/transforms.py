@@ -67,23 +67,3 @@ def l2_distance_all_shifts(
 
     dist_sq = np.maximum(norm_u_sq + norm_v_sq - 2 * cross_corr, 0.0)
     return np.sqrt(dist_sq)
-
-
-def min_distance_over_shifts(
-    field_u: NDArray[np.float64],
-    field_v: NDArray[np.float64],
-) -> NDArray[np.float64]:
-    """Compute minimum L2 distance over all spatial shifts.
-
-    Convenience function that computes l2_distance_all_shifts and takes the
-    minimum. Supports batched field_v: if shape is (M, N), returns shape (M,).
-
-    Args:
-        field_u: Shape (N,) - single reference field
-        field_v: Shape (N,) or (M, N) - one or more fields to compare
-
-    Returns:
-        Scalar if field_v is 1D, or shape (M,) if field_v is 2D.
-    """
-    all_distances = l2_distance_all_shifts(field_u, field_v)
-    return np.min(all_distances, axis=-1)
