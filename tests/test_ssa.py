@@ -5,9 +5,10 @@ from pathlib import Path
 import numpy as np
 
 from ks_shadowing import load_rpo
-from ks_shadowing.integrator import ksint
-from ks_shadowing.ssa import SSADetector, compute_distances_to_rpo
-from ks_shadowing.transforms import interleaved_to_complex, to_physical
+from ks_shadowing.core.integrator import ksint
+from ks_shadowing.core.transforms import interleaved_to_complex, to_physical
+from ks_shadowing.ssa import SSADetector
+from ks_shadowing.ssa.detector import compute_distances_to_rpo
 
 
 def make_rpo_trajectory(rpo, dt: float, resolution: int) -> np.ndarray:

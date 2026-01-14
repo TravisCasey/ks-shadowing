@@ -9,11 +9,16 @@ from collections.abc import Iterator, Sequence
 import numpy as np
 from numpy.typing import NDArray
 
-from .constants import DEFAULT_RESOLUTION
-from .detection import ShadowingEvent, extract_shadowing_events
-from .integrator import ksint
-from .rpo import RPO
-from .transforms import interleaved_to_complex, l2_distance_all_shifts, to_physical
+from ks_shadowing.core.constants import DEFAULT_RESOLUTION
+from ks_shadowing.core.detection import ShadowingEvent
+from ks_shadowing.core.integrator import ksint
+from ks_shadowing.core.rpo import RPO
+from ks_shadowing.core.transforms import (
+    interleaved_to_complex,
+    l2_distance_all_shifts,
+    to_physical,
+)
+from ks_shadowing.ssa.pathfinding import extract_shadowing_events
 
 
 def compute_distances_to_rpo(

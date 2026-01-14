@@ -1,7 +1,11 @@
-"""Shadowing event detection for SSA (State Space Approach).
+"""SSA pathfinding algorithm for shadowing event detection.
 
-This module implements the streaming DP algorithm for detecting shadowing events
-in the 3D distance space `(trajectory_time, rpo_phase, spatial_shift)`.
+This module implements the streaming dynamic programming algorithm for detecting
+shadowing events in the 3D distance space
+`(trajectory_time, rpo_phase, spatial_shift)`.
+
+The SSA algorithm enforces spatial continuity: consecutive spatial shifts can
+only differ by at most 1 position (shift-1, shift, or shift+1).
 """
 
 from collections.abc import Iterator
@@ -11,39 +15,20 @@ from typing import Self
 import numpy as np
 from numpy.typing import NDArray
 
-
-@dataclass(frozen=True, slots=True)
-class ShadowingEvent:
-    """A detected shadowing episode between a trajectory and an RPO.
-
-    A shadowing event represents a contiguous time interval where a chaotic
-    trajectory closely follows an RPO, with the RPO phase advancing by 1 at
-    each trajectory timestep (with wraparound at the period boundary).
-
-    The `start_time` is inclusive and `end_time` is exclusive.
-    """
-
-    rpo_index: int
-    start_time: int
-    end_time: int
-    mean_distance: float
-    min_distance: float
-
-    @property
-    def duration(self) -> int:
-        """Number of timesteps in the shadowing event."""
-        return self.end_time - self.start_time
+from ks_shadowing.core.detection import ShadowingEvent
 
 
 @dataclass
-class PathBuffer:
-    """Tracks active shadowing paths for one timestep.
+class SSAPathBuffer:
+    """Tracks active shadowing paths for one timestep in SSA detection.
 
     Used by the streaming DP algorithm to maintain state for paths that are
     currently being extended. Two buffers are alternated to handle temporal
     dependencies between timesteps.
 
-    Arrays have shape `(rpo_period, spatial_resolution)` for a single RPO.
+    Arrays have shape `(rpo_period, spatial_resolution)` for a single RPO,
+    reflecting the 3D structure of SSA's distance space where spatial shift
+    continuity is enforced.
     """
 
     path_length: NDArray[np.int32]
@@ -83,7 +68,7 @@ class PathBuffer:
 
 
 def compute_best_predecessors(
-    prev_buf: PathBuffer,
+    prev_buf: SSAPathBuffer,
 ) -> tuple[
     NDArray[np.int32],
     NDArray[np.float64],
@@ -93,7 +78,7 @@ def compute_best_predecessors(
     """Compute best predecessor values for each `(phase, shift)` entry.
 
     For each cell, finds the predecessor with the longest path among the three
-    valid predecessors:
+    valid predecessors allowed by SSA's spatial continuity constraint:
         - `(phase-1, shift-1)`,
         - `(phase-1, shift)`,
         - `(phase-1, shift+1)`.
@@ -152,8 +137,8 @@ def compute_best_predecessors(
 
 
 def update_paths_for_timestep(
-    prev_buf: PathBuffer,
-    curr_buf: PathBuffer,
+    prev_buf: SSAPathBuffer,
+    curr_buf: SSAPathBuffer,
     distances: NDArray[np.float64],
     threshold: float,
     current_time: int,
@@ -161,7 +146,8 @@ def update_paths_for_timestep(
     """Update `curr_buf` by extending or starting paths based on distances.
 
     For each `(phase, shift)` where distance is below threshold, either extends
-    an existing path from a valid predecessor or starts a new path.
+    an existing path from a valid predecessor (respecting SSA's shift continuity
+    constraint) or starts a new path.
     """
     curr_buf.reset()
 
@@ -186,8 +172,8 @@ def update_paths_for_timestep(
 
 
 def collect_terminated_events(
-    prev_buf: PathBuffer,
-    curr_buf: PathBuffer,
+    prev_buf: SSAPathBuffer,
+    curr_buf: SSAPathBuffer,
     rpo_index: int,
     min_duration: int,
 ) -> list[ShadowingEvent]:
@@ -195,7 +181,7 @@ def collect_terminated_events(
 
     A path is continued if any valid successor entry `(phase+1, shift +/- 0/1)`
     has a path with length equal to the previous length plus one and the same
-    start time.
+    start time. This respects SSA's spatial continuity constraint.
     """
     candidates: NDArray[np.bool_] = prev_buf.path_length >= min_duration
     if not np.any(candidates):
@@ -223,7 +209,7 @@ def collect_terminated_events(
 
 
 def collect_active_events(
-    buf: PathBuffer,
+    buf: SSAPathBuffer,
     rpo_index: int,
     min_duration: int,
 ) -> list[ShadowingEvent]:
@@ -241,10 +227,11 @@ def extract_shadowing_events(
     threshold: float,
     min_duration: int = 1,
 ) -> list[ShadowingEvent]:
-    """Extract shadowing events for a single RPO using vectorized DP.
+    """Extract shadowing events for a single RPO using SSA's vectorized DP.
 
     Finds longest paths through distance matrix entries below `threshold` where
-    RPO and trajectory phase advances by 1 and shift changes by at most 1.
+    RPO phase advances by 1 and spatial shift changes by at most 1 (SSA's
+    spatial continuity constraint).
 
     Args:
         distance_generator: Yields `(period, spatial_resolution)` distance
@@ -264,8 +251,8 @@ def extract_shadowing_events(
 
     resolution: int = first_distances.shape[1]
 
-    prev_buf = PathBuffer.empty(period, resolution)
-    curr_buf = PathBuffer.empty(period, resolution)
+    prev_buf = SSAPathBuffer.empty(period, resolution)
+    curr_buf = SSAPathBuffer.empty(period, resolution)
     events: list[ShadowingEvent] = []
 
     # Process first timestep

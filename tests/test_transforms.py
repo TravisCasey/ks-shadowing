@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from ks_shadowing.transforms import (
+from ks_shadowing.core.transforms import (
     interleaved_to_complex,
     l2_distance_all_shifts,
     to_physical,

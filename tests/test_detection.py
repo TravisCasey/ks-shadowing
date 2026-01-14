@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from ks_shadowing.detection import ShadowingEvent, extract_shadowing_events
+from ks_shadowing.core.detection import ShadowingEvent
+from ks_shadowing.ssa.pathfinding import extract_shadowing_events
 
 
 class TestShadowingEvent:

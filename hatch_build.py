@@ -21,10 +21,10 @@ class CMakeBuildHook(BuildHookInterface):
         subprocess.check_call(["cmake", "-S", ".", "-B", str(build_dir)], cwd=root)
         subprocess.check_call(["cmake", "--build", str(build_dir)], cwd=root)
 
-        # Copy .so to package directory (works for both editable and wheel builds)
+        # Copy .so to core/ directory (works for both editable and wheel builds)
         so_path = build_dir / "csrc" / "libks2py.so"
-        dest = root / "ks_shadowing" / "libks2py.so"
+        dest = root / "ks_shadowing" / "core" / "libks2py.so"
         shutil.copy2(so_path, dest)
 
         # Register as build artifact for wheel inclusion
-        build_data["artifacts"].append("ks_shadowing/libks2py.so")
+        build_data["artifacts"].append("ks_shadowing/core/libks2py.so")

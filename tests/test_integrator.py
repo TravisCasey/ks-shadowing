@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from ks_shadowing.integrator import ksint
+from ks_shadowing.core.integrator import ksint
 
 
 class TestKsint:
