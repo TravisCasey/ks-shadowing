@@ -1,20 +1,30 @@
 # KS Shadowing
 
-Shadowing detection for chaotic trajectories of the Kuramoto-Sivashinsky equation.
+Shadowing detection for chaotic trajectories of the Kuramoto-Sivashinsky (KS) equation.
 
-Implements two methods for detecting when trajectories closely follow unstable Relative Periodic Orbits (RPOs):
+This package detects when chaotic trajectories closely follow unstable Relative Periodic Orbits (RPOs). An RPO is a solution that returns to a spatially shifted copy of itself after one period: `u(x, t + T) = u(x - shift, t)`.
 
-- **State Space Approach (SSA)**: L2 distance with spatial shift optimization
-- **Persistent Homology Approach (PHA)**: Wasserstein distance between persistence diagrams
+Two detection methods are planned:
+
+- **State Space Approach (SSA)**: L2 distance in physical space with spatial shift optimization (implemented)
+- **Persistent Homology Approach (PHA)**: Wasserstein distance between persistence diagrams (planned)
 
 ## Installation
 
 Requires Python 3.12+, CMake, FFTW3, and Eigen3.
 
 ```bash
-# Install package
 uv sync
 ```
+
+## RPO Data
+
+RPO data files are in the `data/` directory. All RPOs are for domain size L=22.
+
+| File | Description |
+|------|-------------|
+| `rpos_all.npz` | Complete dataset of 239 RPOs |
+| `rpos_selected.npz` | 16 RPOs selected for focused analysis |
 
 ## Development
 
@@ -31,6 +41,7 @@ uv run ruff format .
 
 # Type checking
 uv run ty check
-```
 
-Note: After a clean checkout, run `uv cache clean ks-shadowing` if the C++ library fails to build.
+# Clear build cache if C++ library fails to build after a clean checkout
+uv cache clean ks-shadowing
+```

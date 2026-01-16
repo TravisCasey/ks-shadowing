@@ -7,7 +7,8 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-from .constants import N_COEFFS
+# Number of Fourier coefficients: modes 1-15, real and imaginary parts interleaved.
+_N_COEFFS = 30
 
 
 def load_library() -> CDLL:
@@ -62,14 +63,14 @@ def ksint(
         raise ValueError(f"save_every ({save_every}) cannot exceed steps ({steps})")
 
     initial_state = np.ascontiguousarray(initial_state, dtype=np.float64)
-    if initial_state.shape != (N_COEFFS,):
-        raise ValueError(f"initial_state must have shape ({N_COEFFS},), got {initial_state.shape}")
+    if initial_state.shape != (_N_COEFFS,):
+        raise ValueError(f"initial_state must have shape ({_N_COEFFS},), got {initial_state.shape}")
 
     lib = get_lib()
 
     n_out = steps // save_every + 1
-    # Eigen uses column-major: C++ returns (N_COEFFS, n_out)
-    trajectory = np.empty((N_COEFFS, n_out), dtype=np.float64, order="F")
+    # Eigen uses column-major: C++ returns (_N_COEFFS, n_out)
+    trajectory = np.empty((_N_COEFFS, n_out), dtype=np.float64, order="F")
 
     lib.ksf(
         trajectory.ctypes.data_as(POINTER(c_double)),

@@ -1,9 +1,8 @@
 """State Space Approach (SSA) for shadowing detection.
 
-SSA detects shadowing by computing L2 distances in physical space between
-trajectory snapshots and RPO phases, with spatial shift optimization via
-FFT cross-correlation. The algorithm enforces spatial continuity: consecutive
-spatial shifts can differ by at most 1 position.
+Detects shadowing by computing L2 distances between trajectory snapshots and
+RPO phases in physical space, using FFT cross-correlation to optimize over
+spatial shifts. Events are extracted via connected components analysis.
 """
 
 from ks_shadowing.ssa.detector import SSADetector

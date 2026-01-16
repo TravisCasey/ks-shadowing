@@ -5,22 +5,22 @@ from numpy.typing import NDArray
 from scipy import fft
 
 
-def interleaved_to_complex(coeffs: NDArray[np.floating]) -> NDArray[np.complex128]:
+def interleaved_to_complex(interleaved: NDArray[np.floating]) -> NDArray[np.complex128]:
     """Convert interleaved real/imaginary coefficients to complex Fourier modes.
 
     Takes the 30-element interleaved format from the `ksint` function and
-    returns 16 complex coefficients with zero-padding for the zeroth mode and
-    the Nyquist (last) mode.
+    returns 17 complex coefficients: a zero for mode 0, modes 1-15, and a zero
+    for the Nyquist mode.
 
     Input:  [..., 30] -> [Re(a1), Im(a1), Re(a2), Im(a2), ..., Re(a15), Im(a15)]
-    Output: [..., 16] -> [0, a1, a2, ..., a15, 0]
+    Output: [..., 17] -> [0, a1, a2, ..., a15, 0]
     """
-    real_parts = coeffs[..., 0::2]
-    imag_parts = coeffs[..., 1::2]
+    real_parts = interleaved[..., 0::2]
+    imag_parts = interleaved[..., 1::2]
     modes = real_parts + 1j * imag_parts
 
     # Pad with zeros for mode 0 and Nyquist
-    shape = coeffs.shape[:-1]
+    shape = interleaved.shape[:-1]
     zeros = np.zeros((*shape, 1), dtype=np.complex128)
     return np.concatenate([zeros, modes, zeros], axis=-1)
 
@@ -32,8 +32,30 @@ def to_physical(
     """Transform Fourier coefficients to physical space via inverse rFFT.
 
     The output is scaled by the given spatial resolution for normalization.
+    Accepts any array dimension of at least one, and the FFT is computed along
+    the last axis.
     """
     return resolution * fft.irfft(fourier_coeffs, resolution, axis=-1)
+
+
+def interleaved_to_physical(
+    interleaved: NDArray[np.floating],
+    resolution: int,
+) -> NDArray[np.float64]:
+    """Convert interleaved Fourier coefficients directly to physical space.
+
+    Combines `interleaved_to_complex` and `to_physical` into a single operation
+    for convenience when working with trajectories from `ksint`.
+
+    Args:
+        interleaved: Coefficients in interleaved format, shape `(..., 30)`.
+        resolution: Spatial resolution for the physical space output.
+
+    Returns:
+        Physical space representation with shape `(..., resolution)`.
+    """
+    complex_coeffs = interleaved_to_complex(interleaved)
+    return to_physical(complex_coeffs, resolution)
 
 
 def l2_distance_all_shifts(
@@ -67,3 +89,64 @@ def l2_distance_all_shifts(
 
     dist_sq = np.maximum(norm_u_sq + norm_v_sq - 2 * cross_corr, 0.0)
     return np.sqrt(dist_sq)
+
+
+def to_comoving_frame(
+    trajectory: NDArray[np.float64],
+    drift_per_step: float,
+) -> NDArray[np.float64]:
+    """Transform trajectory to a co-moving reference frame.
+
+    Applies a cumulative spatial rotation to each timestep: at timestep `i`, the
+    field is rotated by `-drift_per_step * i` grid cells. This transforms the
+    trajectory into a frame moving at constant velocity, where an RPO with the
+    corresponding drift rate becomes truly periodic.
+
+    Args:
+        trajectory: Physical space trajectory of shape `(num_steps, resolution)`.
+        drift_per_step: Spatial drift rate in grid cells per timestep.
+
+    Returns:
+        Transformed trajectory with same shape as input.
+    """
+    step_count, resolution = trajectory.shape
+
+    # Compute FFT of trajectory
+    traj_fft = fft.rfft(trajectory, axis=-1)
+
+    # Wavenumbers for phase shift: k = 0, 1, 2, ..., resolution//2
+    mode_count = traj_fft.shape[-1]
+    wavenumbers = np.arange(mode_count)
+
+    # Fourier shift theorem: to shift by d grid cells to the left (i.e., f(x) -> f(x+d)),
+    # multiply in Fourier space by exp(2pi*i*k*d/N).
+    # At timestep i, we shift left by drift_per_step * i to undo rightward drift.
+    timesteps = np.arange(step_count)[:, np.newaxis]
+    phase_shift = np.exp(2j * np.pi * wavenumbers * drift_per_step * timesteps / resolution)
+
+    # Apply phase shift and transform back
+    traj_shifted_fft = traj_fft * phase_shift
+    return fft.irfft(traj_shifted_fft, resolution, axis=-1)
+
+
+def tile_periodic(field: NDArray[np.float64], target_length: int) -> NDArray[np.float64]:
+    """Tile a periodic field along axis 0 to at least `target_length`.
+
+    Concatenates copies of the input array until the first axis has length
+    no less than `target_length`. The input is assumed to represent one period
+    of a periodic signal.
+
+    Args:
+        field: Array of shape `(period, ...)` representing one period.
+        target_length: Minimum desired length along axis 0.
+
+    Returns:
+        Tiled array of shape `(tiled_length, ...)` where
+            `tiled_length >= target_length`.
+    """
+    period = field.shape[0]
+    if period >= target_length:
+        return field
+
+    tile_count = (target_length + period - 1) // period
+    return np.tile(field, (tile_count,) + (1,) * (field.ndim - 1))

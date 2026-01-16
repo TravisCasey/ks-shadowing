@@ -16,3 +16,7 @@ ks_shadowing/core/*.so
 
 # pytest
 .pytest_cache/
+
+# Output directories
+results/
+plots/

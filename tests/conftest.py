@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 DATA_DIR = Path(__file__).parent.parent / "data"
-RPO_MAT_FILE = DATA_DIR / "ks22h02t100ED.mat"
+RPO_FILE = DATA_DIR / "rpos_selected.npz"
 
 
 @pytest.fixture
@@ -22,8 +22,8 @@ def sample_initial_state(rng: np.random.Generator) -> np.ndarray:
 
 
 @pytest.fixture
-def rpo_mat_path() -> Path:
-    """Path to the RPO .mat file."""
-    if not RPO_MAT_FILE.exists():
-        pytest.skip(f"RPO data file not found: {RPO_MAT_FILE}")
-    return RPO_MAT_FILE
+def rpo_data_path() -> Path:
+    """Path to the RPO .npz file."""
+    if not RPO_FILE.exists():
+        pytest.skip(f"RPO data file not found: {RPO_FILE}")
+    return RPO_FILE
