@@ -65,24 +65,24 @@ class TestFindConnectedComponents2D:
         """Tests diagonal, horizontal, vertical, and phase wraparound connectivity."""
         # Diagonal
         diagonal = make_passes_2d((0, 0, 0.5), (1, 1, 0.5), (2, 2, 0.5))
-        assert len(find_connected_components_2d(diagonal, period=10)) == 1
+        assert len(find_connected_components_2d(diagonal, 10, 10)) == 1
 
         # Horizontal (same timestep, adjacent phase)
         horizontal = make_passes_2d((5, 3, 0.5), (5, 4, 0.5))
-        assert len(find_connected_components_2d(horizontal, period=10)) == 1
+        assert len(find_connected_components_2d(horizontal, 10, 10)) == 1
 
         # Vertical (adjacent timestep, same phase)
         vertical = make_passes_2d((5, 3, 0.5), (6, 3, 0.5))
-        assert len(find_connected_components_2d(vertical, period=10)) == 1
+        assert len(find_connected_components_2d(vertical, 10, 10)) == 1
 
         # Phase wraparound
         wraparound = make_passes_2d((0, 0, 0.5), (0, 9, 0.5))
-        assert len(find_connected_components_2d(wraparound, period=10)) == 1
+        assert len(find_connected_components_2d(wraparound, 10, 10)) == 1
 
     def test_disjoint_entries_separate_components(self):
         """Non-adjacent entries are in separate components."""
         passes = make_passes_2d((0, 0, 0.5), (10, 5, 0.5))
-        components = find_connected_components_2d(passes, period=10)
+        components = find_connected_components_2d(passes, 10, 20)
         assert len(components) == 2
 
 

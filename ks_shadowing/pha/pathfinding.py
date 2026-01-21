@@ -174,15 +174,22 @@ def collect_close_passes_2d(
 def find_connected_components_2d(
     close_passes: NDArray,
     period: int,
+    num_timesteps: int,
 ) -> list[NDArray]:
     """Group close passes into connected components using 8-connectivity.
 
     Two points are adjacent if they differ by at most 1 in each dimension,
     with wraparound in the phase dimension.
 
+    Uses a dense label array and single-pass sweep for efficiency. Close passes
+    must be sorted by (timestep, phase) in row-major order, which is guaranteed
+    when they come from `np.where` on the distance matrix.
+
     Args:
-        close_passes: Structured array with dtype `CLOSE_PASS_DTYPE_2D`.
+        close_passes: Structured array with dtype `CLOSE_PASS_DTYPE_2D`, sorted
+            by (timestep, phase) in row-major order.
         period: RPO period for phase wraparound.
+        num_timesteps: Number of timesteps in the distance matrix.
 
     Returns:
         List of structured arrays, one per connected component.
@@ -190,28 +197,48 @@ def find_connected_components_2d(
     if len(close_passes) == 0:
         return []
 
+    # Sort by (timestep, phase) to enable single-pass sweep algorithm.
+    # When passes come from np.where they're already sorted, but we sort
+    # here to handle arbitrary input order (e.g., in tests).
+    sort_order = np.lexsort((close_passes["phase"], close_passes["timestep"]))
+    close_passes = close_passes[sort_order]
+
     pass_count = len(close_passes)
     uf = UnionFind(pass_count)
+
+    # Dense label array: -1 = not a close pass, >=0 = pass index
+    labels = np.full((num_timesteps, period), -1, dtype=np.int32)
 
     # Extract arrays for convenient access
     timesteps = close_passes["timestep"]
     phases = close_passes["phase"]
 
-    # Build coordinate -> index mapping for sparse neighbor lookup
-    coord_to_index: dict[tuple[int, int], int] = {}
-    for pass_index in range(pass_count):
-        coord_to_index[(int(timesteps[pass_index]), int(phases[pass_index]))] = pass_index
+    # Single-pass sweep: assign labels and check only backward neighbors.
+    # Since close_passes are sorted by (timestep, phase), we only need to
+    # check neighbors that have already been processed: left, upper-left,
+    # up, and upper-right.
+    backward_neighbors = [(-1, -1), (-1, 0), (-1, 1), (0, -1)]
 
-    # Union adjacent points (8-connectivity in 2D)
     for pass_index in range(pass_count):
         t, p = int(timesteps[pass_index]), int(phases[pass_index])
-        for dt in (-1, 0, 1):
-            for dp in (-1, 0, 1):
-                if dt == 0 and dp == 0:
-                    continue
-                neighbor = (t + dt, (p + dp) % period)
-                if neighbor in coord_to_index:
-                    uf.union(pass_index, coord_to_index[neighbor])
+        labels[t, p] = pass_index
+
+        for dt, dp in backward_neighbors:
+            nt = t + dt
+            if nt < 0:
+                continue
+            np_ = (p + dp) % period
+            neighbor_label = labels[nt, np_]
+            if neighbor_label >= 0:
+                uf.union(pass_index, neighbor_label)
+
+        # Handle phase wraparound: when at the last phase column, check if
+        # phase 0 in the same row was already processed (it was, since we
+        # process in row-major order).
+        if p == period - 1:
+            neighbor_label = labels[t, 0]
+            if neighbor_label >= 0:
+                uf.union(pass_index, neighbor_label)
 
     # Group by component root
     component_indices: dict[int, list[int]] = {}
@@ -254,8 +281,8 @@ def extract_shadowing_events_2d(
     if len(close_passes) == 0:
         return []
 
-    period = rpo_data.time_steps
-    components = find_connected_components_2d(close_passes, period)
+    num_timesteps, period = distance_matrix.shape
+    components = find_connected_components_2d(close_passes, period, num_timesteps)
     events: list[ShadowingEvent] = []
 
     for component in components:

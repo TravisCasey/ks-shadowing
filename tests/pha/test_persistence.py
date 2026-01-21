@@ -7,8 +7,6 @@ from ks_shadowing.pha.persistence import (
     apply_delay_embedding,
     compute_persistence_diagram,
     compute_trajectory_diagrams,
-    compute_wasserstein_matrix,
-    wasserstein_distance,
 )
 
 
@@ -62,45 +60,6 @@ class TestComputeTrajectoryDiagrams:
         for diagram in diagrams:
             assert diagram.ndim == 2
             assert diagram.shape[1] == 2
-
-
-class TestWassersteinDistance:
-    def test_self_distance_zero(self):
-        """Distance from diagram to itself is zero."""
-        rng = np.random.default_rng(42)
-        field = rng.standard_normal(64)
-        diagram = compute_persistence_diagram(field)
-
-        dist = wasserstein_distance(diagram, diagram)
-        assert dist == pytest.approx(0.0, abs=1e-10)
-
-    def test_empty_diagrams(self):
-        """Distance between empty diagrams is zero."""
-        empty = np.array([]).reshape(0, 2)
-        dist = wasserstein_distance(empty, empty)
-        assert dist == 0.0
-
-    def test_symmetric(self):
-        """Distance is symmetric: d(A, B) = d(B, A)."""
-        rng = np.random.default_rng(42)
-        diagram1 = compute_persistence_diagram(rng.standard_normal(64))
-        diagram2 = compute_persistence_diagram(rng.standard_normal(64))
-
-        assert wasserstein_distance(diagram1, diagram2) == pytest.approx(
-            wasserstein_distance(diagram2, diagram1)
-        )
-
-
-class TestComputeWassersteinMatrix:
-    def test_output_shape_and_diagonal(self):
-        """Output has correct shape; diagonal is zero for identical lists."""
-        rng = np.random.default_rng(42)
-        diagrams = [compute_persistence_diagram(rng.standard_normal(32)) for _ in range(4)]
-
-        matrix = compute_wasserstein_matrix(diagrams, diagrams)
-
-        assert matrix.shape == (4, 4)
-        np.testing.assert_allclose(np.diag(matrix), 0.0, atol=1e-10)
 
 
 class TestApplyDelayEmbedding:

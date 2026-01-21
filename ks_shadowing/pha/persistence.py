@@ -16,7 +16,6 @@ from numpy.typing import NDArray
 from ks_shadowing.core.integrator import ksint
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.transforms import interleaved_to_physical
-from ks_shadowing.pha.wasserstein import wasserstein_distance
 
 
 def compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -64,33 +63,6 @@ def compute_trajectory_diagrams(
         array of shape `(n_points, 2)` with `(birth, death)` pairs.
     """
     return [compute_persistence_diagram(field) for field in trajectory_physical]
-
-
-def compute_wasserstein_matrix(
-    traj_diagrams: list[NDArray[np.float64]],
-    rpo_diagrams: list[NDArray[np.float64]],
-) -> NDArray[np.float64]:
-    """Compute Wasserstein distance matrix between trajectory and RPO diagrams.
-
-    Computes `W(i, j) = d_W2(PD(u(t_i)), PD(u_r(tau_j)))` for all `(i, j)`.
-
-    Args:
-        traj_diagrams: List of `I` persistence diagrams for trajectory.
-        rpo_diagrams: List of `J` persistence diagrams for RPO.
-
-    Returns:
-        Matrix of shape `(I, J)` with Wasserstein distances.
-    """
-    num_traj = len(traj_diagrams)
-    num_rpo = len(rpo_diagrams)
-
-    distances = np.empty((num_traj, num_rpo), dtype=np.float64)
-
-    for i, traj_diag in enumerate(traj_diagrams):
-        for j, rpo_diag in enumerate(rpo_diagrams):
-            distances[i, j] = wasserstein_distance(traj_diag, rpo_diag)
-
-    return distances
 
 
 def apply_delay_embedding(

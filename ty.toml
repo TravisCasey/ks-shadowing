@@ -1,0 +1,6 @@
+[environment]
+python-version = "3.12"
+python = ".venv"
+
+[src]
+exclude = ["csrc/hera/upstream"]

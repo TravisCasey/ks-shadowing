@@ -17,8 +17,8 @@ from ks_shadowing.pha.persistence import (
     RPOPersistence,
     apply_delay_embedding,
     compute_trajectory_diagrams,
-    compute_wasserstein_matrix,
 )
+from ks_shadowing.pha.wasserstein import wasserstein_matrix
 
 
 def _detect_single_rpo(
@@ -30,10 +30,10 @@ def _detect_single_rpo(
 ) -> list[ShadowingEvent]:
     """Worker function for parallel detection."""
     # Compute Wasserstein distance matrix
-    wasserstein_matrix = compute_wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
+    wass_matrix = wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
 
     # Apply time-delay embedding
-    embedded_matrix = apply_delay_embedding(wasserstein_matrix, delay)
+    embedded_matrix = apply_delay_embedding(wass_matrix, delay)
 
     # Extract events
     return extract_shadowing_events_2d(
@@ -52,10 +52,10 @@ def _min_dist_single_rpo(
 ) -> NDArray[np.float64]:
     """Worker function for parallel min distance computation."""
     # Compute Wasserstein distance matrix
-    wasserstein_matrix = compute_wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
+    wass_matrix = wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
 
     # Apply time-delay embedding
-    embedded_matrix = apply_delay_embedding(wasserstein_matrix, delay)
+    embedded_matrix = apply_delay_embedding(wass_matrix, delay)
 
     # Minimum over all phases for each timestep
     min_dists = np.min(embedded_matrix, axis=1)
@@ -163,10 +163,10 @@ class PHADetector:
 
         for rpo_data in iterator:
             # Compute Wasserstein distance matrix
-            wasserstein_matrix = compute_wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
+            wass_matrix = wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
 
             # Apply time-delay embedding
-            embedded_matrix = apply_delay_embedding(wasserstein_matrix, self.delay)
+            embedded_matrix = apply_delay_embedding(wass_matrix, self.delay)
 
             # Extract events
             rpo_events = extract_shadowing_events_2d(
@@ -251,8 +251,8 @@ class PHADetector:
             iterator = tqdm(iterator, desc="Min distances", leave=False)
 
         for rpo_data in iterator:
-            wasserstein_matrix = compute_wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
-            embedded_matrix = apply_delay_embedding(wasserstein_matrix, self.delay)
+            wass_matrix = wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
+            embedded_matrix = apply_delay_embedding(wass_matrix, self.delay)
 
             # Minimum over all phases
             rpo_min = np.min(embedded_matrix, axis=1)
