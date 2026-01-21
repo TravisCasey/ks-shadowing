@@ -4,6 +4,8 @@ dist/
 csrc/CMakeFiles/
 csrc/cmake_install.cmake
 csrc/*.so
+csrc/ksint/*.so
+csrc/hera/*.so
 
 # Python
 __pycache__/
@@ -11,8 +13,9 @@ __pycache__/
 *.egg-info/
 .venv/
 
-# Built shared library
+# Built shared libraries
 ks_shadowing/core/*.so
+ks_shadowing/pha/*.so
 
 # pytest
 .pytest_cache/

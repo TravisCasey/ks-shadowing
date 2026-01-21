@@ -1,16 +1,16 @@
-"""Tests for shadowing event pathfinding."""
+"""Tests for shadowing event pathfinding (3D version)."""
 
 import numpy as np
 import pytest
 
 from ks_shadowing import RPO
-from ks_shadowing.core.rpo import RPOTrajectory
 from ks_shadowing.ssa.pathfinding import (
-    CLOSE_PASS_DTYPE,
-    collect_close_passes,
-    extract_shadowing_events,
-    find_connected_components,
+    CLOSE_PASS_DTYPE_3D,
+    collect_close_passes_3d,
+    extract_shadowing_events_3d,
+    find_connected_components_3d,
 )
+from ks_shadowing.ssa.rpo import RPOStateSpace
 
 
 def make_dist_sq_generator(*distance_arrays):
@@ -27,8 +27,8 @@ def make_dist_sq_generator(*distance_arrays):
     return generator
 
 
-def make_mock_rpo_trajectory(rpo_index: int, period: int, resolution: int) -> RPOTrajectory:
-    """Create a mock RPOTrajectory for testing pathfinding logic."""
+def make_mock_rpo_state_space(rpo_index: int, period: int, resolution: int) -> RPOStateSpace:
+    """Create a mock RPOStateSpace for testing pathfinding logic."""
     mock_rpo = RPO(
         index=rpo_index,
         fourier_coeffs=np.zeros(30),
@@ -37,18 +37,18 @@ def make_mock_rpo_trajectory(rpo_index: int, period: int, resolution: int) -> RP
         spatial_shift=0.0,
     )
     mock_trajectory = np.zeros((period, resolution))
-    return RPOTrajectory(rpo=mock_rpo, trajectory=mock_trajectory)
+    return RPOStateSpace(rpo=mock_rpo, trajectory=mock_trajectory)
 
 
 def make_passes(*entries: tuple[int, int, int, float]) -> np.ndarray:
     """Helper to create structured array of close passes."""
-    passes = np.empty(len(entries), dtype=CLOSE_PASS_DTYPE)
+    passes = np.empty(len(entries), dtype=CLOSE_PASS_DTYPE_3D)
     for i, (t, p, s, d) in enumerate(entries):
         passes[i] = (t, p, s, d)
     return passes
 
 
-class TestCollectClosePasses:
+class TestCollectClosePasses3D:
     def test_collects_below_threshold(self):
         """Collects entries below threshold from squared distance generator."""
         # Squared distances for two phases, 3 timesteps, 4 shifts
@@ -59,7 +59,7 @@ class TestCollectClosePasses:
             yield 0, phase0_sq
             yield 1, phase1_sq
 
-        passes = collect_close_passes(gen(), threshold=1.0)
+        passes = collect_close_passes_3d(gen(), threshold=1.0)
         assert len(passes) == 5
         assert all(passes["timestep"][i] != 1 for i in range(len(passes)))
 
@@ -69,11 +69,11 @@ class TestCollectClosePasses:
         def gen():
             yield 0, np.full((2, 4), 100.0)  # All squared distances > 1.0^2
 
-        passes = collect_close_passes(gen(), threshold=1.0)
+        passes = collect_close_passes_3d(gen(), threshold=1.0)
         assert len(passes) == 0
 
 
-class TestFindConnectedComponents:
+class TestFindConnectedComponents3D:
     def test_adjacent_entries_same_component(self):
         """Adjacent entries are grouped together."""
         passes = make_passes(
@@ -81,7 +81,7 @@ class TestFindConnectedComponents:
             (1, 1, 0, 0.5),
             (2, 2, 1, 0.5),
         )
-        components = find_connected_components(passes, period=10, resolution=10)
+        components = find_connected_components_3d(passes, period=10, resolution=10)
         assert len(components) == 1
 
     def test_disjoint_entries_separate_components(self):
@@ -90,7 +90,7 @@ class TestFindConnectedComponents:
             (0, 0, 0, 0.5),
             (10, 5, 5, 0.5),
         )
-        components = find_connected_components(passes, period=10, resolution=10)
+        components = find_connected_components_3d(passes, period=10, resolution=10)
         assert len(components) == 2
 
     def test_wraparound_connectivity(self):
@@ -100,21 +100,21 @@ class TestFindConnectedComponents:
             (0, 0, 0, 0.5),
             (1, 9, 0, 0.5),
         )
-        assert len(find_connected_components(passes, period=10, resolution=10)) == 1
+        assert len(find_connected_components_3d(passes, period=10, resolution=10)) == 1
 
         # Shift wraparound
         passes = make_passes(
             (0, 0, 0, 0.5),
             (0, 0, 9, 0.5),
         )
-        assert len(find_connected_components(passes, period=10, resolution=10)) == 1
+        assert len(find_connected_components_3d(passes, period=10, resolution=10)) == 1
 
 
-class TestExtractShadowingEvents:
+class TestExtractShadowingEvents3D:
     def test_empty_generator(self):
         """Empty generator returns no events."""
-        rpo_data = make_mock_rpo_trajectory(rpo_index=0, period=10, resolution=8)
-        events = extract_shadowing_events(iter([]), rpo_data, threshold=1.0)
+        rpo_data = make_mock_rpo_state_space(rpo_index=0, period=10, resolution=8)
+        events = extract_shadowing_events_3d(iter([]), rpo_data, threshold=1.0)
         assert events == []
 
     def test_simple_path(self):
@@ -122,9 +122,9 @@ class TestExtractShadowingEvents:
         distances = np.full((3, 4), 10.0)
         distances[0, 1] = distances[1, 1] = distances[2, 1] = 0.5
 
-        rpo_data = make_mock_rpo_trajectory(rpo_index=0, period=3, resolution=4)
+        rpo_data = make_mock_rpo_state_space(rpo_index=0, period=3, resolution=4)
         generator = make_dist_sq_generator(distances, np.full((3, 4), 10.0), np.full((3, 4), 10.0))
-        events = extract_shadowing_events(generator(), rpo_data, threshold=1.0)
+        events = extract_shadowing_events_3d(generator(), rpo_data, threshold=1.0)
 
         assert len(events) == 1
         assert events[0].end_timestep - events[0].start_timestep == 3
@@ -135,9 +135,9 @@ class TestExtractShadowingEvents:
         distances = np.full((3, 8), 10.0)
         distances[0, 2] = distances[1, 3] = distances[2, 4] = 0.5
 
-        rpo_data = make_mock_rpo_trajectory(rpo_index=0, period=3, resolution=8)
+        rpo_data = make_mock_rpo_state_space(rpo_index=0, period=3, resolution=8)
         generator = make_dist_sq_generator(distances, np.full((3, 8), 10.0), np.full((3, 8), 10.0))
-        events = extract_shadowing_events(generator(), rpo_data, threshold=1.0)
+        events = extract_shadowing_events_3d(generator(), rpo_data, threshold=1.0)
 
         assert len(events) == 1
         assert list(events[0].shifts) == [2, 3, 4]
@@ -147,9 +147,9 @@ class TestExtractShadowingEvents:
         distances = np.full((3, 8), 10.0)
         distances[0, 2] = distances[1, 5] = distances[2, 6] = 0.5  # Jump from 2 to 5
 
-        rpo_data = make_mock_rpo_trajectory(rpo_index=0, period=3, resolution=8)
+        rpo_data = make_mock_rpo_state_space(rpo_index=0, period=3, resolution=8)
         generator = make_dist_sq_generator(distances, np.full((3, 8), 10.0), np.full((3, 8), 10.0))
-        events = extract_shadowing_events(generator(), rpo_data, threshold=1.0)
+        events = extract_shadowing_events_3d(generator(), rpo_data, threshold=1.0)
 
         assert all(event.end_timestep - event.start_timestep < 3 for event in events)
 
@@ -158,9 +158,9 @@ class TestExtractShadowingEvents:
         distances = np.full((2, 8), 10.0)
         distances[0, 7] = distances[1, 0] = 0.5
 
-        rpo_data = make_mock_rpo_trajectory(rpo_index=0, period=2, resolution=8)
+        rpo_data = make_mock_rpo_state_space(rpo_index=0, period=2, resolution=8)
         generator = make_dist_sq_generator(distances, np.full((2, 8), 10.0))
-        events = extract_shadowing_events(generator(), rpo_data, threshold=1.0)
+        events = extract_shadowing_events_3d(generator(), rpo_data, threshold=1.0)
 
         assert len(events) == 1
         assert events[0].end_timestep - events[0].start_timestep == 2
@@ -169,22 +169,22 @@ class TestExtractShadowingEvents:
         """Events shorter than min_duration are excluded."""
         distances = np.array([[0.5], [0.5]])
 
-        rpo_data = make_mock_rpo_trajectory(rpo_index=0, period=1, resolution=1)
+        rpo_data = make_mock_rpo_state_space(rpo_index=0, period=1, resolution=1)
         generator = make_dist_sq_generator(distances)
-        events = extract_shadowing_events(generator(), rpo_data, threshold=1.0, min_duration=3)
+        events = extract_shadowing_events_3d(generator(), rpo_data, threshold=1.0, min_duration=3)
         assert len(events) == 0
 
         generator = make_dist_sq_generator(distances)
-        events = extract_shadowing_events(generator(), rpo_data, threshold=1.0, min_duration=2)
+        events = extract_shadowing_events_3d(generator(), rpo_data, threshold=1.0, min_duration=2)
         assert len(events) == 1
 
     def test_event_statistics(self):
         """Mean and min distance are computed correctly from path distances."""
         distances = np.array([[0.2], [0.8], [0.4]])
 
-        rpo_data = make_mock_rpo_trajectory(rpo_index=0, period=1, resolution=1)
+        rpo_data = make_mock_rpo_state_space(rpo_index=0, period=1, resolution=1)
         generator = make_dist_sq_generator(distances)
-        events = extract_shadowing_events(generator(), rpo_data, threshold=1.0)
+        events = extract_shadowing_events_3d(generator(), rpo_data, threshold=1.0)
 
         assert len(events) == 1
         assert events[0].mean_distance == pytest.approx((0.2 + 0.8 + 0.4) / 3)
@@ -194,9 +194,9 @@ class TestExtractShadowingEvents:
         """Separate close regions yield separate events."""
         distances = np.array([[0.5], [0.5], [10.0], [10.0], [0.5], [0.5]])
 
-        rpo_data = make_mock_rpo_trajectory(rpo_index=0, period=1, resolution=1)
+        rpo_data = make_mock_rpo_state_space(rpo_index=0, period=1, resolution=1)
         generator = make_dist_sq_generator(distances)
-        events = extract_shadowing_events(generator(), rpo_data, threshold=1.0)
+        events = extract_shadowing_events_3d(generator(), rpo_data, threshold=1.0)
 
         assert len(events) == 2
         assert events[0].start_timestep == 0

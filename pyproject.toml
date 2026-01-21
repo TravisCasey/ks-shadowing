@@ -2,10 +2,12 @@
 name = "ks-shadowing"
 version = "0.1.0"
 description = "Shadowing detection for Kuramoto-Sivashinsky equation"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
+    "gudhi>=3.11.0",
     "numpy>=2.4.1",
     "scipy>=1.17.0",
+    "tqdm>=4.0.0",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +30,7 @@ path = "hatch_build.py"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["csrc/hera/upstream"]
 
 [tool.ruff.lint]
 select = ["A", "B", "C4", "E", "F", "I", "UP", "SIM", "PTH", "PL", "RUF"]

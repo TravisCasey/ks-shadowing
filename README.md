@@ -4,17 +4,29 @@ Shadowing detection for chaotic trajectories of the Kuramoto-Sivashinsky (KS) eq
 
 This package detects when chaotic trajectories closely follow unstable Relative Periodic Orbits (RPOs). An RPO is a solution that returns to a spatially shifted copy of itself after one period: `u(x, t + T) = u(x - shift, t)`.
 
-Two detection methods are planned:
+Two detection methods are implemented:
 
-- **State Space Approach (SSA)**: L2 distance in physical space with spatial shift optimization (implemented)
-- **Persistent Homology Approach (PHA)**: Wasserstein distance between persistence diagrams (planned)
+- **State Space Approach (SSA)**: L2 distance in physical space with spatial shift optimization
+- **Persistent Homology Approach (PHA)**: Shift-invariant wasserstein distance between persistence diagrams
 
 ## Installation
 
-Requires Python 3.12+, CMake, FFTW3, and Eigen3.
+Requires Python 3.12+, CMake, and the following system libraries:
 
+- **FFTW3** - Fast Fourier Transform (for KS integrator)
+- **Eigen3** - Linear algebra (for KS integrator)
+- **Boost** - Headers only (for Hera Wasserstein distance)
+
+Clone with submodules and install:
 ```bash
+git clone --recurse-submodules https://github.com/TravisCasey/ks-shadowing.git
+cd ks-shadowing
 uv sync
+```
+
+If you already cloned without `--recurse-submodules`, initialize them with:
+```bash
+git submodule update --init --recursive
 ```
 
 ## RPO Data

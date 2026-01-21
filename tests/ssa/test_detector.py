@@ -7,10 +7,10 @@ import pytest
 
 from ks_shadowing import RPO, load_all_rpos
 from ks_shadowing.core.integrator import ksint
-from ks_shadowing.core.rpo import RPOTrajectory
 from ks_shadowing.core.transforms import interleaved_to_complex, to_physical
 from ks_shadowing.ssa import SSADetector
 from ks_shadowing.ssa.detector import compute_distances_sq
+from ks_shadowing.ssa.rpo import RPOStateSpace
 
 
 def make_rpo_physical_trajectory(rpo, resolution: int) -> np.ndarray:
@@ -78,7 +78,7 @@ class TestComputeDistancesSq:
         rpo = RPO.load(rpo_data_path, 0)
         resolution = 128
         rpo_physical = make_rpo_physical_trajectory(rpo, resolution)
-        rpo_data = RPOTrajectory(rpo=rpo, trajectory=rpo_physical)
+        rpo_data = RPOStateSpace(rpo=rpo, trajectory=rpo_physical)
 
         phases = list(compute_distances_sq(rpo_physical[:5], rpo_data))
 
@@ -91,7 +91,7 @@ class TestComputeDistancesSq:
         rpo = RPO.load(rpo_data_path, 0)
         resolution = 128
         rpo_physical = make_rpo_physical_trajectory(rpo, resolution)
-        rpo_data = RPOTrajectory(rpo=rpo, trajectory=rpo_physical)
+        rpo_data = RPOStateSpace(rpo=rpo, trajectory=rpo_physical)
 
         phase, dist_sq = next(compute_distances_sq(rpo_physical[:10], rpo_data))
         assert phase == 0
