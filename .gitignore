@@ -20,6 +20,9 @@ ks_shadowing/pha/*.so
 # pytest
 .pytest_cache/
 
+# ruff
+.ruff_cache/
+
 # Output directories
 results/
 plots/
