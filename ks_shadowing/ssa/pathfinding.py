@@ -201,7 +201,7 @@ def collect_close_passes_3d(
     return np.concatenate(chunks)
 
 
-def find_connected_components_3d(
+def find_connected_components_3d(  # noqa: PLR0912
     close_passes: NDArray,
     period: int,
     resolution: int,
@@ -216,32 +216,82 @@ def find_connected_components_3d(
     if len(close_passes) == 0:
         return []
 
+    # Sort by (timestep, phase, shift) for sweep-line processing
+    sort_order = np.lexsort(
+        (
+            close_passes["shift"],
+            close_passes["phase"],
+            close_passes["timestep"],
+        )
+    )
+    close_passes = close_passes[sort_order]
+
     pass_count = len(close_passes)
     uf = UnionFind(pass_count)
 
-    # Extract arrays for convenient access
+    # Two-slice dense label arrays: -1 = no pass, >=0 = pass index
+    labels_prev = np.full((period, resolution), -1, dtype=np.int32)
+    labels_curr = np.full((period, resolution), -1, dtype=np.int32)
+
     timesteps = close_passes["timestep"]
     phases = close_passes["phase"]
     shifts = close_passes["shift"]
 
-    # Build coordinate -> index mapping for sparse neighbor lookup
-    coord_to_index: dict[tuple[int, int, int], int] = {}
-    for pass_index in range(pass_count):
-        coord_to_index[
-            (int(timesteps[pass_index]), int(phases[pass_index]), int(shifts[pass_index]))
-        ] = pass_index
+    # Backward neighbors in previous slice (dt=-1): all 9 neighbors
+    prev_slice_offsets = [(dp, ds) for dp in (-1, 0, 1) for ds in (-1, 0, 1)]
 
-    # Union adjacent points (26-connectivity)
+    # Backward neighbors in current slice (dt=0): 4 neighbors in row-major order
+    # Same pattern as 2D: left, upper-left, up, upper-right
+    curr_slice_offsets = [(-1, -1), (-1, 0), (-1, 1), (0, -1)]
+
+    current_timestep = -1
+
     for pass_index in range(pass_count):
-        t, p, s = int(timesteps[pass_index]), int(phases[pass_index]), int(shifts[pass_index])
-        for dt in (-1, 0, 1):
-            for dp in (-1, 0, 1):
-                for ds in (-1, 0, 1):
-                    if dt == 0 and dp == 0 and ds == 0:
-                        continue
-                    neighbor = (t + dt, (p + dp) % period, (s + ds) % resolution)
-                    if neighbor in coord_to_index:
-                        uf.union(pass_index, coord_to_index[neighbor])
+        t = int(timesteps[pass_index])
+        p = int(phases[pass_index])
+        s = int(shifts[pass_index])
+
+        # Handle timestep transitions
+        if t != current_timestep:
+            if t > current_timestep + 1:
+                # Skipped timesteps - clear both slices
+                labels_prev.fill(-1)
+                labels_curr.fill(-1)
+            else:
+                # Normal advance - swap slices
+                labels_prev, labels_curr = labels_curr, labels_prev
+                labels_curr.fill(-1)
+            current_timestep = t
+
+        labels_curr[p, s] = pass_index
+
+        # Check previous slice (dt=-1)
+        if t > 0:
+            for dp, ds in prev_slice_offsets:
+                neighbor_label = labels_prev[(p + dp) % period, (s + ds) % resolution]
+                if neighbor_label >= 0:
+                    uf.union(pass_index, neighbor_label)
+
+        # Check current slice backward neighbors (dt=0)
+        for dp, ds in curr_slice_offsets:
+            neighbor_label = labels_curr[(p + dp) % period, (s + ds) % resolution]
+            if neighbor_label >= 0:
+                uf.union(pass_index, neighbor_label)
+
+        # Handle phase wraparound in current slice: when at last phase row,
+        # check phase 0 which has already been processed
+        if p == period - 1:
+            for ds in (-1, 0, 1):
+                neighbor_label = labels_curr[0, (s + ds) % resolution]
+                if neighbor_label >= 0:
+                    uf.union(pass_index, neighbor_label)
+
+        # Handle shift wraparound in current slice: when at last shift column,
+        # check shift 0 which has already been processed
+        if s == resolution - 1:
+            neighbor_label = labels_curr[p, 0]
+            if neighbor_label >= 0:
+                uf.union(pass_index, neighbor_label)
 
     # Group by component root
     component_indices: dict[int, list[int]] = {}
