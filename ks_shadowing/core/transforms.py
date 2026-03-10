@@ -83,47 +83,6 @@ def interleaved_to_physical(
     return to_physical(complex_coeffs, resolution)
 
 
-def l2_distance_all_shifts(
-    field_u: NDArray[np.floating],
-    field_v: NDArray[np.floating],
-) -> NDArray[np.float64]:
-    r"""Compute :math:`L_2` distance from ``field_u`` to all shifts of ``field_v``.
-
-    Uses the identity
-
-    .. math::
-
-       \|u - S_k(v)\|^2 = \|u\|^2 + \|v\|^2 - 2 \langle u,\, S_k(v) \rangle
-
-    for all shifts :math:`k`, where the cross-correlation over all shifts is
-    computed via FFT in :math:`O(N \log N)` time.
-
-    Parameters
-    ----------
-    field_u : NDArray[np.floating], shape (N,)
-        Single reference field in physical space.
-    field_v : NDArray[np.floating], shape (N,) or (M, N)
-        One or more fields to compare against ``field_u``.
-
-    Returns
-    -------
-    NDArray[np.float64], shape (N,) or (M, N)
-        :math:`L_2` distances for all N spatial shifts. Entry ``[..., k]`` is the
-        distance with ``field_v`` shifted left by ``k`` grid cells.
-    """
-    n = field_u.shape[-1]
-    norm_u_sq = np.sum(field_u**2)
-    norm_v_sq = np.sum(field_v**2, axis=-1, keepdims=True)
-
-    # Cross-correlation via FFT: IFFT(conj(FFT(u)) * FFT(v))
-    u_fft = fft.rfft(field_u)
-    v_fft = fft.rfft(field_v, axis=-1)
-    cross_corr = fft.irfft(np.conj(u_fft) * v_fft, n, axis=-1)
-
-    dist_sq = np.maximum(norm_u_sq + norm_v_sq - 2 * cross_corr, 0.0)
-    return np.sqrt(dist_sq)
-
-
 def to_comoving_frame(
     trajectory: NDArray[np.float64],
     drift_per_step: float,

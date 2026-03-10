@@ -1,11 +1,9 @@
 """Tests for FFT utilities and spatial transforms."""
 
 import numpy as np
-import pytest
 
 from ks_shadowing.core.transforms import (
     interleaved_to_complex,
-    l2_distance_all_shifts,
     tile_periodic,
     to_comoving_frame,
     to_physical,
@@ -52,54 +50,6 @@ class TestToPhysical:
 
         result_small = to_physical(coeffs, 64)
         assert result_small.shape == (64,)
-
-
-class TestL2DistanceAllShifts:
-    def test_self_distance_zero_at_zero_shift(self, rng: np.random.Generator):
-        """Distance from field to itself is zero at shift=0."""
-        field = rng.standard_normal(128)
-        distances = l2_distance_all_shifts(field, field)
-        assert distances[0] == pytest.approx(0, abs=1e-6)
-
-    def test_nonnegative(self, rng: np.random.Generator):
-        """All distances are non-negative."""
-        u = rng.standard_normal(128)
-        v = rng.standard_normal(128)
-        distances = l2_distance_all_shifts(u, v)
-        assert np.all(distances >= 0)
-
-    def test_output_length(self, rng: np.random.Generator):
-        """Output length matches input length."""
-        n = 256
-        u = rng.standard_normal(n)
-        v = rng.standard_normal(n)
-        distances = l2_distance_all_shifts(u, v)
-        assert len(distances) == n
-
-    def test_shifted_field_minimum(self, rng: np.random.Generator):
-        """Minimum distance occurs at the correct shift index."""
-        field = rng.standard_normal(128)
-        shift = 17
-        shifted = np.roll(field, shift)
-
-        distances = l2_distance_all_shifts(field, shifted)
-        min_idx = np.argmin(distances)
-        assert min_idx == shift
-        assert distances[min_idx] == pytest.approx(0, abs=1e-6)
-
-    def test_batched_field_v(self, rng: np.random.Generator):
-        """Supports batched field_v with shape (M, N)."""
-        n = 64
-        u = rng.standard_normal(n)
-        v_batch = rng.standard_normal((5, n))
-
-        distances = l2_distance_all_shifts(u, v_batch)
-        assert distances.shape == (5, n)
-
-        # Verify each row matches unbatched computation
-        for i in range(5):
-            single = l2_distance_all_shifts(u, v_batch[i])
-            np.testing.assert_allclose(distances[i], single)
 
 
 class TestToComovingFrame:
