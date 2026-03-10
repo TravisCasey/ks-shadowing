@@ -1,4 +1,17 @@
-"""Relative Periodic Orbit (RPO) data loading."""
+"""Relative periodic orbit (RPO) data structure and I/O.
+
+A relative periodic orbit is an orbit of the Kuramoto-Sivashinsky equation that
+is periodic under a certain spatial shift.
+
+RPO data is saved in npz files, with one array for each field:
+  - ``fourier_coeffs``: initial condition in interleaved format
+  - ``periods``: temporal period
+  - ``time_steps``: number of time steps in a period
+  - ``spatial_shifts``: accumulated spatial shift over one period.
+
+An RPO can be loaded individually by referencing its index, or all RPOs can be
+loaded simultaneously from a file with :func:`load_all_rpos`.
+"""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,21 +23,28 @@ from numpy.typing import NDArray
 
 @dataclass(frozen=True, slots=True)
 class RPO:
-    """Relative Periodic Orbit data.
+    r"""Relative periodic orbit (RPO) data.
 
-    Represents an unstable periodic orbit of the KS equation with spatial
-    shift symmetry: `u(x, t + T) = u(x - shift, t)`.
+    Represents an orbit of the Kuramoto-Sivashinsky equation with approximate
+    spatial shift symmetry: :math:`u(x,\, t + T) = u(x - \phi,\, t)` where
+    :math:`T` is the ``period`` and :math:`\phi` is the ``spatial_shift``.
 
-    All RPOs are for domain size `L = 22.0`. Each orbit has a native timestep
-    `period / time_steps`, which is approximately equal to `dt = 0.02`.
+    All RPOs are for domain size ``L = 22.0``. Each orbit has a native timestep
+    ``period / time_steps``, which is approximately equal to ``dt = 0.02``.
 
-    Attributes:
-        index: Index of this RPO in the data file it was loaded from.
-        fourier_coeffs: Initial Fourier coefficients in interleaved
-            real/imaginary format (size 30).
-        period: Temporal period of the RPO.
-        time_steps: Number of integration steps in one period.
-        spatial_shift: Accumulated spatial shift over one period.
+    Attributes
+    ----------
+    index : int
+        Index of this RPO in the data file it was loaded from.
+    fourier_coeffs : NDArray[np.float64], shape (30,)
+        Initial Fourier coefficients in interleaved real/imaginary format.
+        See :func:`~ks_shadowing.core.integrator.ksint` for format details.
+    period : float
+        Temporal period of the RPO.
+    time_steps : int
+        Number of integration steps in one period.
+    spatial_shift : float
+        Accumulated spatial shift over one period.
     """
 
     index: int
@@ -35,12 +55,32 @@ class RPO:
 
     @classmethod
     def load(cls, path: Path, rpo_index: int) -> Self:
-        """Load a single RPO from a .npz file by index."""
+        """Load a single RPO from a .npz file by index.
+
+        Parameters
+        ----------
+        path : Path
+            Path to the .npz file containing RPO data.
+        rpo_index : int
+            Zero-based index of the RPO to load.
+
+        Returns
+        -------
+        Self
+            The loaded RPO.
+
+        Raises
+        ------
+        IndexError
+            If ``rpo_index`` is out of range for the file.
+        """
         data = np.load(path)
         rpo_count = len(data["periods"])
 
         if rpo_index < 0 or rpo_index >= rpo_count:
-            raise IndexError(f"RPO index {rpo_index} out of range [0, {rpo_count})")
+            raise IndexError(
+                f"RPO index {rpo_index} out of range [0, {rpo_count}) in RPO file at {path}"
+            )
 
         return cls(
             index=rpo_index,
@@ -52,7 +92,18 @@ class RPO:
 
 
 def load_all_rpos(path: Path) -> list[RPO]:
-    """Load all RPOs from a .npz file."""
+    """Load all RPOs from a .npz file.
+
+    Parameters
+    ----------
+    path : Path
+        Path to the .npz file containing RPO data.
+
+    Returns
+    -------
+    list[RPO]
+        All RPOs in the file, ordered by index.
+    """
     data = np.load(path)
     rpo_count = len(data["periods"])
 

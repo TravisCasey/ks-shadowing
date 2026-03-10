@@ -23,6 +23,9 @@ ks_shadowing/pha/*.so
 # ruff
 .ruff_cache/
 
+# Sphinx
+docs/_build/
+
 # Output directories
 results/
 plots/

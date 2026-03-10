@@ -6,14 +6,24 @@ from scipy import fft
 
 
 def interleaved_to_complex(interleaved: NDArray[np.floating]) -> NDArray[np.complex128]:
-    """Convert interleaved real/imaginary coefficients to complex Fourier modes.
+    r"""Convert interleaved real/imaginary coefficients to complex Fourier modes.
 
-    Takes the 30-element interleaved format from the `ksint` function and
-    returns 17 complex coefficients: a zero for mode 0, modes 1-15, and a zero
-    for the Nyquist mode.
+    Takes the 30-element interleaved format from
+    :func:`~ks_shadowing.core.integrator.ksint` and returns 17 complex
+    coefficients: zero for mode 0, modes 1-15, and zero for the Nyquist mode.
 
-    Input:  [..., 30] -> [Re(a1), Im(a1), Re(a2), Im(a2), ..., Re(a15), Im(a15)]
-    Output: [..., 17] -> [0, a1, a2, ..., a15, 0]
+    Parameters
+    ----------
+    interleaved : NDArray[np.floating], shape (..., 30)
+        Final axis are interleaved Fourier coefficients:
+        :math:`[\operatorname{Re}(a_1),\, \operatorname{Im}(a_1),\, \dots,\,
+        \operatorname{Re}(a_{15}),\, \operatorname{Im}(a_{15})]`.
+        Leading axes are preserved.
+
+    Returns
+    -------
+    NDArray[np.complex128], shape (..., 17)
+        Complex Fourier modes: :math:`[0,\, a_1,\, a_2,\, \dots,\, a_{15},\, 0]`.
     """
     real_parts = interleaved[..., 0::2]
     imag_parts = interleaved[..., 1::2]
@@ -26,14 +36,23 @@ def interleaved_to_complex(interleaved: NDArray[np.floating]) -> NDArray[np.comp
 
 
 def to_physical(
-    fourier_coeffs: NDArray[np.complex128],
+    fourier_coeffs: NDArray[np.complexfloating],
     resolution: int,
 ) -> NDArray[np.float64]:
     """Transform Fourier coefficients to physical space via inverse rFFT.
 
-    The output is scaled by the given spatial resolution for normalization.
-    Accepts any array dimension of at least one, and the FFT is computed along
-    the last axis.
+    Parameters
+    ----------
+    fourier_coeffs : NDArray[np.complexfloating], shape (..., 17)
+        Complex Fourier modes (e.g., from :func:`interleaved_to_complex`).
+    resolution : int
+        Number of grid points in the physical-space output.
+
+    Returns
+    -------
+    NDArray[np.float64], shape (..., resolution)
+        Physical-space field values, scaled by ``resolution`` for
+        normalization.
     """
     return resolution * fft.irfft(fourier_coeffs, resolution, axis=-1)
 
@@ -44,39 +63,53 @@ def interleaved_to_physical(
 ) -> NDArray[np.float64]:
     """Convert interleaved Fourier coefficients directly to physical space.
 
-    Combines `interleaved_to_complex` and `to_physical` into a single operation
-    for convenience when working with trajectories from `ksint`.
+    Convenience wrapper combining :func:`interleaved_to_complex` and
+    :func:`to_physical`.
 
-    Args:
-        interleaved: Coefficients in interleaved format, shape `(..., 30)`.
-        resolution: Spatial resolution for the physical space output.
+    Parameters
+    ----------
+    interleaved : NDArray[np.floating], shape (..., 30)
+        Interleaved Fourier coefficients from
+        :func:`~ks_shadowing.core.integrator.ksint`.
+    resolution : int
+        Number of grid points in the physical-space output.
 
-    Returns:
-        Physical space representation with shape `(..., resolution)`.
+    Returns
+    -------
+    NDArray[np.float64], shape (..., resolution)
+        Physical-space field values.
     """
     complex_coeffs = interleaved_to_complex(interleaved)
     return to_physical(complex_coeffs, resolution)
 
 
 def l2_distance_all_shifts(
-    field_u: NDArray[np.float64],
-    field_v: NDArray[np.float64],
+    field_u: NDArray[np.floating],
+    field_v: NDArray[np.floating],
 ) -> NDArray[np.float64]:
-    """Compute L2 distance from `field_u` to all spatial shifts of `field_v`.
+    r"""Compute :math:`L_2` distance from ``field_u`` to all shifts of ``field_v``.
 
-    Uses the identity ||u - S_phi(v)||^2 = ||u||^2 + ||v||^2 - 2<u, S_phi(v)>
-    where the cross-correlation for all shifts is computed via FFT in O(N log N).
+    Uses the identity
 
-    Supports batched computation: if field_v has shape (M, N), computes distances
-    for each of the M fields against field_u, returning shape (M, N).
+    .. math::
 
-    Args:
-        field_u: Shape (N,) - single reference field
-        field_v: Shape (N,) or (M, N) - one or more fields to compare
+       \|u - S_k(v)\|^2 = \|u\|^2 + \|v\|^2 - 2 \langle u,\, S_k(v) \rangle
 
-    Returns:
-        Shape (N,) if field_v is 1D, or (M, N) if field_v is 2D.
-        Each row contains distances for all N spatial shifts.
+    for all shifts :math:`k`, where the cross-correlation over all shifts is
+    computed via FFT in :math:`O(N \log N)` time.
+
+    Parameters
+    ----------
+    field_u : NDArray[np.floating], shape (N,)
+        Single reference field in physical space.
+    field_v : NDArray[np.floating], shape (N,) or (M, N)
+        One or more fields to compare against ``field_u``.
+
+    Returns
+    -------
+    NDArray[np.float64], shape (N,) or (M, N)
+        :math:`L_2` distances for all N spatial shifts. Entry ``[..., k]`` is the
+        distance with ``field_v`` shifted left by ``k`` grid cells.
     """
     n = field_u.shape[-1]
     norm_u_sq = np.sum(field_u**2)
@@ -97,17 +130,21 @@ def to_comoving_frame(
 ) -> NDArray[np.float64]:
     """Transform trajectory to a co-moving reference frame.
 
-    Applies a cumulative spatial rotation to each timestep: at timestep `i`, the
-    field is rotated by `-drift_per_step * i` grid cells. This transforms the
-    trajectory into a frame moving at constant velocity, where an RPO with the
-    corresponding drift rate becomes truly periodic.
+    At timestep ``i``, the field is shifted left by ``drift_per_step * i`` grid
+    cells (sub-grid accuracy via the Fourier shift theorem). In this frame, an
+    RPO with the corresponding drift rate becomes truly periodic.
 
-    Args:
-        trajectory: Physical space trajectory of shape `(num_steps, resolution)`.
-        drift_per_step: Spatial drift rate in grid cells per timestep.
+    Parameters
+    ----------
+    trajectory : NDArray[np.float64], shape (num_steps, resolution)
+        Physical-space trajectory.
+    drift_per_step : float
+        Spatial drift rate in grid cells per timestep.
 
-    Returns:
-        Transformed trajectory with same shape as input.
+    Returns
+    -------
+    NDArray[np.float64], shape (num_steps, resolution)
+        Trajectory in the co-moving frame.
     """
     step_count, resolution = trajectory.shape
 
@@ -130,19 +167,19 @@ def to_comoving_frame(
 
 
 def tile_periodic(field: NDArray[np.float64], target_length: int) -> NDArray[np.float64]:
-    """Tile a periodic field along axis 0 to at least `target_length`.
+    """Tile a periodic field along axis 0 to at least ``target_length``.
 
-    Concatenates copies of the input array until the first axis has length
-    no less than `target_length`. The input is assumed to represent one period
-    of a periodic signal.
+    Parameters
+    ----------
+    field : NDArray[np.float64], shape (period, ...)
+        One full period of the signal.
+    target_length : int
+        Minimum desired length along axis 0.
 
-    Args:
-        field: Array of shape `(period, ...)` representing one period.
-        target_length: Minimum desired length along axis 0.
-
-    Returns:
-        Tiled array of shape `(tiled_length, ...)` where
-            `tiled_length >= target_length`.
+    Returns
+    -------
+    NDArray[np.float64], shape (tiled_length, ...)
+        Tiled array where ``tiled_length >= target_length``.
     """
     period = field.shape[0]
     if period >= target_length:
