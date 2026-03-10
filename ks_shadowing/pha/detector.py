@@ -11,7 +11,7 @@ from tqdm import tqdm
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.transforms import interleaved_to_physical
-from ks_shadowing.core.util import resolve_n_jobs
+from ks_shadowing.core.util import _resolve_n_jobs
 from ks_shadowing.pha.pathfinding import extract_shadowing_events_2d
 from ks_shadowing.pha.persistence import (
     RPOPersistence,
@@ -135,7 +135,7 @@ class PHADetector:
         trajectory_physical = interleaved_to_physical(trajectory_fourier, self.resolution)
         traj_diagrams = compute_trajectory_diagrams(trajectory_physical)
 
-        n_workers = resolve_n_jobs(n_jobs)
+        n_workers = _resolve_n_jobs(n_jobs)
 
         if n_workers == 1:
             events = self._detect_sequential(traj_diagrams, threshold, min_duration, show_progress)
@@ -230,7 +230,7 @@ class PHADetector:
         """
         trajectory_physical = interleaved_to_physical(trajectory_fourier, self.resolution)
         traj_diagrams = compute_trajectory_diagrams(trajectory_physical)
-        n_workers = resolve_n_jobs(n_jobs)
+        n_workers = _resolve_n_jobs(n_jobs)
 
         if n_workers == 1:
             return self._min_distances_sequential(traj_diagrams, show_progress)

@@ -3,8 +3,8 @@
 import numpy as np
 
 from ks_shadowing.core.transforms import (
+    _tile_periodic,
     interleaved_to_complex,
-    tile_periodic,
     to_comoving_frame,
     to_physical,
 )
@@ -106,17 +106,17 @@ class TestTilePeriodic:
         period = 30
         field = rng.standard_normal((period, 64))
 
-        result = tile_periodic(field, target_length=100)
+        result = _tile_periodic(field, target_length=100)
         assert result.shape[0] == 120  # 4 tiles of 30
 
-        result = tile_periodic(field, target_length=61)
+        result = _tile_periodic(field, target_length=61)
         assert result.shape[0] == 90  # 3 tiles of 30
 
     def test_preserves_periodicity(self, rng: np.random.Generator):
         """Tiled result repeats the original period."""
         period = 25
         field = rng.standard_normal((period, 32))
-        result = tile_periodic(field, target_length=100)
+        result = _tile_periodic(field, target_length=100)
 
         for i in range(result.shape[0] - period):
             np.testing.assert_array_equal(result[i], result[i + period])

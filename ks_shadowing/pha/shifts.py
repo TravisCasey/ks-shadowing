@@ -17,8 +17,8 @@ from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.integrator import ksint
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.transforms import (
+    _tile_periodic,
     interleaved_to_physical,
-    tile_periodic,
     to_comoving_frame,
 )
 
@@ -65,7 +65,7 @@ def compute_event_shifts(
     rpo_comoving = to_comoving_frame(rpo_physical, drift_per_step)
 
     # Tile RPO to cover the event duration with the correct phase alignment
-    rpo_tiled = tile_periodic(rpo_comoving, duration + period)
+    rpo_tiled = _tile_periodic(rpo_comoving, duration + period)
 
     # Compute distances for each timestep to all shifts
     distances = compute_distance_matrix(trajectory_comoving, rpo_tiled, event.start_phase)

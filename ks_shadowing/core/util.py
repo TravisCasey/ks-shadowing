@@ -3,7 +3,7 @@
 from multiprocessing import cpu_count
 
 
-def resolve_n_jobs(n_jobs: int) -> int:
+def _resolve_n_jobs(n_jobs: int) -> int:
     """Convert ``n_jobs`` parameter to actual worker count.
 
     Follows scikit-learn convention: 1 means sequential, -1 means all CPUs, and
@@ -33,7 +33,7 @@ def resolve_n_jobs(n_jobs: int) -> int:
     return n_jobs
 
 
-class UnionFind:
+class _UnionFind:
     """Disjoint set data structure with path compression and union by rank.
 
     Efficiently tracks the inclusion of integers in disjoint sets. Supports

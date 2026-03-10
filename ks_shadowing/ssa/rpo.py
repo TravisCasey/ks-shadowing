@@ -12,7 +12,7 @@ from ks_shadowing.core.transforms import interleaved_to_physical
 
 
 @dataclass
-class RPOStateSpace:
+class _RPOStateSpace:
     """Precomputed RPO trajectory in physical space for state-space detection.
 
     Holds both the source RPO metadata and its integrated trajectory. Used

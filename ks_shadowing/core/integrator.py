@@ -34,7 +34,7 @@ DOMAIN_SIZE = 22.0
 INTERLEAVED_COEFFS = 30
 
 
-def load_library() -> CDLL:
+def _load_library() -> CDLL:
     """Load the integrated shared object from the package directory."""
     lib_path = Path(__file__).parent / "libks2py.so"
     if not lib_path.exists():
@@ -55,9 +55,9 @@ def load_library() -> CDLL:
 
 
 @cache
-def get_lib() -> CDLL:
-    """Return the cached library singleton. See :func:`load_library`."""
-    return load_library()
+def _get_lib() -> CDLL:
+    """Return the cached library singleton. See :func:`_load_library`."""
+    return _load_library()
 
 
 def ksint(
@@ -102,7 +102,7 @@ def ksint(
             f"initial_state must have shape ({INTERLEAVED_COEFFS},), got {initial_state.shape}"
         )
 
-    lib = get_lib()
+    lib = _get_lib()
 
     # Eigen stores matrices column-major (Fortran, order = "F"), so each
     # timestep is one column of a (30, num_saved) matrix.

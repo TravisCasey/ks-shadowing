@@ -125,7 +125,7 @@ def to_comoving_frame(
     return fft.irfft(traj_shifted_fft, resolution, axis=-1)
 
 
-def tile_periodic(field: NDArray[np.float64], target_length: int) -> NDArray[np.float64]:
+def _tile_periodic(field: NDArray[np.float64], target_length: int) -> NDArray[np.float64]:
     """Tile a periodic field along axis 0 to at least ``target_length``.
 
     Parameters

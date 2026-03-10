@@ -25,8 +25,8 @@ core.rpo
 .. automodule:: ks_shadowing.core.rpo
    :members:
 
-core.util
----------
+ssa.detector
+------------
 
-.. automodule:: ks_shadowing.core.util
+.. automodule:: ks_shadowing.ssa.detector
    :members:

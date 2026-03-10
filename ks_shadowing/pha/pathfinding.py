@@ -15,7 +15,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ks_shadowing.core.event import ShadowingEvent
-from ks_shadowing.core.util import UnionFind
+from ks_shadowing.core.util import _UnionFind
 from ks_shadowing.pha.persistence import RPOPersistence
 
 # Structured dtype for close passes in 2D (timestep, phase).
@@ -204,7 +204,7 @@ def find_connected_components_2d(
     close_passes = close_passes[sort_order]
 
     pass_count = len(close_passes)
-    uf = UnionFind(pass_count)
+    uf = _UnionFind(pass_count)
 
     # Dense label array: -1 = not a close pass, >=0 = pass index
     labels = np.full((num_timesteps, period), -1, dtype=np.int32)
