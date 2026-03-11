@@ -30,3 +30,15 @@ ssa.detector
 
 .. automodule:: ks_shadowing.ssa.detector
    :members:
+
+pha.detector
+------------
+
+.. automodule:: ks_shadowing.pha.detector
+   :members:
+
+pha.shifts
+----------
+
+.. automodule:: ks_shadowing.pha.shifts
+   :members:

@@ -1,9 +1,9 @@
-"""Shift reconstruction for PHA shadowing events.
+r"""Shift reconstruction for PHA shadowing events.
 
 PHA detection quotients out spatial shifts via persistence diagrams, so events
-have zero-filled `shifts` arrays. This module computes shifts post-hoc using
-L2 distances in the co-moving frame, subject to the constraint that each step
-changes by at most 1.
+have zero-filled ``shifts`` arrays. This module computes shifts post-hoc using
+:math:`L_2` distances in the co-moving frame, subject to the constraint that
+each step changes by at most 1.
 """
 
 from dataclasses import replace
@@ -25,24 +25,31 @@ from ks_shadowing.core.transforms import (
 
 def compute_event_shifts(
     event: ShadowingEvent,
-    trajectory_fourier: NDArray[np.floating],
+    trajectory_fourier: NDArray[np.float64],
     rpo: RPO,
     resolution: int,
 ) -> ShadowingEvent:
-    """Compute spatial shifts for a PHA shadowing event.
+    r"""Compute spatial shifts for a PHA shadowing event.
 
-    Returns a new event with the `shifts` field populated. The shifts minimize
-    L2 distance in the co-moving frame, subject to each step changing by at
-    most (-1, 0, or +1).
+    Returns a new event with the ``shifts`` field populated. The shifts
+    minimize :math:`L_2` distance in the co-moving frame, subject to each step
+    changing by at most ``(-1, 0, +1)``.
 
-    Args:
-        event: The shadowing event to compute shifts for.
-        trajectory_fourier: Full trajectory in Fourier space, shape `(num_timesteps, 30)`.
-        rpo: The RPO that was shadowed.
-        resolution: Spatial resolution for physical space computation.
+    Parameters
+    ----------
+    event : :class:`~ks_shadowing.core.event.ShadowingEvent`
+        The shadowing event to compute shifts for.
+    trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
+        Full trajectory in interleaved Fourier format.
+    rpo : :class:`~ks_shadowing.core.rpo.RPO`
+        The RPO that was shadowed.
+    resolution : int
+        Spatial resolution for physical-space computation.
 
-    Returns:
-        New ShadowingEvent with computed shifts.
+    Returns
+    -------
+    :class:`~ks_shadowing.core.event.ShadowingEvent`
+        New event with computed shifts.
     """
     period = rpo.time_steps
 
@@ -68,18 +75,18 @@ def compute_event_shifts(
     rpo_tiled = _tile_periodic(rpo_comoving, duration + period)
 
     # Compute distances for each timestep to all shifts
-    distances = compute_distance_matrix(trajectory_comoving, rpo_tiled, event.start_phase)
-    shifts = find_optimal_shifts(distances, resolution)
+    distances = _compute_distance_matrix(trajectory_comoving, rpo_tiled, event.start_phase)
+    shifts = _find_optimal_shifts(distances, resolution)
 
     return replace(event, shifts=shifts.astype(np.int32))
 
 
-def compute_distance_matrix(
+def _compute_distance_matrix(
     trajectory_comoving: NDArray[np.float64],
     rpo_tiled: NDArray[np.float64],
     start_phase: int,
 ) -> NDArray[np.float64]:
-    """Compute L2 distance matrix between trajectory and RPO for all shifts.
+    r"""Compute :math:`L_2` distance matrix between trajectory and RPO for all shifts.
 
     Uses FFT-based cross-correlation for efficient computation of distances
     to all spatial shifts simultaneously.
@@ -101,21 +108,34 @@ def compute_distance_matrix(
     # Cross-correlation via FFT: <u, roll(v, -s)> for all s
     cross_corr = fft.irfft(np.conj(traj_fft) * rpo_fft, resolution, axis=-1)
 
-    # L2 distance squared: ||u - roll(v, -s)||^2 = ||u||^2 + ||v||^2 - 2<u, roll(v, -s)>
+    # L2 distance squared:
+    # ||u - roll(v, -s)||^2 = ||u||^2 + ||v||^2 - 2<u, roll(v, -s)>
     dist_sq = norm_traj_sq[:, np.newaxis] + norm_rpo_sq[:, np.newaxis] - 2 * cross_corr
-    dist_sq = np.maximum(dist_sq, 0.0)  # Numerical safety
+    dist_sq = np.maximum(dist_sq, 0.0)
 
     return np.sqrt(dist_sq)
 
 
-def find_optimal_shifts(
+def _find_optimal_shifts(
     distances: NDArray[np.float64],
     resolution: int,
 ) -> NDArray[np.int32]:
-    """Find optimal shift sequence using dynamic programming.
+    """Find optimal shift sequence.
 
     Minimizes total distance subject to the constraint that each consecutive
     shift differs by at most 1 (with wraparound).
+
+    Parameters
+    ----------
+    distances : NDArray[np.float64], shape (duration, resolution)
+        Distance to each shift at each timestep.
+    resolution : int
+        Spatial resolution (number of shift positions).
+
+    Returns
+    -------
+    NDArray[np.int32], shape (duration,)
+        Optimal shift at each timestep.
     """
     duration = distances.shape[0]
 

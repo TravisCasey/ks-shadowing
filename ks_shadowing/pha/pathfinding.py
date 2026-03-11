@@ -1,9 +1,9 @@
-"""Shadowing event characterization via longest pathfinding algorithm (2D version).
+"""Shadowing event characterization via longest pathfinding algorithm in 2D.
 
 This module implements the graph-based algorithm for extracting shadowing events
-from Wasserstein distance data in 2D space (timestep x phase):
+from Wasserstein distance data in 2D space ``(timestep, phase)``:
 
-1. Collect "close passes" - points where trajectory is within threshold of an RPO
+1. Collect "close passes" - points where trajectory is within threshold of RPO
 2. Group close passes into connected components (8-connectivity in 2D grid)
 3. Find the longest valid path through each component
 
@@ -16,11 +16,11 @@ from numpy.typing import NDArray
 
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.util import _UnionFind
-from ks_shadowing.pha.persistence import RPOPersistence
+from ks_shadowing.pha.persistence import _RPOPersistence
 
 # Structured dtype for close passes in 2D (timestep, phase).
 # No shift dimension since PHA quotients out spatial symmetry.
-CLOSE_PASS_DTYPE_2D = np.dtype(
+_CLOSE_PASS_DTYPE_2D = np.dtype(
     [
         ("timestep", np.int32),
         ("phase", np.int32),
@@ -29,7 +29,7 @@ CLOSE_PASS_DTYPE_2D = np.dtype(
 )
 
 
-class ComponentPathFinder2D:
+class _ComponentPathFinder2D:
     """Finds the longest valid shadowing path through a 2D connected component.
 
     A valid path satisfies these constraints at each step:
@@ -59,8 +59,8 @@ class ComponentPathFinder2D:
     def find_longest_path(self) -> tuple[NDArray, float, float] | None:
         """Find the longest valid path, breaking ties by lowest mean distance.
 
-        Returns `(path, mean_distance, min_distance)` or None if the component
-        is empty.
+        Returns ``(path, mean_distance, min_distance)`` or ``None`` if the
+        component is empty.
         """
         if self.pass_count == 0:
             return None
@@ -72,43 +72,42 @@ class ComponentPathFinder2D:
 
         # Process in timestep order, extending paths from valid predecessors
         for pass_index in range(self.pass_count):
-            p_timestep = int(self.passes["timestep"][pass_index])
-            p_phase = int(self.passes["phase"][pass_index])
+            pass_timestep = int(self.passes["timestep"][pass_index])
+            pass_phase = int(self.passes["phase"][pass_index])
 
-            best = self._find_best_predecessor(p_timestep, p_phase, path_length, dist_sum)
-            if best >= 0:
-                path_length[pass_index] = path_length[best] + 1
-                dist_sum[pass_index] = dist_sum[best] + self.passes["distance"][pass_index]
-                min_dist[pass_index] = min(min_dist[best], self.passes["distance"][pass_index])
-                predecessor[pass_index] = best
+            best = self._find_best_predecessor(pass_timestep, pass_phase, path_length, dist_sum)
+            if best is None:
+                continue
+
+            path_length[pass_index] = path_length[best] + 1
+            dist_sum[pass_index] = dist_sum[best] + self.passes["distance"][pass_index]
+            min_dist[pass_index] = min(min_dist[best], self.passes["distance"][pass_index])
+            predecessor[pass_index] = best
 
         # Find best endpoint (longest path, then lowest mean distance)
         best_end = self._find_best_endpoint(path_length, dist_sum)
-        if best_end < 0:
-            return None
-
         path = self._reconstruct_path(predecessor, best_end)
         mean_distance = float(dist_sum[best_end] / len(path))
         return path, mean_distance, float(min_dist[best_end])
 
     def _find_best_predecessor(
         self,
-        p_timestep: int,
-        p_phase: int,
+        pass_timestep: int,
+        pass_phase: int,
         path_length: NDArray[np.int32],
         dist_sum: NDArray[np.float64],
-    ) -> int:
-        """Find the best predecessor for a close pass, or -1 if none valid.
+    ) -> int | None:
+        """Find the best predecessor for a close pass, or ``None`` if none valid.
 
         In 2D, the predecessor must have timestep-1 and phase-1 (mod period).
         Both trajectory and RPO advance together.
         """
-        prev_timestep = p_timestep - 1
-        prev_phase = (p_phase - 1) % self.period
+        prev_timestep = pass_timestep - 1
+        prev_phase = (pass_phase - 1) % self.period
         prev_key = (prev_timestep, prev_phase)
 
         if prev_key not in self.lookup:
-            return -1
+            return None
 
         return self.lookup[prev_key]
 
@@ -118,16 +117,17 @@ class ComponentPathFinder2D:
         dist_sum: NDArray[np.float64],
     ) -> int:
         """Find the index with longest path, breaking ties by lowest mean distance."""
-        best_index = -1
+        assert self.pass_count > 0
+        best_index = 0
         best_length = 0
         best_mean = float("inf")
 
-        for i in range(self.pass_count):
-            length = path_length[i]
-            mean = dist_sum[i] / length
+        for pass_index in range(self.pass_count):
+            length = path_length[pass_index]
+            mean = dist_sum[pass_index] / length
 
             if length > best_length or (length == best_length and mean < best_mean):
-                best_index = i
+                best_index = pass_index
                 best_length = length
                 best_mean = mean
 
@@ -136,34 +136,39 @@ class ComponentPathFinder2D:
     def _reconstruct_path(self, predecessor: NDArray[np.int32], end: int) -> NDArray:
         """Reconstruct path by following predecessor links."""
         indices = []
-        i = end
-        while i >= 0:
-            indices.append(i)
-            i = predecessor[i]
+        current_index = end
+        while current_index >= 0:
+            indices.append(current_index)
+            current_index = predecessor[current_index]
         indices.reverse()
         return self.passes[indices]
 
 
-def collect_close_passes_2d(
+def _collect_close_passes_2d(
     distance_matrix: NDArray[np.float64],
     threshold: float,
 ) -> NDArray:
     """Collect all entries below threshold from a 2D distance matrix.
 
-    Args:
-        distance_matrix: Wasserstein distance matrix of shape `(num_timesteps, period)`.
-        threshold: Maximum distance for close passes.
+    Parameters
+    ----------
+    distance_matrix : NDArray[np.float64], shape (num_timesteps, period)
+        Distance matrix with entries to threshold.
+    threshold : float
+        Maximum distance for close passes.
 
-    Returns:
-        Structured array with dtype `CLOSE_PASS_DTYPE_2D`.
+    Returns
+    -------
+    NDArray
+        Structured array with dtype ``_CLOSE_PASS_DTYPE_2D``.
     """
-    timestep_indices, phase_indices = np.where(distance_matrix < threshold)
+    timestep_indices, phase_indices = np.asarray(distance_matrix < threshold).nonzero()
     count = len(timestep_indices)
 
     if count == 0:
-        return np.array([], dtype=CLOSE_PASS_DTYPE_2D)
+        return np.array([], dtype=_CLOSE_PASS_DTYPE_2D)
 
-    passes = np.empty(count, dtype=CLOSE_PASS_DTYPE_2D)
+    passes = np.empty(count, dtype=_CLOSE_PASS_DTYPE_2D)
     passes["timestep"] = timestep_indices
     passes["phase"] = phase_indices
     passes["distance"] = distance_matrix[timestep_indices, phase_indices]
@@ -171,7 +176,7 @@ def collect_close_passes_2d(
     return passes
 
 
-def find_connected_components_2d(
+def _find_connected_components_2d(
     close_passes: NDArray,
     period: int,
     num_timesteps: int,
@@ -179,27 +184,28 @@ def find_connected_components_2d(
     """Group close passes into connected components using 8-connectivity.
 
     Two points are adjacent if they differ by at most 1 in each dimension,
-    with wraparound in the phase dimension.
+    with wraparound in the phase dimension. Uses a dense label array and
+    single-pass sweep for efficiency.
 
-    Uses a dense label array and single-pass sweep for efficiency. Close passes
-    must be sorted by (timestep, phase) in row-major order, which is guaranteed
-    when they come from `np.where` on the distance matrix.
+    Parameters
+    ----------
+    close_passes : NDArray
+        Structured array with dtype ``_CLOSE_PASS_DTYPE_2D``.
+    period : int
+        RPO period for phase wraparound.
+    num_timesteps : int
+        Number of timesteps in the distance matrix.
 
-    Args:
-        close_passes: Structured array with dtype `CLOSE_PASS_DTYPE_2D`, sorted
-            by (timestep, phase) in row-major order.
-        period: RPO period for phase wraparound.
-        num_timesteps: Number of timesteps in the distance matrix.
-
-    Returns:
-        List of structured arrays, one per connected component.
+    Returns
+    -------
+    list[NDArray]
+        One structured array per connected component.
     """
     if len(close_passes) == 0:
         return []
 
     # Sort by (timestep, phase) to enable single-pass sweep algorithm.
-    # When passes come from np.where they're already sorted, but we sort
-    # here to handle arbitrary input order (e.g., in tests).
+    # np.lexsort sorts by last key first.
     sort_order = np.lexsort((close_passes["phase"], close_passes["timestep"]))
     close_passes = close_passes[sort_order]
 
@@ -209,7 +215,6 @@ def find_connected_components_2d(
     # Dense label array: -1 = not a close pass, >=0 = pass index
     labels = np.full((num_timesteps, period), -1, dtype=np.int32)
 
-    # Extract arrays for convenient access
     timesteps = close_passes["timestep"]
     phases = close_passes["phase"]
 
@@ -227,8 +232,8 @@ def find_connected_components_2d(
             nt = t + dt
             if nt < 0:
                 continue
-            np_ = (p + dp) % period
-            neighbor_label = labels[nt, np_]
+            neighbor_phase = (p + dp) % period
+            neighbor_label = labels[nt, neighbor_phase]
             if neighbor_label >= 0:
                 uf.union(pass_index, neighbor_label)
 
@@ -251,42 +256,46 @@ def find_connected_components_2d(
     return [close_passes[indices] for indices in component_indices.values()]
 
 
-def extract_shadowing_events_2d(
+def _extract_shadowing_events_2d(
     distance_matrix: NDArray[np.float64],
-    rpo_data: RPOPersistence,
+    rpo_data: _RPOPersistence,
     threshold: float,
     min_duration: int,
-    delay: int,
 ) -> list[ShadowingEvent]:
-    """Extract shadowing events from Wasserstein distances using connected components.
+    r"""Extract shadowing events from Wasserstein distances using connected components.
 
-    This is the main entry point for the 2D pathfinding algorithm. It:
-    1. Collects all close passes (points below threshold)
-    2. Groups them into connected components
-    3. Finds the longest valid path through each component
-    4. Returns one event per component (if longer than `min_duration`)
+    Main entry point for the 2D pathfinding algorithm: collects close passes
+    below ``threshold``, groups them into 8-connected components, and finds
+    the longest valid path through each. Returns one
+    :class:`~ks_shadowing.core.event.ShadowingEvent` per component (if longer
+    than ``min_duration``).
 
-    Args:
-        distance_matrix: Wasserstein distance matrix with time-delay embedding applied,
-            shape `(num_timesteps - delay + 1, period)`.
-        rpo_data: Precomputed RPO persistence data.
-        threshold: Maximum Wasserstein distance for close passes.
-        min_duration: Minimum event duration in timesteps.
-        delay: Time-delay embedding window size (for offset correction).
+    Parameters
+    ----------
+    distance_matrix : NDArray[np.float64], shape (num_timesteps, period)
+        Distance matrix (typically after time-delay embedding).
+    rpo_data : _RPOPersistence
+        Precomputed RPO persistence data.
+    threshold : float
+        Maximum Wasserstein distance for close passes.
+    min_duration : int
+        Minimum event duration in timesteps.
 
-    Returns:
-        List of shadowing events sorted by start timestep.
+    Returns
+    -------
+    list[ShadowingEvent]
+        Events sorted by ``start_timestep``.
     """
-    close_passes = collect_close_passes_2d(distance_matrix, threshold)
+    close_passes = _collect_close_passes_2d(distance_matrix, threshold)
     if len(close_passes) == 0:
         return []
 
     num_timesteps, period = distance_matrix.shape
-    components = find_connected_components_2d(close_passes, period, num_timesteps)
+    components = _find_connected_components_2d(close_passes, period, num_timesteps)
     events: list[ShadowingEvent] = []
 
     for component in components:
-        finder = ComponentPathFinder2D(component, period)
+        finder = _ComponentPathFinder2D(component, period)
         result = finder.find_longest_path()
 
         if result is None or len(result[0]) < min_duration:
@@ -294,14 +303,12 @@ def extract_shadowing_events_2d(
 
         path, mean_distance, min_distance = result
 
-        # The timestep in the path is relative to the delay-embedded matrix.
-        # The actual trajectory timestep is the same (delay embedding doesn't shift start).
         start_timestep = int(path["timestep"][0])
         end_timestep = int(path["timestep"][-1]) + 1
         duration = end_timestep - start_timestep
 
-        # PHA doesn't track shifts - fill with zeros
-        # Shifts can be computed afterward using compute_event_shifts
+        # PHA doesn't track shifts - fill with zeros.
+        # Shifts can be computed afterward using compute_event_shifts.
         shifts = np.zeros(duration, dtype=np.int32)
 
         events.append(

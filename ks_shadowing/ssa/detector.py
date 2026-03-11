@@ -2,7 +2,7 @@
 
 Detects shadowing by computing :math:`L_2` distances between trajectory
 snapshots and RPO phases in physical space, using FFT cross-correlation to
-optimize over spatial shifts. The public API is the :class:`SSADetector` class.
+optimize over spatial shifts.
 """
 
 from collections.abc import Iterable, Iterator, Sequence
@@ -154,7 +154,7 @@ class SSADetector:
 
     def detect(
         self,
-        trajectory_fourier: NDArray[np.floating],
+        trajectory_fourier: NDArray[np.float64],
         threshold: float,
         min_duration: int = 1,
         show_progress: bool = False,
@@ -164,7 +164,7 @@ class SSADetector:
 
         Parameters
         ----------
-        trajectory_fourier : NDArray[np.floating], shape (num_timesteps, 30)
+        trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
             Trajectory in interleaved Fourier format from
             :func:`~ks_shadowing.core.integrator.ksint`.
         threshold : float
@@ -251,7 +251,7 @@ class SSADetector:
 
     def compute_min_distances(
         self,
-        trajectory_fourier: NDArray[np.floating],
+        trajectory_fourier: NDArray[np.float64],
         show_progress: bool = False,
         n_jobs: int = 1,
     ) -> NDArray[np.float64]:
@@ -262,7 +262,7 @@ class SSADetector:
 
         Parameters
         ----------
-        trajectory_fourier : NDArray[np.floating], shape (num_timesteps, 30)
+        trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
             Trajectory in interleaved Fourier format.
         show_progress : bool, optional
             Whether to display a progress bar. Default is ``False``.
@@ -328,7 +328,7 @@ class SSADetector:
 
     def auto_detect(
         self,
-        trajectory_fourier: NDArray[np.floating],
+        trajectory_fourier: NDArray[np.float64],
         f_close: float = 0.4,
         min_duration: int = 1,
         show_progress: bool = False,
@@ -342,7 +342,7 @@ class SSADetector:
 
         Parameters
         ----------
-        trajectory_fourier : NDArray[np.floating], shape (num_timesteps, 30)
+        trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
             Trajectory in interleaved Fourier format.
         f_close : float, optional
             Quantile for threshold selection. Default is 0.4.

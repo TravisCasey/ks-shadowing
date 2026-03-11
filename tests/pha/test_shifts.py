@@ -5,8 +5,8 @@ import numpy as np
 from ks_shadowing import RPO
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.pha.shifts import (
+    _find_optimal_shifts,
     compute_event_shifts,
-    find_optimal_shifts,
 )
 
 
@@ -14,7 +14,7 @@ class TestFindOptimalShifts:
     def test_single_timestep(self):
         """Single timestep returns the minimum distance shift."""
         distances = np.array([[0.5, 0.1, 0.9, 0.3]])
-        shifts = find_optimal_shifts(distances, resolution=4)
+        shifts = _find_optimal_shifts(distances, resolution=4)
 
         assert len(shifts) == 1
         assert shifts[0] == 1
@@ -23,7 +23,7 @@ class TestFindOptimalShifts:
         """Optimal shifts change by at most 1 between consecutive timesteps."""
         rng = np.random.default_rng(42)
         distances = rng.random((20, 16))
-        shifts = find_optimal_shifts(distances, resolution=16)
+        shifts = _find_optimal_shifts(distances, resolution=16)
 
         assert len(shifts) == 20
         for i in range(1, len(shifts)):
@@ -44,7 +44,7 @@ class TestFindOptimalShifts:
         distances[2, 5] = 2.0
         distances[3, 5] = 2.0
 
-        shifts = find_optimal_shifts(distances, resolution=10)
+        shifts = _find_optimal_shifts(distances, resolution=10)
         # Should choose the path through shift 0 despite higher initial cost
         assert np.all(shifts == np.zeros(4, dtype=np.int32))
 
@@ -55,7 +55,7 @@ class TestFindOptimalShifts:
         distances[1, 0] = 0.1
         distances[2, 1] = 0.1
 
-        shifts = find_optimal_shifts(distances, resolution=8)
+        shifts = _find_optimal_shifts(distances, resolution=8)
         assert list(shifts) == [7, 0, 1]
 
 

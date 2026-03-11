@@ -1,9 +1,5 @@
-"""Persistence diagram computation for PHA shadowing detection.
-
-This module provides functionality for computing persistence diagrams of 1D
-periodic fields using sublevel-set filtration. The persistence diagrams
-quotient out the continuous translational symmetry, making them ideal for
-comparing trajectories with RPOs.
+"""Persistence diagram computation with `GUDHI <https://gudhi.inria.fr/>`_ for
+PHA shadowing detection.
 """
 
 from dataclasses import dataclass
@@ -18,69 +14,84 @@ from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.transforms import interleaved_to_physical
 
 
-def compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float64]:
+def _compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float64]:
     """Compute sublevel-set persistence diagram for a 1D periodic field.
 
-    Uses GUDHI's periodic cubical complex for persistence on 1D periodic domains.
-    The persistence diagram captures the birth and death of connected components
-    in the sublevel sets as the threshold increases. Notably, this
+    Uses GUDHI's periodic cubical complex for persistence on 1D periodic
+    domains. The persistence diagram captures the birth and death of connected
+    components in the sublevel sets as the threshold increases. This
     representation is invariant to spatial translations.
 
-    Args:
-        field: 1D array of field values at grid points.
+    Parameters
+    ----------
+    field : NDArray[np.float64], shape (resolution,)
+        Field values at grid points.
 
-    Returns:
-        Array of shape `(n_points, 2)` with `(birth, death)` pairs. Points with
-        infinite death are excluded (the single essential class).
+    Returns
+    -------
+    NDArray[np.float64], shape (n_points, 2)
+        Persistence pairs ``(birth, death)``. Points with infinite death are
+        excluded (the single essential class).
     """
-    # GUDHI periodic cubical complex for 1D periodic domain
     cubical_complex = gudhi.PeriodicCubicalComplex(  # ty: ignore[unresolved-attribute]
         top_dimensional_cells=field,
         periodic_dimensions=[True],
     )
 
-    # Compute persistence
     cubical_complex.compute_persistence()
 
-    # Extract 0-dimensional persistence (connected components)
-    # Filter out infinite death values (essential class)
     persistence_pairs = cubical_complex.persistence_intervals_in_dimension(0)
     finite_pairs = persistence_pairs[np.isfinite(persistence_pairs[:, 1])]
 
     return finite_pairs.astype(np.float64)
 
 
-def compute_trajectory_diagrams(
+def _compute_trajectory_diagrams(
     trajectory_physical: NDArray[np.float64],
 ) -> list[NDArray[np.float64]]:
     """Compute persistence diagrams for each timestep of a trajectory.
 
-    Args:
-        trajectory_physical: Trajectory in physical space, shape `(num_timesteps, resolution)`.
+    Parameters
+    ----------
+    trajectory_physical : NDArray[np.float64], shape (num_timesteps, resolution)
+        Trajectory in physical space.
 
-    Returns:
-        List of persistence diagrams, one per timestep. Each diagram is an
-        array of shape `(n_points, 2)` with `(birth, death)` pairs.
+    Returns
+    -------
+    list[NDArray[np.float64]]
+        One persistence diagram per timestep. Each diagram has shape
+        ``(n_points, 2)`` with ``(birth, death)`` pairs.
     """
-    return [compute_persistence_diagram(field) for field in trajectory_physical]
+    return [_compute_persistence_diagram(field) for field in trajectory_physical]
 
 
-def apply_delay_embedding(
+def _apply_delay_embedding(
     wasserstein_matrix: NDArray[np.float64],
     delay: int,
 ) -> NDArray[np.float64]:
-    """Apply time-delay embedding to Wasserstein distance matrix.
+    r"""Apply time-delay embedding to a Wasserstein distance matrix.
 
-    Computes `W^w(i, j) = sum_{l=0}^{w-1} W(i+l, (j+l) mod J)` where `w` is the
-    delay. This increases the effective dimensionality of the comparison by
-    considering a window of consecutive timesteps rather than single snapshots.
+    Computes :math:`W^w(i, j) = \sum_{l=0}^{w-1} W(i+l, (j+l) \bmod J)` where
+    :math:`w` is the delay window. This increases the effective dimensionality
+    of the comparison by considering consecutive timesteps rather than single
+    snapshots.
 
-    Args:
-        wasserstein_matrix: Original distance matrix of shape `(I, J)`.
-        delay: Time-delay embedding window size (w in the paper).
+    Parameters
+    ----------
+    wasserstein_matrix : NDArray[np.float64], shape (I, J)
+        Original Wasserstein distance matrix.
+    delay : int
+        Time-delay embedding window size (:math:`w`).
 
-    Returns:
-        Embedded distance matrix of shape `(I - delay + 1, J)`.
+    Returns
+    -------
+    NDArray[np.float64], shape (I - delay + 1, J)
+        Embedded distance matrix.
+
+    Raises
+    ------
+    ValueError
+        If ``delay < 1`` or ``delay`` exceeds the trajectory length.
     """
     trajectory_timesteps, rpo_timesteps = wasserstein_matrix.shape
 
@@ -107,15 +118,18 @@ def apply_delay_embedding(
 
 
 @dataclass
-class RPOPersistence:
-    """Precomputed RPO persistence data for PHA detection.
+class _RPOPersistence:
+    r"""Precomputed RPO persistence data for PHA detection.
 
-    Holds both the source RPO metadata and its precomputed persistence diagrams.
-    This is the PHA equivalent of `RPOStateSpace` used by SSA.
+    Holds the source RPO metadata and its precomputed persistence diagrams.
+    This is the PHA equivalent of ``_RPOStateSpace`` in the SSA subpackage.
 
-    Attributes:
-        rpo: Source RPO containing metadata (index, period, spatial_shift).
-        diagrams: List of persistence diagrams, one per timestep of the RPO period.
+    Attributes
+    ----------
+    rpo : :class:`~ks_shadowing.core.rpo.RPO`
+        Source RPO containing metadata (index, period, spatial_shift).
+    diagrams : list[NDArray[np.float64]]
+        Persistence diagrams, one per timestep of the RPO period.
     """
 
     rpo: RPO
@@ -125,21 +139,22 @@ class RPOPersistence:
     def from_rpo(cls, rpo: RPO, resolution: int) -> Self:
         """Integrate an RPO and compute persistence diagrams.
 
-        Integrates the RPO for one full period using its native timestep,
-        transforms to physical space, and computes persistence diagrams
-        for each timestep.
+        Parameters
+        ----------
+        rpo : :class:`~ks_shadowing.core.rpo.RPO`
+            The RPO to process.
+        resolution : int
+            Spatial resolution for physical-space representation.
 
-        Args:
-            rpo: The RPO to process.
-            resolution: Spatial resolution for physical space representation.
-
-        Returns:
-            RPOPersistence with precomputed diagrams.
+        Returns
+        -------
+        Self
+            Instance with precomputed diagrams.
         """
         rpo_dt = rpo.period / rpo.time_steps
         fourier_trajectory = ksint(rpo.fourier_coeffs, rpo_dt, rpo.time_steps)[:-1]
         physical_trajectory = interleaved_to_physical(fourier_trajectory, resolution)
-        diagrams = compute_trajectory_diagrams(physical_trajectory)
+        diagrams = _compute_trajectory_diagrams(physical_trajectory)
         return cls(rpo=rpo, diagrams=diagrams)
 
     @property

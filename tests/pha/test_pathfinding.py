@@ -5,25 +5,25 @@ import pytest
 
 from ks_shadowing import RPO
 from ks_shadowing.pha.pathfinding import (
-    CLOSE_PASS_DTYPE_2D,
-    ComponentPathFinder2D,
-    collect_close_passes_2d,
-    extract_shadowing_events_2d,
-    find_connected_components_2d,
+    _CLOSE_PASS_DTYPE_2D,
+    _collect_close_passes_2d,
+    _ComponentPathFinder2D,
+    _extract_shadowing_events_2d,
+    _find_connected_components_2d,
 )
-from ks_shadowing.pha.persistence import RPOPersistence
+from ks_shadowing.pha.persistence import _RPOPersistence
 
 
 def make_passes_2d(*entries: tuple[int, int, float]) -> np.ndarray:
     """Helper to create structured array of 2D close passes."""
-    passes = np.empty(len(entries), dtype=CLOSE_PASS_DTYPE_2D)
+    passes = np.empty(len(entries), dtype=_CLOSE_PASS_DTYPE_2D)
     for i, (t, p, d) in enumerate(entries):
         passes[i] = (t, p, d)
     return passes
 
 
-def make_mock_rpo_persistence(rpo_index: int, period: int) -> RPOPersistence:
-    """Create a mock RPOPersistence for testing pathfinding logic."""
+def make_mock_rpo_persistence(rpo_index: int, period: int) -> _RPOPersistence:
+    """Create a mock _RPOPersistence for testing pathfinding logic."""
     mock_rpo = RPO(
         index=rpo_index,
         fourier_coeffs=np.zeros(30),
@@ -32,7 +32,7 @@ def make_mock_rpo_persistence(rpo_index: int, period: int) -> RPOPersistence:
         spatial_shift=0.0,
     )
     mock_diagrams = [np.array([]).reshape(0, 2) for _ in range(period)]
-    return RPOPersistence(rpo=mock_rpo, diagrams=mock_diagrams)
+    return _RPOPersistence(rpo=mock_rpo, diagrams=mock_diagrams)
 
 
 class TestCollectClosePasses2D:
@@ -42,7 +42,7 @@ class TestCollectClosePasses2D:
         dist_matrix[1, 2] = 0.5
         dist_matrix[0, 0] = 0.3
 
-        passes = collect_close_passes_2d(dist_matrix, threshold=1.0)
+        passes = _collect_close_passes_2d(dist_matrix, threshold=1.0)
 
         assert len(passes) == 2
         assert all(passes["distance"] < 1.0)
@@ -56,7 +56,7 @@ class TestCollectClosePasses2D:
     def test_empty_when_all_above_threshold(self):
         """Returns empty array when no entries below threshold."""
         dist_matrix = np.full((3, 4), 10.0)
-        passes = collect_close_passes_2d(dist_matrix, threshold=1.0)
+        passes = _collect_close_passes_2d(dist_matrix, threshold=1.0)
         assert len(passes) == 0
 
 
@@ -65,24 +65,24 @@ class TestFindConnectedComponents2D:
         """Tests diagonal, horizontal, vertical, and phase wraparound connectivity."""
         # Diagonal
         diagonal = make_passes_2d((0, 0, 0.5), (1, 1, 0.5), (2, 2, 0.5))
-        assert len(find_connected_components_2d(diagonal, 10, 10)) == 1
+        assert len(_find_connected_components_2d(diagonal, 10, 10)) == 1
 
         # Horizontal (same timestep, adjacent phase)
         horizontal = make_passes_2d((5, 3, 0.5), (5, 4, 0.5))
-        assert len(find_connected_components_2d(horizontal, 10, 10)) == 1
+        assert len(_find_connected_components_2d(horizontal, 10, 10)) == 1
 
         # Vertical (adjacent timestep, same phase)
         vertical = make_passes_2d((5, 3, 0.5), (6, 3, 0.5))
-        assert len(find_connected_components_2d(vertical, 10, 10)) == 1
+        assert len(_find_connected_components_2d(vertical, 10, 10)) == 1
 
         # Phase wraparound
         wraparound = make_passes_2d((0, 0, 0.5), (0, 9, 0.5))
-        assert len(find_connected_components_2d(wraparound, 10, 10)) == 1
+        assert len(_find_connected_components_2d(wraparound, 10, 10)) == 1
 
     def test_disjoint_entries_separate_components(self):
         """Non-adjacent entries are in separate components."""
         passes = make_passes_2d((0, 0, 0.5), (10, 5, 0.5))
-        components = find_connected_components_2d(passes, 10, 20)
+        components = _find_connected_components_2d(passes, 10, 20)
         assert len(components) == 2
 
 
@@ -94,7 +94,7 @@ class TestComponentPathFinder2D:
             (1, 1, 0.4),
             (2, 2, 0.3),
         )
-        finder = ComponentPathFinder2D(passes, period=10)
+        finder = _ComponentPathFinder2D(passes, period=10)
         result = finder.find_longest_path()
         assert result is not None
 
@@ -110,7 +110,7 @@ class TestComponentPathFinder2D:
             (1, 9, 0.4),
             (2, 0, 0.3),
         )
-        finder = ComponentPathFinder2D(passes, period=10)
+        finder = _ComponentPathFinder2D(passes, period=10)
         result = finder.find_longest_path()
 
         assert result is not None
@@ -124,7 +124,7 @@ class TestComponentPathFinder2D:
             (1, 0, 0.4),
             (2, 0, 0.3),
         )
-        finder = ComponentPathFinder2D(passes, period=10)
+        finder = _ComponentPathFinder2D(passes, period=10)
         result = finder.find_longest_path()
 
         assert result is not None
@@ -141,7 +141,7 @@ class TestComponentPathFinder2D:
             (0, 5, 0.1),
             (1, 6, 0.1),  # Length 2
         )
-        finder = ComponentPathFinder2D(passes, period=10)
+        finder = _ComponentPathFinder2D(passes, period=10)
         result = finder.find_longest_path()
 
         assert result is not None
@@ -156,7 +156,7 @@ class TestComponentPathFinder2D:
             (10, 5, 0.1),
             (11, 6, 0.1),  # Mean 0.1
         )
-        finder = ComponentPathFinder2D(passes, period=10)
+        finder = _ComponentPathFinder2D(passes, period=10)
         result = finder.find_longest_path()
 
         assert result is not None
@@ -174,9 +174,7 @@ class TestExtractShadowingEvents2D:
         dist_matrix[2, 2] = 0.4
 
         rpo_data = make_mock_rpo_persistence(rpo_index=42, period=5)
-        events = extract_shadowing_events_2d(
-            dist_matrix, rpo_data, threshold=1.0, min_duration=1, delay=3
-        )
+        events = _extract_shadowing_events_2d(dist_matrix, rpo_data, threshold=1.0, min_duration=1)
         assert len(events) == 1
 
         event = events[0]
@@ -193,9 +191,7 @@ class TestExtractShadowingEvents2D:
         """Returns no events when all distances above threshold."""
         dist_matrix = np.full((10, 5), 10.0)
         rpo_data = make_mock_rpo_persistence(rpo_index=0, period=5)
-        events = extract_shadowing_events_2d(
-            dist_matrix, rpo_data, threshold=1.0, min_duration=1, delay=3
-        )
+        events = _extract_shadowing_events_2d(dist_matrix, rpo_data, threshold=1.0, min_duration=1)
         assert events == []
 
     def test_min_duration_filter(self):
@@ -207,19 +203,11 @@ class TestExtractShadowingEvents2D:
         rpo_data = make_mock_rpo_persistence(rpo_index=0, period=5)
 
         assert (
-            len(
-                extract_shadowing_events_2d(
-                    dist_matrix, rpo_data, threshold=1.0, min_duration=3, delay=3
-                )
-            )
+            len(_extract_shadowing_events_2d(dist_matrix, rpo_data, threshold=1.0, min_duration=3))
             == 0
         )
         assert (
-            len(
-                extract_shadowing_events_2d(
-                    dist_matrix, rpo_data, threshold=1.0, min_duration=2, delay=3
-                )
-            )
+            len(_extract_shadowing_events_2d(dist_matrix, rpo_data, threshold=1.0, min_duration=2))
             == 1
         )
 
@@ -234,9 +222,7 @@ class TestExtractShadowingEvents2D:
         dist_matrix[9, 2] = 0.5
 
         rpo_data = make_mock_rpo_persistence(rpo_index=0, period=5)
-        events = extract_shadowing_events_2d(
-            dist_matrix, rpo_data, threshold=1.0, min_duration=1, delay=3
-        )
+        events = _extract_shadowing_events_2d(dist_matrix, rpo_data, threshold=1.0, min_duration=1)
 
         assert len(events) == 2
         assert events[0].start_timestep == 0
@@ -251,9 +237,7 @@ class TestExtractShadowingEvents2D:
         dist_matrix[3, 1] = 0.5
 
         rpo_data = make_mock_rpo_persistence(rpo_index=0, period=5)
-        events = extract_shadowing_events_2d(
-            dist_matrix, rpo_data, threshold=1.0, min_duration=1, delay=3
-        )
+        events = _extract_shadowing_events_2d(dist_matrix, rpo_data, threshold=1.0, min_duration=1)
 
         assert len(events) == 1
         assert events[0].end_timestep - events[0].start_timestep == 4

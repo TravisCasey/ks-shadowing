@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 
 from ks_shadowing.pha.persistence import (
-    apply_delay_embedding,
-    compute_persistence_diagram,
-    compute_trajectory_diagrams,
+    _apply_delay_embedding,
+    _compute_persistence_diagram,
+    _compute_trajectory_diagrams,
 )
 
 
@@ -16,7 +16,7 @@ class TestComputePersistenceDiagram:
         rng = np.random.default_rng(42)
         field = rng.standard_normal(64)
 
-        diagram = compute_persistence_diagram(field)
+        diagram = _compute_persistence_diagram(field)
 
         assert len(diagram) >= 1
         assert diagram.ndim == 2
@@ -26,13 +26,13 @@ class TestComputePersistenceDiagram:
     def test_constant_fields_empty_diagram(self):
         """Constant periodic fields have no finite persistence pairs."""
         constant = np.ones(32)
-        assert len(compute_persistence_diagram(constant)) == 0
+        assert len(_compute_persistence_diagram(constant)) == 0
 
     def test_simple_field_empty_diagram(self):
         """Simple periodic sinusoid yields no finite-death pairs."""
         x = np.linspace(0, 2 * np.pi, 64, endpoint=False)
         sinusoid = np.sin(x)
-        assert len(compute_persistence_diagram(sinusoid)) == 0
+        assert len(_compute_persistence_diagram(sinusoid)) == 0
 
     def test_diagram_shift_invariance(self):
         """Shifted field produces identical persistence diagram."""
@@ -40,8 +40,8 @@ class TestComputePersistenceDiagram:
         field = rng.standard_normal(64)
         shifted_field = np.roll(field, 17)
 
-        diagram1 = compute_persistence_diagram(field)
-        diagram2 = compute_persistence_diagram(shifted_field)
+        diagram1 = _compute_persistence_diagram(field)
+        diagram2 = _compute_persistence_diagram(shifted_field)
 
         assert len(diagram1) == len(diagram2)
         if len(diagram1) > 0:
@@ -54,7 +54,7 @@ class TestComputeTrajectoryDiagrams:
     def test_returns_valid_diagrams(self):
         """Returns one valid diagram per timestep."""
         trajectory = np.random.default_rng(42).standard_normal((10, 32))
-        diagrams = compute_trajectory_diagrams(trajectory)
+        diagrams = _compute_trajectory_diagrams(trajectory)
 
         assert len(diagrams) == 10
         for diagram in diagrams:
@@ -66,7 +66,7 @@ class TestApplyDelayEmbedding:
     def test_delay_one_unchanged(self):
         """With delay=1, output equals input."""
         matrix = np.random.default_rng(42).random((10, 8))
-        result = apply_delay_embedding(matrix, delay=1)
+        result = _apply_delay_embedding(matrix, delay=1)
         np.testing.assert_allclose(result, matrix)
 
     def test_sums_consecutive_entries(self):
@@ -75,7 +75,7 @@ class TestApplyDelayEmbedding:
         # With delay=2, result[0, 0] = matrix[0, 0] + matrix[1, 1] = 0 + 4 = 4
         # result[0, 1] = matrix[0, 1] + matrix[1, 2] = 1 + 5 = 6
         # result[0, 2] = matrix[0, 2] + matrix[1, 0] = 2 + 3 = 5 (wraparound)
-        result = apply_delay_embedding(matrix, delay=2)
+        result = _apply_delay_embedding(matrix, delay=2)
 
         assert result.shape == (3, 3)
         assert result[0, 0] == pytest.approx(4.0)
@@ -87,7 +87,7 @@ class TestApplyDelayEmbedding:
         matrix = np.random.default_rng(42).random((10, 5))
 
         with pytest.raises(ValueError):
-            apply_delay_embedding(matrix, delay=0)
+            _apply_delay_embedding(matrix, delay=0)
 
         with pytest.raises(ValueError):
-            apply_delay_embedding(matrix, delay=11)
+            _apply_delay_embedding(matrix, delay=11)

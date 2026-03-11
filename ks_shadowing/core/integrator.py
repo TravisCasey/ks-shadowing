@@ -61,7 +61,7 @@ def _get_lib() -> CDLL:
 
 
 def ksint(
-    initial_state: NDArray[np.floating],
+    initial_state: NDArray[np.float64],
     dt: float,
     steps: int,
     save_every: int = 1,
@@ -71,7 +71,7 @@ def ksint(
 
     Parameters
     ----------
-    initial_state : NDArray[np.floating], shape (30,)
+    initial_state : NDArray[np.float64], shape (30,)
         Fourier coefficients in interleaved format:
         :math:`[\operatorname{Re}(a_1),\, \operatorname{Im}(a_1),\, \dots,\,
         \operatorname{Re}(a_{15}),\, \operatorname{Im}(a_{15})]`.

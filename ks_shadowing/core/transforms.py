@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 from scipy import fft
 
 
-def interleaved_to_complex(interleaved: NDArray[np.floating]) -> NDArray[np.complex128]:
+def interleaved_to_complex(interleaved: NDArray[np.float64]) -> NDArray[np.complex128]:
     r"""Convert interleaved real/imaginary coefficients to complex Fourier modes.
 
     Takes the 30-element interleaved format from
@@ -14,7 +14,7 @@ def interleaved_to_complex(interleaved: NDArray[np.floating]) -> NDArray[np.comp
 
     Parameters
     ----------
-    interleaved : NDArray[np.floating], shape (..., 30)
+    interleaved : NDArray[np.float64], shape (..., 30)
         Final axis are interleaved Fourier coefficients:
         :math:`[\operatorname{Re}(a_1),\, \operatorname{Im}(a_1),\, \dots,\,
         \operatorname{Re}(a_{15}),\, \operatorname{Im}(a_{15})]`.
@@ -36,14 +36,14 @@ def interleaved_to_complex(interleaved: NDArray[np.floating]) -> NDArray[np.comp
 
 
 def to_physical(
-    fourier_coeffs: NDArray[np.complexfloating],
+    fourier_coeffs: NDArray[np.complex128],
     resolution: int,
 ) -> NDArray[np.float64]:
     """Transform Fourier coefficients to physical space via inverse rFFT.
 
     Parameters
     ----------
-    fourier_coeffs : NDArray[np.complexfloating], shape (..., 17)
+    fourier_coeffs : NDArray[np.complex128], shape (..., 17)
         Complex Fourier modes (e.g., from :func:`interleaved_to_complex`).
     resolution : int
         Number of grid points in the physical-space output.
@@ -58,7 +58,7 @@ def to_physical(
 
 
 def interleaved_to_physical(
-    interleaved: NDArray[np.floating],
+    interleaved: NDArray[np.float64],
     resolution: int,
 ) -> NDArray[np.float64]:
     """Convert interleaved Fourier coefficients directly to physical space.
@@ -68,7 +68,7 @@ def interleaved_to_physical(
 
     Parameters
     ----------
-    interleaved : NDArray[np.floating], shape (..., 30)
+    interleaved : NDArray[np.float64], shape (..., 30)
         Interleaved Fourier coefficients from
         :func:`~ks_shadowing.core.integrator.ksint`.
     resolution : int
