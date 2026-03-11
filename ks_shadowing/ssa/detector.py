@@ -16,13 +16,13 @@ from tqdm import tqdm
 
 from ks_shadowing.core import DOMAIN_SIZE
 from ks_shadowing.core.event import ShadowingEvent
+from ks_shadowing.core.parallel import _resolve_n_jobs
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.transforms import (
     _tile_periodic,
     interleaved_to_physical,
     to_comoving_frame,
 )
-from ks_shadowing.core.util import _resolve_n_jobs
 from ks_shadowing.ssa.pathfinding import _extract_shadowing_events_3d
 from ks_shadowing.ssa.rpo import _RPOStateSpace
 

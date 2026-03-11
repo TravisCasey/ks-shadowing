@@ -32,3 +32,9 @@ class CMakeBuildHook(BuildHookInterface):
         hera_dest = root / "ks_shadowing" / "pha" / "libhera2py.so"
         shutil.copy2(hera_so, hera_dest)
         build_data["artifacts"].append("ks_shadowing/pha/libhera2py.so")
+
+        # Copy libunionfind2py.so to core/
+        uf_so = build_dir / "csrc" / "unionfind" / "libunionfind2py.so"
+        uf_dest = root / "ks_shadowing" / "core" / "libunionfind2py.so"
+        shutil.copy2(uf_so, uf_dest)
+        build_data["artifacts"].append("ks_shadowing/core/libunionfind2py.so")

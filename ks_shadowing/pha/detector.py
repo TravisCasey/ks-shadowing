@@ -16,9 +16,9 @@ from numpy.typing import NDArray
 from tqdm import tqdm
 
 from ks_shadowing.core.event import ShadowingEvent
+from ks_shadowing.core.parallel import _resolve_n_jobs
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.transforms import interleaved_to_physical
-from ks_shadowing.core.util import _resolve_n_jobs
 from ks_shadowing.pha.pathfinding import _extract_shadowing_events_2d
 from ks_shadowing.pha.persistence import (
     _apply_delay_embedding,

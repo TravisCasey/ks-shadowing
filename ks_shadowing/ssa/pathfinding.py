@@ -18,7 +18,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ks_shadowing.core.event import ShadowingEvent
-from ks_shadowing.core.util import _UnionFind
+from ks_shadowing.core.unionfind import _find_components
 from ks_shadowing.ssa.rpo import _RPOStateSpace
 
 # Structured dtype for close passes in 3D (timestep, phase, shift).
@@ -233,7 +233,6 @@ def _find_connected_components_3d(  # noqa: PLR0912
     close_passes = close_passes[sort_order]
 
     pass_count = len(close_passes)
-    uf = _UnionFind(pass_count)
 
     # Two-slice dense label arrays: -1 = no pass, >=0 = pass index
     labels_prev = np.full((period, resolution), -1, dtype=np.int32)
@@ -251,6 +250,8 @@ def _find_connected_components_3d(  # noqa: PLR0912
     curr_slice_offsets = [(-1, -1), (-1, 0), (-1, 1), (0, -1)]
 
     current_timestep = -1
+    edges_a: list[int] = []
+    edges_b: list[int] = []
 
     for pass_index in range(pass_count):
         t = int(timesteps[pass_index])
@@ -276,13 +277,15 @@ def _find_connected_components_3d(  # noqa: PLR0912
             for dp, ds in prev_slice_offsets:
                 neighbor_label = labels_prev[(p + dp) % period, (s + ds) % resolution]
                 if neighbor_label >= 0:
-                    uf.union(pass_index, neighbor_label)
+                    edges_a.append(pass_index)
+                    edges_b.append(neighbor_label)
 
         # Check current slice backward neighbors (dt=0)
         for dp, ds in curr_slice_offsets:
             neighbor_label = labels_curr[(p + dp) % period, (s + ds) % resolution]
             if neighbor_label >= 0:
-                uf.union(pass_index, neighbor_label)
+                edges_a.append(pass_index)
+                edges_b.append(neighbor_label)
 
         # Handle phase wraparound in current slice: when at last phase row,
         # check phase 0 which has already been processed
@@ -290,24 +293,30 @@ def _find_connected_components_3d(  # noqa: PLR0912
             for ds in (-1, 0, 1):
                 neighbor_label = labels_curr[0, (s + ds) % resolution]
                 if neighbor_label >= 0:
-                    uf.union(pass_index, neighbor_label)
+                    edges_a.append(pass_index)
+                    edges_b.append(neighbor_label)
 
         # Handle shift wraparound in current slice: when at last shift column,
         # check shift 0 which has already been processed
         if s == resolution - 1:
             neighbor_label = labels_curr[p, 0]
             if neighbor_label >= 0:
-                uf.union(pass_index, neighbor_label)
+                edges_a.append(pass_index)
+                edges_b.append(neighbor_label)
+
+    # Batch union-find in C++
+    component_labels = _find_components(
+        pass_count,
+        np.array(edges_a, dtype=np.int32),
+        np.array(edges_b, dtype=np.int32),
+    )
 
     # Group by component root
-    component_indices: dict[int, list[int]] = {}
-    for pass_index in range(pass_count):
-        root = uf.find(pass_index)
-        if root not in component_indices:
-            component_indices[root] = []
-        component_indices[root].append(pass_index)
+    sort_order = np.argsort(component_labels)
+    sorted_labels = component_labels[sort_order]
+    splits = np.where(np.diff(sorted_labels) != 0)[0] + 1
 
-    return [close_passes[indices] for indices in component_indices.values()]
+    return [close_passes[group] for group in np.split(sort_order, splits)]
 
 
 def _extract_shadowing_events_3d(

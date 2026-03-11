@@ -15,7 +15,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ks_shadowing.core.event import ShadowingEvent
-from ks_shadowing.core.util import _UnionFind
+from ks_shadowing.core.unionfind import _find_components
 from ks_shadowing.pha.persistence import _RPOPersistence
 
 # Structured dtype for close passes in 2D (timestep, phase).
@@ -210,50 +210,56 @@ def _find_connected_components_2d(
     close_passes = close_passes[sort_order]
 
     pass_count = len(close_passes)
-    uf = _UnionFind(pass_count)
 
     # Dense label array: -1 = not a close pass, >=0 = pass index
-    labels = np.full((num_timesteps, period), -1, dtype=np.int32)
+    grid_labels = np.full((num_timesteps, period), -1, dtype=np.int32)
 
     timesteps = close_passes["timestep"]
     phases = close_passes["phase"]
 
-    # Single-pass sweep: assign labels and check only backward neighbors.
+    # Single-pass sweep: assign labels and collect edges for batch union-find.
     # Since close_passes are sorted by (timestep, phase), we only need to
     # check neighbors that have already been processed: left, upper-left,
     # up, and upper-right.
     backward_neighbors = [(-1, -1), (-1, 0), (-1, 1), (0, -1)]
+    edges_a: list[int] = []
+    edges_b: list[int] = []
 
     for pass_index in range(pass_count):
         t, p = int(timesteps[pass_index]), int(phases[pass_index])
-        labels[t, p] = pass_index
+        grid_labels[t, p] = pass_index
 
         for dt, dp in backward_neighbors:
             nt = t + dt
             if nt < 0:
                 continue
-            neighbor_phase = (p + dp) % period
-            neighbor_label = labels[nt, neighbor_phase]
+            neighbor_label = grid_labels[nt, (p + dp) % period]
             if neighbor_label >= 0:
-                uf.union(pass_index, neighbor_label)
+                edges_a.append(pass_index)
+                edges_b.append(neighbor_label)
 
         # Handle phase wraparound: when at the last phase column, check if
         # phase 0 in the same row was already processed (it was, since we
         # process in row-major order).
         if p == period - 1:
-            neighbor_label = labels[t, 0]
+            neighbor_label = grid_labels[t, 0]
             if neighbor_label >= 0:
-                uf.union(pass_index, neighbor_label)
+                edges_a.append(pass_index)
+                edges_b.append(neighbor_label)
+
+    # Batch union-find in C++
+    component_labels = _find_components(
+        pass_count,
+        np.array(edges_a, dtype=np.int32),
+        np.array(edges_b, dtype=np.int32),
+    )
 
     # Group by component root
-    component_indices: dict[int, list[int]] = {}
-    for pass_index in range(pass_count):
-        root = uf.find(pass_index)
-        if root not in component_indices:
-            component_indices[root] = []
-        component_indices[root].append(pass_index)
+    sort_order = np.argsort(component_labels)
+    sorted_labels = component_labels[sort_order]
+    splits = np.where(np.diff(sorted_labels) != 0)[0] + 1
 
-    return [close_passes[indices] for indices in component_indices.values()]
+    return [close_passes[group] for group in np.split(sort_order, splits)]
 
 
 def _extract_shadowing_events_2d(
