@@ -307,8 +307,8 @@ def _extract_shadowing_events_2d(
         end_timestep = int(path["timestep"][-1]) + 1
         duration = end_timestep - start_timestep
 
-        # PHA doesn't track shifts - fill with zeros.
-        # Shifts can be computed afterward using compute_event_shifts.
+        # PHA doesn't track shifts during pathfinding - fill with zeros.
+        # The detector computes shifts post-hoc before returning events.
         shifts = np.zeros(duration, dtype=np.int32)
 
         events.append(

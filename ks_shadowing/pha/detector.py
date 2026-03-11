@@ -25,6 +25,7 @@ from ks_shadowing.pha.persistence import (
     _compute_trajectory_diagrams,
     _RPOPersistence,
 )
+from ks_shadowing.pha.shifts import _compute_event_shifts
 from ks_shadowing.pha.wasserstein import _wasserstein_matrix
 
 
@@ -92,10 +93,8 @@ class PHADetector:
     6. Extract the longest valid path through each component, where both
        trajectory timestep and RPO phase advance by exactly 1 per step.
     7. Each path becomes a :class:`~ks_shadowing.core.event.ShadowingEvent`.
-
-    Events returned by PHA have zero-filled ``shifts`` arrays since spatial
-    shifts are quotiented out during detection. To compute actual shifts for
-    visualization, use :func:`~ks_shadowing.pha.shifts.compute_event_shifts`.
+    8. Compute spatial shifts for each event post-hoc using
+       :math:`L_2` distances and dynamic programming.
 
     Parameters
     ----------
@@ -150,10 +149,7 @@ class PHADetector:
         Returns
         -------
         list[ShadowingEvent]
-            Events sorted by ``(start_timestep, rpo_index)``. The ``shifts``
-            field will be zeros; use
-            :func:`~ks_shadowing.pha.shifts.compute_event_shifts` to populate
-            it.
+            Events sorted by ``(start_timestep, rpo_index)``.
         """
         trajectory_physical = interleaved_to_physical(trajectory_fourier, self.resolution)
         traj_diagrams = _compute_trajectory_diagrams(trajectory_physical)
@@ -166,6 +162,17 @@ class PHADetector:
             events = self._detect_parallel(
                 traj_diagrams, threshold, min_duration, show_progress, n_workers
             )
+
+        # Compute spatial shifts for each event. PHA quotients out shifts
+        # during detection, so they are reconstructed post-hoc using L2
+        # distances in the co-moving frame.
+        rpo_by_index = {rpo.index: rpo for rpo in self.rpos}
+        events = [
+            _compute_event_shifts(
+                event, trajectory_fourier, rpo_by_index[event.rpo_index], self.resolution
+            )
+            for event in events
+        ]
 
         events.sort(key=lambda e: (e.start_timestep, e.rpo_index))
         return events

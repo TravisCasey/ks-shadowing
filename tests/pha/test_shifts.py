@@ -5,8 +5,8 @@ import numpy as np
 from ks_shadowing import RPO
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.pha.shifts import (
+    _compute_event_shifts,
     _find_optimal_shifts,
-    compute_event_shifts,
 )
 
 
@@ -83,7 +83,7 @@ class TestComputeEventShifts:
         )
 
         trajectory_fourier = np.zeros((20, 30))
-        result = compute_event_shifts(event, trajectory_fourier, rpo, resolution)
+        result = _compute_event_shifts(event, trajectory_fourier, rpo, resolution)
 
         # Check shifts are valid
         assert len(result.shifts) == 4

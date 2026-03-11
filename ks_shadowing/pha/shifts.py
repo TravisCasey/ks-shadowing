@@ -23,7 +23,7 @@ from ks_shadowing.core.transforms import (
 )
 
 
-def compute_event_shifts(
+def _compute_event_shifts(
     event: ShadowingEvent,
     trajectory_fourier: NDArray[np.float64],
     rpo: RPO,

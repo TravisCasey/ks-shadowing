@@ -36,9 +36,3 @@ pha.detector
 
 .. automodule:: ks_shadowing.pha.detector
    :members:
-
-pha.shifts
-----------
-
-.. automodule:: ks_shadowing.pha.shifts
-   :members:
