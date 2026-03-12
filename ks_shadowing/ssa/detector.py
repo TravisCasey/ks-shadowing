@@ -329,22 +329,22 @@ class SSADetector:
     def auto_detect(
         self,
         trajectory_fourier: NDArray[np.float64],
-        f_close: float = 0.4,
+        threshold_quantile: float = 0.4,
         min_duration: int = 1,
         show_progress: bool = False,
         n_jobs: int = 1,
     ) -> tuple[list[ShadowingEvent], float]:
         """Detect shadowing events with automatic threshold selection.
 
-        The threshold is set to the ``f_close`` quantile of minimum distances
-        across the trajectory. For example, ``f_close=0.4`` means 40% of
-        timesteps will have minimum distance below the threshold.
+        The threshold is set to the ``threshold_quantile`` quantile of minimum
+        distances across the trajectory. For example, ``threshold_quantile=0.4``
+        means 40% of timesteps will have minimum distance below the threshold.
 
         Parameters
         ----------
         trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
             Trajectory in interleaved Fourier format.
-        f_close : float, optional
+        threshold_quantile : float, optional
             Quantile for threshold selection. Default is 0.4.
         min_duration : int, optional
             Minimum event duration in timesteps. Default is 1.
@@ -363,7 +363,7 @@ class SSADetector:
         min_distances = self.compute_min_distances(
             trajectory_fourier, show_progress=show_progress, n_jobs=n_jobs
         )
-        threshold = float(np.quantile(min_distances, f_close))
+        threshold = float(np.quantile(min_distances, threshold_quantile))
         events = self.detect(
             trajectory_fourier, threshold, min_duration, show_progress, n_jobs=n_jobs
         )

@@ -10,10 +10,14 @@ from ks_shadowing.core.transforms import (
     to_physical,
 )
 
+TRAJECTORY_DT: float = 0.02
+"""Fixed integration timestep for chaotic trajectories."""
+
 __all__: list[str] = [
     "DOMAIN_SIZE",
     "INTERLEAVED_COEFFS",
     "RPO",
+    "TRAJECTORY_DT",
     "ShadowingEvent",
     "interleaved_to_complex",
     "interleaved_to_physical",

@@ -38,6 +38,24 @@ RPO data files are in the `data/` directory. All RPOs are for domain size L=22.
 | `rpos_all.npz` | Complete dataset of 239 RPOs |
 | `rpos_selected.npz` | 16 RPOs selected for focused analysis |
 
+## Command-Line Usage
+
+The package exposes two CLI entry points via `uv run`:
+
+```bash
+# Detect events with SSA
+uv run ks-detect --method ssa --trajectory-steps 50000 --resolution 64
+
+# Detect events with PHA
+uv run ks-detect --method pha --trajectory-steps 20000 --resolution 32 --delay 4
+
+# Use explicit threshold instead of threshold_quantile
+uv run ks-detect --method ssa --trajectory-steps 50000 --resolution 64 --threshold 1.0
+
+# Visualize the best event from a saved result file
+uv run ks-visualize --input results/shadowing_results_ssa.h5
+```
+
 ## Development
 
 ```bash

@@ -58,7 +58,7 @@ class TestPHADetector:
 
         trajectory = rng.standard_normal((20, 30)) * 0.1
 
-        _, threshold = detector.auto_detect(trajectory, f_close=0.4)
+        _, threshold = detector.auto_detect(trajectory, threshold_quantile=0.4)
 
         assert isinstance(threshold, float)
         assert threshold > 0
