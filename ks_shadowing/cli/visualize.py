@@ -13,7 +13,6 @@ from ks_shadowing.core import DOMAIN_SIZE, TRAJECTORY_DT
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.transforms import interleaved_to_complex, to_physical
 
-DEFAULT_INPUT = Path("results/shadowing_results_ssa.h5")
 DEFAULT_OUTPUT = Path("plots/shadowing_visualization.png")
 DEFAULT_CONTEXT_FRACTION = 1.2
 DEFAULT_DPI = 150
@@ -22,7 +21,7 @@ DEFAULT_DPI = 150
 def build_parser() -> ArgumentParser:
     """Build CLI parser for ``ks-visualize``."""
     parser = ArgumentParser(description="Visualize saved shadowing events.")
-    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
+    parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--context-fraction", type=float, default=DEFAULT_CONTEXT_FRACTION)
     parser.add_argument("--dpi", type=int, default=DEFAULT_DPI)
