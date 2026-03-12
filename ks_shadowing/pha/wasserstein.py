@@ -110,3 +110,27 @@ def _wasserstein_matrix(
     )
 
     return out
+
+
+def _wasserstein_column(
+    traj_diagrams: list[NDArray[np.float64]],
+    rpo_diagram: NDArray[np.float64],
+    delta: float = 0.01,
+) -> NDArray[np.float64]:
+    r"""Compute Wasserstein distances from all trajectory diagrams to one RPO diagram.
+
+    Parameters
+    ----------
+    traj_diagrams : list[NDArray[np.float64]]
+        List of ``I`` trajectory persistence diagrams.
+    rpo_diagram : NDArray[np.float64], shape (n_points, 2)
+        Single RPO persistence diagram.
+    delta : float, optional
+        Relative error tolerance. Default is 0.01 (1%).
+
+    Returns
+    -------
+    NDArray[np.float64], shape (I,)
+        Wasserstein distance from each trajectory diagram to the RPO diagram.
+    """
+    return _wasserstein_matrix(traj_diagrams, [rpo_diagram], delta)[:, 0]

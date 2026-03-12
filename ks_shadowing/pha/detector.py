@@ -7,8 +7,7 @@ diagrams and a custom `Hera <https://github.com/anigmetov/hera>`_ harness for
 batched Wasserstein computations.
 """
 
-from collections.abc import Iterable, Sequence
-from functools import partial
+from collections.abc import Sequence
 from multiprocessing import Pool
 
 import numpy as np
@@ -26,45 +25,39 @@ from ks_shadowing.pha.persistence import (
     _RPOPersistence,
 )
 from ks_shadowing.pha.shifts import _compute_event_shifts
-from ks_shadowing.pha.wasserstein import _wasserstein_matrix
+from ks_shadowing.pha.wasserstein import _wasserstein_column
+
+# Module-level globals for pool initializer (set once per worker process)
+_shared_traj_diagrams: list[NDArray[np.float64]] | None = None
 
 
-def _detect_single_rpo(
-    rpo_data: _RPOPersistence,
-    traj_diagrams: list[NDArray[np.float64]],
-    threshold: float,
-    min_duration: int,
-    delay: int,
-) -> list[ShadowingEvent]:
-    """Worker function for parallel detection."""
-    wass_matrix = _wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
-    embedded_matrix = _apply_delay_embedding(wass_matrix, delay)
-    return _extract_shadowing_events_2d(
-        embedded_matrix,
-        rpo_data,
-        threshold,
-        min_duration,
-    )
+def _pha_pool_initializer(traj_diagrams: list[NDArray[np.float64]]) -> None:
+    """Store trajectory diagrams in worker process memory."""
+    global _shared_traj_diagrams  # noqa: PLW0603
+    _shared_traj_diagrams = traj_diagrams
 
 
-def _min_dist_single_rpo(
-    rpo_data: _RPOPersistence,
-    traj_diagrams: list[NDArray[np.float64]],
-    delay: int,
-) -> NDArray[np.float64]:
-    """Worker function for parallel min distance computation."""
-    wass_matrix = _wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
-    embedded_matrix = _apply_delay_embedding(wass_matrix, delay)
+def _compute_single_column(
+    args: tuple[int, int, NDArray[np.float64]],
+) -> tuple[int, int, NDArray[np.float64]]:
+    """Compute one Wasserstein column: all trajectory diagrams vs one RPO diagram.
 
-    # Minimum over all phases for each timestep
-    min_dists = np.min(embedded_matrix, axis=1)
+    Parameters
+    ----------
+    args : tuple
+        ``(rpo_list_index, phase_index, rpo_diagram)`` where ``rpo_diagram``
+        is a single RPO phase's persistence diagram.
 
-    # Pad to original trajectory length (delay embedding reduces length)
-    num_traj = len(traj_diagrams)
-    result = np.full(num_traj, np.inf, dtype=np.float64)
-    result[: len(min_dists)] = min_dists
-
-    return result
+    Returns
+    -------
+    tuple[int, int, NDArray[np.float64]]
+        ``(rpo_list_index, phase_index, column)`` where ``column`` has shape
+        ``(I,)``.
+    """
+    rpo_list_index, phase_index, rpo_diagram = args
+    assert _shared_traj_diagrams is not None
+    column = _wasserstein_column(_shared_traj_diagrams, rpo_diagram)
+    return rpo_list_index, phase_index, column
 
 
 class PHADetector:
@@ -184,23 +177,40 @@ class PHADetector:
         min_duration: int,
         show_progress: bool,
     ) -> list[ShadowingEvent]:
-        """Run detection sequentially over all RPOs."""
+        """Run detection sequentially, one Wasserstein column at a time."""
         events: list[ShadowingEvent] = []
-        iterator: Iterable[_RPOPersistence] = self.rpo_data
+        total_phases = sum(len(rd.diagrams) for rd in self.rpo_data)
 
+        phase_iter = (
+            (rpo_data, diagram) for rpo_data in self.rpo_data for diagram in rpo_data.diagrams
+        )
         if show_progress:
-            iterator = tqdm(iterator, total=len(self.rpo_data), desc="Detecting", leave=False)
+            phase_iter = tqdm(phase_iter, total=total_phases, desc="Detecting", leave=False)
 
-        for rpo_data in iterator:
-            wass_matrix = _wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
-            embedded_matrix = _apply_delay_embedding(wass_matrix, self.delay)
-            rpo_events = _extract_shadowing_events_2d(
-                embedded_matrix,
-                rpo_data,
-                threshold,
-                min_duration,
+        columns: list[NDArray[np.float64]] = []
+        current_rpo: _RPOPersistence | None = None
+
+        for rpo_data, diagram in phase_iter:
+            if current_rpo is not rpo_data:
+                # Process completed RPO
+                if current_rpo is not None and columns:
+                    wass_matrix = np.column_stack(columns)
+                    embedded = _apply_delay_embedding(wass_matrix, self.delay)
+                    events.extend(
+                        _extract_shadowing_events_2d(embedded, current_rpo, threshold, min_duration)
+                    )
+                columns = []
+                current_rpo = rpo_data
+
+            columns.append(_wasserstein_column(traj_diagrams, diagram))
+
+        # Process last RPO
+        if current_rpo is not None and columns:
+            wass_matrix = np.column_stack(columns)
+            embedded = _apply_delay_embedding(wass_matrix, self.delay)
+            events.extend(
+                _extract_shadowing_events_2d(embedded, current_rpo, threshold, min_duration)
             )
-            events.extend(rpo_events)
 
         return events
 
@@ -212,24 +222,39 @@ class PHADetector:
         show_progress: bool,
         n_workers: int,
     ) -> list[ShadowingEvent]:
-        """Run detection in parallel over RPOs."""
-        events: list[ShadowingEvent] = []
-        worker = partial(
-            _detect_single_rpo,
-            traj_diagrams=traj_diagrams,
-            threshold=threshold,
-            min_duration=min_duration,
-            delay=self.delay,
-        )
+        """Run detection in parallel, one Wasserstein column per task."""
+        tasks: list[tuple[int, int, NDArray[np.float64]]] = []
+        for rpo_index, rpo_data in enumerate(self.rpo_data):
+            for phase_index, diagram in enumerate(rpo_data.diagrams):
+                tasks.append((rpo_index, phase_index, diagram))
 
-        with Pool(n_workers) as pool:
-            results = pool.imap_unordered(worker, self.rpo_data)
+        total_tasks = len(tasks)
+
+        with Pool(n_workers, initializer=_pha_pool_initializer, initargs=(traj_diagrams,)) as pool:
+            results = pool.imap_unordered(_compute_single_column, tasks)
 
             if show_progress:
-                results = tqdm(results, total=len(self.rpo_data), desc="Detecting", leave=False)
+                results = tqdm(results, total=total_tasks, desc="Detecting", leave=False)
 
-            for rpo_events in results:
-                events.extend(rpo_events)
+            # Collect columns grouped by RPO
+            columns_by_rpo: dict[int, dict[int, NDArray[np.float64]]] = {}
+            for rpo_index, phase_index, column in results:
+                columns_by_rpo.setdefault(rpo_index, {})[phase_index] = column
+
+        # Assemble matrices and run pathfinding in parent (cheap)
+        events: list[ShadowingEvent] = []
+        for rpo_index, rpo_data in enumerate(self.rpo_data):
+            phase_columns = columns_by_rpo.get(rpo_index)
+            if phase_columns is None:
+                continue
+            num_phases = len(rpo_data.diagrams)
+            num_traj = len(traj_diagrams)
+            wass_matrix = np.empty((num_traj, num_phases), dtype=np.float64)
+            for j in range(num_phases):
+                wass_matrix[:, j] = phase_columns[j]
+
+            embedded = _apply_delay_embedding(wass_matrix, self.delay)
+            events.extend(_extract_shadowing_events_2d(embedded, rpo_data, threshold, min_duration))
 
         return events
 
@@ -276,20 +301,38 @@ class PHADetector:
         traj_diagrams: list[NDArray[np.float64]],
         show_progress: bool,
     ) -> NDArray[np.float64]:
-        """Compute min distances sequentially."""
+        """Compute min distances sequentially, one Wasserstein column at a time."""
         num_traj = len(traj_diagrams)
         min_dists = np.full(num_traj, np.inf, dtype=np.float64)
-        iterator = self.rpo_data
+        total_phases = sum(len(rd.diagrams) for rd in self.rpo_data)
 
+        phase_iter = (
+            (rpo_data, diagram) for rpo_data in self.rpo_data for diagram in rpo_data.diagrams
+        )
         if show_progress:
-            iterator = tqdm(iterator, desc="Min distances", leave=False)
+            phase_iter = tqdm(phase_iter, total=total_phases, desc="Min distances", leave=False)
 
-        for rpo_data in iterator:
-            wass_matrix = _wasserstein_matrix(traj_diagrams, rpo_data.diagrams)
-            embedded_matrix = _apply_delay_embedding(wass_matrix, self.delay)
+        columns: list[NDArray[np.float64]] = []
+        current_rpo: _RPOPersistence | None = None
 
-            # Minimum over all phases
-            rpo_min = np.min(embedded_matrix, axis=1)
+        for rpo_data, diagram in phase_iter:
+            if current_rpo is not rpo_data:
+                # Process completed RPO
+                if current_rpo is not None and columns:
+                    wass_matrix = np.column_stack(columns)
+                    embedded = _apply_delay_embedding(wass_matrix, self.delay)
+                    rpo_min = np.min(embedded, axis=1)
+                    min_dists[: len(rpo_min)] = np.minimum(min_dists[: len(rpo_min)], rpo_min)
+                columns = []
+                current_rpo = rpo_data
+
+            columns.append(_wasserstein_column(traj_diagrams, diagram))
+
+        # Process last RPO
+        if current_rpo is not None and columns:
+            wass_matrix = np.column_stack(columns)
+            embedded = _apply_delay_embedding(wass_matrix, self.delay)
+            rpo_min = np.min(embedded, axis=1)
             min_dists[: len(rpo_min)] = np.minimum(min_dists[: len(rpo_min)], rpo_min)
 
         return min_dists
@@ -300,23 +343,40 @@ class PHADetector:
         show_progress: bool,
         n_workers: int,
     ) -> NDArray[np.float64]:
-        """Compute min distances in parallel."""
+        """Compute min distances in parallel, one Wasserstein column per task."""
         num_traj = len(traj_diagrams)
         min_dists = np.full(num_traj, np.inf, dtype=np.float64)
-        worker = partial(
-            _min_dist_single_rpo,
-            traj_diagrams=traj_diagrams,
-            delay=self.delay,
-        )
 
-        with Pool(n_workers) as pool:
-            results = pool.imap_unordered(worker, self.rpo_data)
+        tasks: list[tuple[int, int, NDArray[np.float64]]] = []
+        for rpo_index, rpo_data in enumerate(self.rpo_data):
+            for phase_index, diagram in enumerate(rpo_data.diagrams):
+                tasks.append((rpo_index, phase_index, diagram))
+
+        total_tasks = len(tasks)
+
+        with Pool(n_workers, initializer=_pha_pool_initializer, initargs=(traj_diagrams,)) as pool:
+            results = pool.imap_unordered(_compute_single_column, tasks)
 
             if show_progress:
-                results = tqdm(results, total=len(self.rpo_data), desc="Min distances", leave=False)
+                results = tqdm(results, total=total_tasks, desc="Min distances", leave=False)
 
-            for rpo_min in results:
-                np.minimum(min_dists, rpo_min, out=min_dists)
+            columns_by_rpo: dict[int, dict[int, NDArray[np.float64]]] = {}
+            for rpo_index, phase_index, column in results:
+                columns_by_rpo.setdefault(rpo_index, {})[phase_index] = column
+
+        # Assemble matrices, apply delay embedding, reduce
+        for rpo_index, rpo_data in enumerate(self.rpo_data):
+            phase_columns = columns_by_rpo.get(rpo_index)
+            if phase_columns is None:
+                continue
+            num_phases = len(rpo_data.diagrams)
+            wass_matrix = np.empty((num_traj, num_phases), dtype=np.float64)
+            for j in range(num_phases):
+                wass_matrix[:, j] = phase_columns[j]
+
+            embedded = _apply_delay_embedding(wass_matrix, self.delay)
+            rpo_min = np.min(embedded, axis=1)
+            min_dists[: len(rpo_min)] = np.minimum(min_dists[: len(rpo_min)], rpo_min)
 
         return min_dists
 

@@ -5,7 +5,7 @@ snapshots and RPO phases in physical space, using FFT cross-correlation to
 optimize over spatial shifts.
 """
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from functools import partial
 from multiprocessing import Pool
 
@@ -25,6 +25,16 @@ from ks_shadowing.core.transforms import (
 )
 from ks_shadowing.ssa.pathfinding import _extract_shadowing_events_3d
 from ks_shadowing.ssa.rpo import _RPOStateSpace
+
+
+def _tqdm_wrap_generator(
+    generator: Iterator[tuple[int, NDArray[np.float64]]],
+    progress: tqdm,
+) -> Iterator[tuple[int, NDArray[np.float64]]]:
+    """Wrap a phase generator to update a shared tqdm progress bar."""
+    for item in generator:
+        progress.update(1)
+        yield item
 
 
 def _compute_distances_sq(
@@ -203,22 +213,23 @@ class SSADetector:
         min_duration: int,
         show_progress: bool,
     ) -> list[ShadowingEvent]:
-        """Run detection sequentially over all RPOs."""
+        """Run detection sequentially with phase-level progress."""
         events: list[ShadowingEvent] = []
-        iterator: Iterable[_RPOStateSpace] = self.rpo_data
+        total_phases = sum(rd.time_steps for rd in self.rpo_data)
+        progress = (
+            tqdm(total=total_phases, desc="Detecting", leave=False) if show_progress else None
+        )
 
-        if show_progress:
-            iterator = tqdm(iterator, total=len(self.rpo_data), desc="Detecting", leave=False)
+        for rpo_data in self.rpo_data:
+            generator = _compute_distances_sq(trajectory_physical, rpo_data)
+            if progress is not None:
+                generator = _tqdm_wrap_generator(generator, progress)
 
-        for rpo_data in iterator:
-            rpo_events = _extract_shadowing_events_3d(
-                _compute_distances_sq(trajectory_physical, rpo_data),
-                rpo_data,
-                threshold,
-                min_duration,
-            )
+            rpo_events = _extract_shadowing_events_3d(generator, rpo_data, threshold, min_duration)
             events.extend(rpo_events)
 
+        if progress is not None:
+            progress.close()
         return events
 
     def _detect_parallel(
@@ -287,19 +298,22 @@ class SSADetector:
         trajectory_physical: NDArray[np.float64],
         show_progress: bool,
     ) -> NDArray[np.float64]:
-        """Compute min distances sequentially."""
+        """Compute min distances sequentially with phase-level progress."""
         min_dists_sq = np.full(len(trajectory_physical), np.inf, dtype=np.float64)
-        iterator = self.rpo_data
+        total_phases = sum(rd.time_steps for rd in self.rpo_data)
+        progress = (
+            tqdm(total=total_phases, desc="Min distances", leave=False) if show_progress else None
+        )
 
-        if show_progress:
-            iterator = tqdm(iterator, desc="Min distances", leave=False)
-
-        for rpo_data in iterator:
+        for rpo_data in self.rpo_data:
             for _, dist_sq in _compute_distances_sq(trajectory_physical, rpo_data):
-                # Min over shift dimension
                 phase_min_sq = np.min(dist_sq, axis=1)
                 np.minimum(min_dists_sq, phase_min_sq, out=min_dists_sq)
+                if progress is not None:
+                    progress.update(1)
 
+        if progress is not None:
+            progress.close()
         return np.sqrt(min_dists_sq)
 
     def _min_distances_parallel(
