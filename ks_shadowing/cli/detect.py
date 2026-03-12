@@ -1,5 +1,6 @@
 """CLI entry point for shadowing event detection."""
 
+import time
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -78,6 +79,7 @@ def main() -> None:
         )
 
     print(f"Detecting events with {method.upper()}...")
+    t0 = time.perf_counter()
     if arguments.threshold is not None:
         events = detector.detect(
             trajectory,
@@ -98,10 +100,12 @@ def main() -> None:
             downsample=arguments.downsample,
         )
         threshold_quantile = arguments.threshold_quantile
+    elapsed_seconds = time.perf_counter() - t0
 
     auto_label = "auto" if threshold_quantile is not None else "manual"
     print(f"  Threshold ({auto_label}): {threshold:.4f}")
     print(f"  Found {len(events)} events")
+    print(f"  Elapsed: {elapsed_seconds:.2f}s")
 
     metadata = DetectionMetadata(
         detector_type=method.upper(),
@@ -114,6 +118,7 @@ def main() -> None:
         rpo_file=str(arguments.rpo_file),
         threshold_quantile=threshold_quantile,
         delay=arguments.delay if method == "pha" else None,
+        elapsed_seconds=elapsed_seconds,
     )
 
     print(f"Saving results to {output_path}...")

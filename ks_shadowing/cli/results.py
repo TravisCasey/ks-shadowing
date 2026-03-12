@@ -50,6 +50,8 @@ class DetectionMetadata:
         ``threshold_mode`` is ``"manual"``.
     delay : int or None
         Time-delay embedding window size. ``None`` for SSA detection.
+    elapsed_seconds : float or None
+        Wall-clock time for detection in seconds. ``None`` if not recorded.
     """
 
     detector_type: str
@@ -62,6 +64,7 @@ class DetectionMetadata:
     rpo_file: str
     threshold_quantile: float | None = None
     delay: int | None = None
+    elapsed_seconds: float | None = None
 
 
 def save_results(
@@ -93,6 +96,8 @@ def save_results(
             f.attrs["threshold_quantile"] = metadata.threshold_quantile
         if metadata.delay is not None:
             f.attrs["delay"] = metadata.delay
+        if metadata.elapsed_seconds is not None:
+            f.attrs["elapsed_seconds"] = metadata.elapsed_seconds
 
         shifts_list = [event.shifts for event in events]
         shifts_ends = (
@@ -143,6 +148,9 @@ def load_results(path: Path) -> tuple[DetectionMetadata, np.ndarray, list[Shadow
                 float(attrs["threshold_quantile"]) if "threshold_quantile" in attrs else None
             ),
             delay=int(attrs["delay"]) if "delay" in attrs else None,
+            elapsed_seconds=(
+                float(attrs["elapsed_seconds"]) if "elapsed_seconds" in attrs else None
+            ),
         )
 
         initial_state = f["initial_state"][:].astype(np.float64, copy=False)
