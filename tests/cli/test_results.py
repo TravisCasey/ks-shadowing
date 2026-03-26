@@ -41,15 +41,14 @@ def test_save_load_roundtrip(tmp_path: Path) -> None:
     ]
 
     save_results(output_path, build_metadata(), initial_state, events)
-    metadata, trajectory, loaded_events = load_results(output_path)
+    metadata, loaded_state, loaded_events = load_results(output_path)
 
     assert metadata.detector_type == "SSA"
     assert metadata.trajectory_steps == 5
     assert metadata.threshold_quantile == 0.4
     assert metadata.delay is None
 
-    # Trajectory is reproduced from initial state via ksint
-    assert trajectory.shape == (6, 30)  # trajectory_steps + 1 (includes initial condition)
+    np.testing.assert_array_equal(loaded_state, initial_state)
 
     assert len(loaded_events) == 1
     loaded_event = loaded_events[0]
@@ -65,8 +64,8 @@ def test_save_load_zero_events(tmp_path: Path) -> None:
     initial_state = np.random.default_rng(0).standard_normal(30) * 0.1
 
     save_results(output_path, build_metadata(), initial_state, [])
-    metadata, trajectory, loaded_events = load_results(output_path)
+    metadata, loaded_state, loaded_events = load_results(output_path)
 
     assert metadata.detector_type == "SSA"
-    assert trajectory.shape == (6, 30)
+    np.testing.assert_array_equal(loaded_state, initial_state)
     assert loaded_events == []

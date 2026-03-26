@@ -6,9 +6,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from ks_shadowing.core import TRAJECTORY_DT
 from ks_shadowing.core.event import ShadowingEvent
-from ks_shadowing.core.integrator import ksint
 
 _EVENT_DTYPE = np.dtype(
     [
@@ -128,10 +126,11 @@ def save_results(
 
 
 def load_results(path: Path) -> tuple[DetectionMetadata, np.ndarray, list[ShadowingEvent]]:
-    """Load metadata, trajectory, and events from an ``.h5`` file.
+    """Load metadata, initial state, and events from an ``.h5`` file.
 
-    The trajectory is reproduced by integrating the saved initial state
-    forward with :func:`~ks_shadowing.core.integrator.ksint`.
+    Returns the initial state rather than the trajectory. Callers that need
+    the trajectory can reconstruct it via
+    :func:`~ks_shadowing.core.integrator.ksint`.
     """
     with h5py.File(path, "r") as f:
         attrs = f.attrs
@@ -174,5 +173,4 @@ def load_results(path: Path) -> tuple[DetectionMetadata, np.ndarray, list[Shadow
         )
         shifts_start = shifts_end
 
-    trajectory = ksint(initial_state, TRAJECTORY_DT, metadata.trajectory_steps)
-    return metadata, trajectory, events
+    return metadata, initial_state, events

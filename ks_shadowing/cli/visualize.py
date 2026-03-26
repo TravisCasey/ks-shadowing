@@ -11,6 +11,7 @@ from ks_shadowing.cli.plotting import _align_rpo_to_window
 from ks_shadowing.cli.results import load_results
 from ks_shadowing.core import DOMAIN_SIZE, TRAJECTORY_DT
 from ks_shadowing.core.event import ShadowingEvent
+from ks_shadowing.core.integrator import ksint
 from ks_shadowing.core.transforms import interleaved_to_complex, to_physical
 
 DEFAULT_OUTPUT = Path("plots/shadowing_visualization.png")
@@ -125,7 +126,8 @@ def main() -> None:
     arguments = parser.parse_args()
 
     print(f"Loading results from {arguments.input}...")
-    metadata, trajectory, events = load_results(arguments.input)
+    metadata, initial_state, events = load_results(arguments.input)
+    trajectory = ksint(initial_state, TRAJECTORY_DT, metadata.trajectory_steps)
 
     if not events:
         print("No events found in this file.")

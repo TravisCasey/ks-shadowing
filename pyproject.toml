@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 ks-detect = "ks_shadowing.cli.detect:main"
 ks-histogram = "ks_shadowing.cli.histogram:main"
+ks-match = "ks_shadowing.cli.match:main"
 ks-visualize = "ks_shadowing.cli.visualize:main"
 
 [build-system]
