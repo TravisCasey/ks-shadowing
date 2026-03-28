@@ -14,10 +14,10 @@ import numpy as np
 from numpy.typing import NDArray
 from tqdm import tqdm
 
+from ks_shadowing.core import DEFAULT_CHUNK_SIZE
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.parallel import _resolve_n_jobs
 from ks_shadowing.core.rpo import RPO
-from ks_shadowing.core.transforms import interleaved_to_physical
 from ks_shadowing.pha.pathfinding import _extract_shadowing_events_2d
 from ks_shadowing.pha.persistence import (
     _apply_delay_embedding,
@@ -122,6 +122,10 @@ class PHADetector:
         Spatial resolution for physical-space representation.
     delay : int
         Time-delay embedding window size.
+    chunk_size : int, optional
+        Number of trajectory timesteps to convert to physical space at once
+        for persistence diagram computation. Controls peak memory usage.
+        Default is :data:`~ks_shadowing.core.DEFAULT_CHUNK_SIZE`.
     """
 
     def __init__(
@@ -130,10 +134,12 @@ class PHADetector:
         dt: float,
         resolution: int,
         delay: int,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
     ):
         self.dt = dt
         self.resolution = resolution
         self.delay = delay
+        self.chunk_size = chunk_size
         self.rpos = list(rpos)
         self.rpo_data = [_RPOPersistence.from_rpo(rpo, resolution) for rpo in rpos]
 
@@ -166,8 +172,9 @@ class PHADetector:
         list[ShadowingEvent]
             Events sorted by ``(start_timestep, rpo_index)``.
         """
-        trajectory_physical = interleaved_to_physical(trajectory_fourier, self.resolution)
-        traj_diagrams = _compute_trajectory_diagrams(trajectory_physical)
+        traj_diagrams = _compute_trajectory_diagrams(
+            trajectory_fourier, self.resolution, chunk_size=self.chunk_size
+        )
 
         n_workers = _resolve_n_jobs(n_jobs)
 
@@ -335,8 +342,9 @@ class PHADetector:
         NDArray[np.float64], shape (num_timesteps,)
             Minimum Wasserstein distance to any RPO at each timestep.
         """
-        trajectory_physical = interleaved_to_physical(trajectory_fourier, self.resolution)
-        traj_diagrams = _compute_trajectory_diagrams(trajectory_physical)
+        traj_diagrams = _compute_trajectory_diagrams(
+            trajectory_fourier, self.resolution, chunk_size=self.chunk_size
+        )
         n_workers = _resolve_n_jobs(n_jobs)
 
         if n_workers == 1:

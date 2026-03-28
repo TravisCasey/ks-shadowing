@@ -86,6 +86,7 @@ def interleaved_to_physical(
 def to_comoving_frame(
     trajectory: NDArray[np.float64],
     drift_per_step: float,
+    start_step: int = 0,
 ) -> NDArray[np.float64]:
     """Transform trajectory to a co-moving reference frame.
 
@@ -99,6 +100,10 @@ def to_comoving_frame(
         Physical-space trajectory.
     drift_per_step : float
         Spatial drift rate in grid cells per timestep.
+    start_step : int, optional
+        Absolute timestep index of the first row in ``trajectory``. The phase
+        shift applied to row ``i`` is based on timestep ``start_step + i``.
+        Default is 0, which recovers the original behavior.
 
     Returns
     -------
@@ -117,7 +122,7 @@ def to_comoving_frame(
     # Fourier shift theorem: to shift by d grid cells to the left (i.e., f(x) -> f(x+d)),
     # multiply in Fourier space by exp(2pi*i*k*d/N).
     # At timestep i, we shift left by drift_per_step * i to undo rightward drift.
-    timesteps = np.arange(step_count)[:, np.newaxis]
+    timesteps = np.arange(start_step, start_step + step_count)[:, np.newaxis]
     phase_shift = np.exp(2j * np.pi * wavenumbers * drift_per_step * timesteps / resolution)
 
     # Apply phase shift and transform back

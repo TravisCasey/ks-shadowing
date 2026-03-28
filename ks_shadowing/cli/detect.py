@@ -8,7 +8,7 @@ import numpy as np
 
 from ks_shadowing import PHADetector, SSADetector, load_all_rpos
 from ks_shadowing.cli.results import DetectionMetadata, save_results
-from ks_shadowing.core import TRAJECTORY_DT
+from ks_shadowing.core import DEFAULT_CHUNK_SIZE, TRAJECTORY_DT
 from ks_shadowing.core.integrator import ksint
 
 DEFAULT_INITIAL_AMPLITUDE = 0.1
@@ -41,6 +41,7 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--min-duration", type=int, default=DEFAULT_MIN_DURATION)
     parser.add_argument("--delay", type=int, default=DEFAULT_DELAY)
 
+    parser.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument("--n-jobs", type=int, default=DEFAULT_N_JOBS)
     parser.add_argument("--show-progress", action="store_true", default=False)
     return parser
@@ -69,13 +70,16 @@ def main() -> None:
     )
 
     if method == "ssa":
-        detector = SSADetector(rpos, TRAJECTORY_DT, resolution=arguments.resolution)
+        detector = SSADetector(
+            rpos, TRAJECTORY_DT, resolution=arguments.resolution, chunk_size=arguments.chunk_size
+        )
     else:
         detector = PHADetector(
             rpos,
             TRAJECTORY_DT,
             resolution=arguments.resolution,
             delay=arguments.delay,
+            chunk_size=arguments.chunk_size,
         )
 
     print(f"Detecting events with {method.upper()}...")

@@ -74,13 +74,27 @@ class TestComputePersistenceDiagram:
 class TestComputeTrajectoryDiagrams:
     def test_returns_valid_diagrams(self):
         """Returns one valid diagram per timestep."""
-        trajectory = np.random.default_rng(42).standard_normal((10, 32))
-        diagrams = _compute_trajectory_diagrams(trajectory)
+        trajectory_fourier = np.random.default_rng(42).standard_normal((10, 30))
+        diagrams = _compute_trajectory_diagrams(trajectory_fourier, resolution=32)
 
         assert len(diagrams) == 10
         for diagram in diagrams:
             assert diagram.ndim == 2
             assert diagram.shape[1] == 2
+
+
+class TestChunkedTrajectoryDiagrams:
+    def test_chunked_matches_unchunked(self):
+        """Chunked diagram computation produces identical diagrams."""
+        trajectory = np.random.default_rng(42).standard_normal((50, 30))
+        resolution = 32
+
+        diagrams_default = _compute_trajectory_diagrams(trajectory, resolution)
+        diagrams_chunked = _compute_trajectory_diagrams(trajectory, resolution, chunk_size=10)
+
+        assert len(diagrams_default) == len(diagrams_chunked)
+        for d1, d2 in zip(diagrams_default, diagrams_chunked, strict=True):
+            np.testing.assert_allclose(d1, d2)
 
 
 class TestApplyDelayEmbedding:

@@ -14,7 +14,7 @@ from numpy.typing import NDArray
 from scipy import fft
 from tqdm import tqdm
 
-from ks_shadowing.core import DOMAIN_SIZE
+from ks_shadowing.core import DEFAULT_CHUNK_SIZE, DOMAIN_SIZE
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.parallel import _resolve_n_jobs
 from ks_shadowing.core.rpo import RPO
@@ -28,9 +28,9 @@ from ks_shadowing.ssa.rpo import _RPOStateSpace
 
 
 def _tqdm_wrap_generator(
-    generator: Iterator[tuple[int, NDArray[np.float64]]],
+    generator: Iterator[tuple[int, int, NDArray[np.float64]]],
     progress: tqdm,
-) -> Iterator[tuple[int, NDArray[np.float64]]]:
+) -> Iterator[tuple[int, int, NDArray[np.float64]]]:
     """Wrap a phase generator to update a shared tqdm progress bar."""
     for item in generator:
         progress.update(1)
@@ -40,15 +40,30 @@ def _tqdm_wrap_generator(
 def _compute_distances_sq(
     trajectory_physical: NDArray[np.float64],
     rpo_data: _RPOStateSpace,
-) -> Iterator[tuple[int, NDArray[np.float64]]]:
-    """Yield squared distance arrays for each phase offset using co-moving frame.
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+) -> Iterator[tuple[int, int, NDArray[np.float64]]]:
+    r"""Yield squared distance arrays for each phase offset using co-moving frame.
 
     Both trajectory and RPO are transformed to the RPO's co-moving frame where
-    the RPO becomes truly periodic. Yields `(phase, dist_sq)` tuples where
-    `dist_sq` has shape `(num_timesteps, resolution)`.
+    the RPO becomes truly periodic. The trajectory is processed in chunks of
+    ``chunk_size`` rows to limit peak memory usage.
 
-    Uses FFT cross-correlation to compute distances to all shifts in O(N log N).
-    Squared distances are returned to allow thresholding without sqrt overhead.
+    Yields ``(phase, chunk_start, dist_sq_chunk)`` tuples where
+    ``dist_sq_chunk`` has shape ``(chunk_len, resolution)``.
+
+    Uses FFT cross-correlation to compute distances to all shifts in
+    :math:`O(N \log N)`. Squared distances are returned to allow thresholding
+    without sqrt overhead.
+
+    Parameters
+    ----------
+    trajectory_physical : NDArray[np.float64], shape (num_timesteps, resolution)
+        Trajectory in physical space.
+    rpo_data : _RPOStateSpace
+        Precomputed RPO trajectory in state space.
+    chunk_size : int, optional
+        Maximum number of trajectory timesteps per chunk. Default is
+        ``DEFAULT_CHUNK_SIZE``.
     """
     num_timesteps = trajectory_physical.shape[0]
     period = rpo_data.time_steps
@@ -57,27 +72,44 @@ def _compute_distances_sq(
     # Drift rate in grid cells per timestep
     drift_per_step = (rpo_data.spatial_shift / DOMAIN_SIZE) * resolution / period
 
-    # Transform both to co-moving frame
-    trajectory_comoving = to_comoving_frame(trajectory_physical, drift_per_step)
+    # Transform RPO to co-moving frame once (small, period rows)
     rpo_comoving = to_comoving_frame(rpo_data.trajectory, drift_per_step)
 
-    # Tile RPO to cover trajectory length plus phase offsets
-    rpo_tiled = _tile_periodic(rpo_comoving, num_timesteps + period - 1)
+    # Process trajectory in chunks
+    for chunk_start in range(0, num_timesteps, chunk_size):
+        chunk_len = min(chunk_size, num_timesteps - chunk_start)
 
-    # Precompute FFTs and squared norms
-    traj_fft = fft.rfft(trajectory_comoving, axis=-1)
-    rpo_fft = fft.rfft(rpo_tiled, axis=-1)
-    norm_traj_sq = np.sum(trajectory_comoving**2, axis=-1)
-    norm_rpo_sq = np.sum(rpo_tiled**2, axis=-1)
+        # Transform chunk to co-moving frame with correct absolute timestep offset
+        chunk_comoving = to_comoving_frame(
+            trajectory_physical[chunk_start : chunk_start + chunk_len],
+            drift_per_step,
+            start_step=chunk_start,
+        )
 
-    # Yield squared distances for each phase offset
-    for phase in range(period):
-        rpo_slice_fft = rpo_fft[phase : phase + num_timesteps]
-        rpo_slice_norm_sq = norm_rpo_sq[phase : phase + num_timesteps]
+        # Tile RPO starting at the correct period offset for this chunk.
+        # At local index j with phase p, we compare trajectory[chunk_start + j]
+        # against rpo[(p + chunk_start + j) % period]. Shifting the RPO by
+        # chunk_start % period before tiling achieves this alignment.
+        rpo_offset = chunk_start % period
+        rpo_shifted = np.roll(rpo_comoving, -rpo_offset, axis=0)
+        rpo_chunk = _tile_periodic(rpo_shifted, chunk_len + period - 1)
 
-        cross_corr = fft.irfft(np.conj(traj_fft) * rpo_slice_fft, resolution, axis=-1)
-        dist_sq = norm_traj_sq[:, np.newaxis] + rpo_slice_norm_sq[:, np.newaxis] - 2 * cross_corr
-        yield phase, np.maximum(dist_sq, 0.0)
+        # Precompute FFTs and squared norms for this chunk
+        chunk_fft = fft.rfft(chunk_comoving, axis=-1)
+        rpo_chunk_fft = fft.rfft(rpo_chunk, axis=-1)
+        norm_chunk_sq = np.sum(chunk_comoving**2, axis=-1)
+        norm_rpo_chunk_sq = np.sum(rpo_chunk**2, axis=-1)
+
+        # Yield squared distances for each phase offset
+        for phase in range(period):
+            rpo_slice_fft = rpo_chunk_fft[phase : phase + chunk_len]
+            rpo_slice_norm_sq = norm_rpo_chunk_sq[phase : phase + chunk_len]
+
+            cross_corr = fft.irfft(np.conj(chunk_fft) * rpo_slice_fft, resolution, axis=-1)
+            dist_sq = (
+                norm_chunk_sq[:, np.newaxis] + rpo_slice_norm_sq[:, np.newaxis] - 2 * cross_corr
+            )
+            yield phase, chunk_start, np.maximum(dist_sq, 0.0)
 
 
 # Module-level state for pool workers (set by initializer)
@@ -93,15 +125,15 @@ def _ssa_pool_initializer(shm_name: str, shape: tuple[int, int]) -> None:
 
 
 def _detect_single_rpo(
-    args: tuple[_RPOStateSpace, float, int],
+    args: tuple[_RPOStateSpace, float, int, int],
 ) -> list[ShadowingEvent]:
     """Worker function for parallel detection using shared trajectory."""
-    rpo_data, threshold, min_duration = args
+    rpo_data, threshold, min_duration, chunk_size = args
     shm = SharedMemory(name=_shared_traj_shm_name)
     try:
         trajectory_physical = np.ndarray(_shared_traj_shape, dtype=np.float64, buffer=shm.buf)
         return _extract_shadowing_events_3d(
-            _compute_distances_sq(trajectory_physical, rpo_data),
+            _compute_distances_sq(trajectory_physical, rpo_data, chunk_size),
             rpo_data,
             threshold,
             min_duration,
@@ -110,15 +142,25 @@ def _detect_single_rpo(
         shm.close()
 
 
-def _min_dist_single_rpo(rpo_data: _RPOStateSpace) -> NDArray[np.float64]:
+def _min_dist_single_rpo(
+    args: tuple[_RPOStateSpace, int],
+) -> NDArray[np.float64]:
     """Worker function for parallel min distance using shared trajectory."""
+    rpo_data, chunk_size = args
     shm = SharedMemory(name=_shared_traj_shm_name)
     try:
         trajectory_physical = np.ndarray(_shared_traj_shape, dtype=np.float64, buffer=shm.buf)
         min_dists_sq = np.full(trajectory_physical.shape[0], np.inf, dtype=np.float64)
-        for _, dist_sq in _compute_distances_sq(trajectory_physical, rpo_data):
+        for _, chunk_start, dist_sq in _compute_distances_sq(
+            trajectory_physical, rpo_data, chunk_size
+        ):
+            chunk_end = chunk_start + dist_sq.shape[0]
             phase_min_sq = np.min(dist_sq, axis=1)
-            np.minimum(min_dists_sq, phase_min_sq, out=min_dists_sq)
+            np.minimum(
+                min_dists_sq[chunk_start:chunk_end],
+                phase_min_sq,
+                out=min_dists_sq[chunk_start:chunk_end],
+            )
         return np.sqrt(min_dists_sq)
     finally:
         shm.close()
@@ -165,6 +207,10 @@ class SSADetector:
         Timestep of trajectories that will be analyzed.
     resolution : int
         Spatial resolution for physical-space representation.
+    chunk_size : int, optional
+        Maximum number of trajectory timesteps to process at once in the
+        distance computation. Controls peak memory usage. Default is
+        ``DEFAULT_CHUNK_SIZE``.
     """
 
     def __init__(
@@ -172,9 +218,11 @@ class SSADetector:
         rpos: Sequence[RPO],
         dt: float,
         resolution: int,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
     ):
         self.dt = dt
         self.resolution = resolution
+        self.chunk_size = chunk_size
         self.rpos = list(rpos)
         self.rpo_data = [_RPOStateSpace.from_rpo(rpo, resolution) for rpo in rpos]
 
@@ -237,7 +285,7 @@ class SSADetector:
         )
 
         for rpo_data in self.rpo_data:
-            generator = _compute_distances_sq(trajectory_physical, rpo_data)
+            generator = _compute_distances_sq(trajectory_physical, rpo_data, self.chunk_size)
             if progress is not None:
                 generator = _tqdm_wrap_generator(generator, progress)
 
@@ -262,7 +310,9 @@ class SSADetector:
             view = np.ndarray(trajectory_physical.shape, dtype=np.float64, buffer=shm.buf)
             view[:] = trajectory_physical
 
-            tasks = [(rpo_data, threshold, min_duration) for rpo_data in self.rpo_data]
+            tasks = [
+                (rpo_data, threshold, min_duration, self.chunk_size) for rpo_data in self.rpo_data
+            ]
 
             with Pool(
                 n_workers,
@@ -328,9 +378,16 @@ class SSADetector:
         )
 
         for rpo_data in self.rpo_data:
-            for _, dist_sq in _compute_distances_sq(trajectory_physical, rpo_data):
+            for _, chunk_start, dist_sq in _compute_distances_sq(
+                trajectory_physical, rpo_data, self.chunk_size
+            ):
+                chunk_end = chunk_start + dist_sq.shape[0]
                 phase_min_sq = np.min(dist_sq, axis=1)
-                np.minimum(min_dists_sq, phase_min_sq, out=min_dists_sq)
+                np.minimum(
+                    min_dists_sq[chunk_start:chunk_end],
+                    phase_min_sq,
+                    out=min_dists_sq[chunk_start:chunk_end],
+                )
                 if progress is not None:
                     progress.update(1)
 
@@ -355,7 +412,8 @@ class SSADetector:
                 initializer=_ssa_pool_initializer,
                 initargs=(shm.name, trajectory_physical.shape),
             ) as pool:
-                results = pool.imap_unordered(_min_dist_single_rpo, self.rpo_data)
+                tasks = [(rpo_data, self.chunk_size) for rpo_data in self.rpo_data]
+                results = pool.imap_unordered(_min_dist_single_rpo, tasks)
                 if show_progress:
                     results = tqdm(
                         results,

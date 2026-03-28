@@ -89,14 +89,23 @@ def _compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float
 
 
 def _compute_trajectory_diagrams(
-    trajectory_physical: NDArray[np.float64],
+    trajectory_fourier: NDArray[np.float64],
+    resolution: int,
+    chunk_size: int | None = None,
 ) -> list[NDArray[np.float64]]:
     """Compute persistence diagrams for each timestep of a trajectory.
 
+    Converts from Fourier to physical space in chunks to limit peak memory.
+
     Parameters
     ----------
-    trajectory_physical : NDArray[np.float64], shape (num_timesteps, resolution)
-        Trajectory in physical space.
+    trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
+        Trajectory in interleaved Fourier format.
+    resolution : int
+        Spatial resolution for physical-space conversion.
+    chunk_size : int or None, optional
+        Number of timesteps to convert to physical space at once.
+        If ``None``, convert all at once.
 
     Returns
     -------
@@ -104,7 +113,18 @@ def _compute_trajectory_diagrams(
         One persistence diagram per timestep. Each diagram has shape
         ``(n_points, 2)`` with ``(birth, death)`` pairs.
     """
-    return [_compute_persistence_diagram(field) for field in trajectory_physical]
+    num_timesteps = trajectory_fourier.shape[0]
+    if chunk_size is None:
+        chunk_size = num_timesteps
+
+    diagrams: list[NDArray[np.float64]] = []
+    for start in range(0, num_timesteps, chunk_size):
+        chunk_physical = interleaved_to_physical(
+            trajectory_fourier[start : start + chunk_size], resolution
+        )
+        diagrams.extend(_compute_persistence_diagram(field) for field in chunk_physical)
+
+    return diagrams
 
 
 def _apply_delay_embedding(
@@ -195,8 +215,7 @@ class _RPOPersistence:
         """
         rpo_dt = rpo.period / rpo.time_steps
         fourier_trajectory = ksint(rpo.fourier_coeffs, rpo_dt, rpo.time_steps)[:-1]
-        physical_trajectory = interleaved_to_physical(fourier_trajectory, resolution)
-        diagrams = _compute_trajectory_diagrams(physical_trajectory)
+        diagrams = _compute_trajectory_diagrams(fourier_trajectory, resolution)
         return cls(rpo=rpo, diagrams=diagrams)
 
     @property

@@ -80,10 +80,11 @@ class TestComputeDistancesSq:
         rpo_physical = make_rpo_physical_trajectory(rpo, resolution)
         rpo_data = _RPOStateSpace(rpo=rpo, trajectory=rpo_physical)
 
-        phases = list(_compute_distances_sq(rpo_physical[:5], rpo_data))
+        results = list(_compute_distances_sq(rpo_physical[:5], rpo_data))
 
-        assert len(phases) == rpo_data.time_steps
-        for _, dist_sq in phases:
+        assert len(results) == rpo_data.time_steps
+        for _, chunk_start, dist_sq in results:
+            assert chunk_start == 0
             assert dist_sq.shape == (5, resolution)
 
     def test_self_distance_near_zero(self, rpo_data_path: Path):
@@ -93,8 +94,29 @@ class TestComputeDistancesSq:
         rpo_physical = make_rpo_physical_trajectory(rpo, resolution)
         rpo_data = _RPOStateSpace(rpo=rpo, trajectory=rpo_physical)
 
-        phase, dist_sq = next(_compute_distances_sq(rpo_physical[:10], rpo_data))
+        phase, chunk_start, dist_sq = next(_compute_distances_sq(rpo_physical[:10], rpo_data))
         assert phase == 0
+        assert chunk_start == 0
 
         for timestep in range(10):
             assert dist_sq[timestep, 0] < 1e-10
+
+
+class TestChunkedComputation:
+    def test_chunked_matches_unchunked(self, rpo_data_path: Path):
+        """Chunked detection produces identical events to unchunked."""
+        rpo = RPO.load(rpo_data_path, 0)
+        dt = rpo.period / rpo.time_steps
+        detector_default = SSADetector([rpo], dt, resolution=32)
+        detector_chunked = SSADetector([rpo], dt, resolution=32, chunk_size=100)
+
+        trajectory = ksint(rpo.fourier_coeffs, dt, rpo.time_steps * 2)
+        events_default = detector_default.detect(trajectory, threshold=0.5, min_duration=1)
+        events_chunked = detector_chunked.detect(trajectory, threshold=0.5, min_duration=1)
+
+        assert len(events_default) == len(events_chunked)
+        for e1, e2 in zip(events_default, events_chunked, strict=True):
+            assert e1.start_timestep == e2.start_timestep
+            assert e1.end_timestep == e2.end_timestep
+            assert e1.rpo_index == e2.rpo_index
+            np.testing.assert_allclose(e1.shifts, e2.shifts)

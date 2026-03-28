@@ -174,20 +174,21 @@ class _ComponentPathFinder3D:
 
 
 def _collect_close_passes_3d(
-    dist_sq_generator: Iterator[tuple[int, NDArray[np.float64]]],
+    dist_sq_generator: Iterator[tuple[int, int, NDArray[np.float64]]],
     threshold: float,
 ) -> NDArray:
     """Collect all entries below threshold from a squared distance generator.
 
-    The generator yields `(phase, dist_sq)` tuples where `dist_sq` has shape
-    `(num_timesteps, resolution)` containing squared distances.
+    The generator yields ``(phase, chunk_start, dist_sq)`` tuples where
+    ``dist_sq`` has shape ``(chunk_len, resolution)`` containing squared
+    distances.
 
-    Returns a structured array with dtype `_CLOSE_PASS_DTYPE_3D`.
+    Returns a structured array with dtype ``_CLOSE_PASS_DTYPE_3D``.
     """
     threshold_sq = threshold * threshold
     chunks: list[NDArray] = []
 
-    for phase, dist_sq in dist_sq_generator:
+    for phase, chunk_start, dist_sq in dist_sq_generator:
         # Find entries below threshold (compare squared values)
         step_index, shift_index = np.asarray(dist_sq < threshold_sq).nonzero()
         step_count = len(step_index)
@@ -195,7 +196,7 @@ def _collect_close_passes_3d(
             continue
 
         chunk: NDArray = np.empty(step_count, dtype=_CLOSE_PASS_DTYPE_3D)
-        chunk["timestep"] = step_index
+        chunk["timestep"] = step_index + chunk_start
         chunk["phase"] = phase
         chunk["shift"] = shift_index
         chunk["distance"] = np.sqrt(dist_sq[step_index, shift_index])
@@ -320,7 +321,7 @@ def _find_connected_components_3d(  # noqa: PLR0912
 
 
 def _extract_shadowing_events_3d(
-    dist_sq_generator: Iterator[tuple[int, NDArray[np.float64]]],
+    dist_sq_generator: Iterator[tuple[int, int, NDArray[np.float64]]],
     rpo_data: _RPOStateSpace,
     threshold: float,
     min_duration: int = 1,
@@ -335,9 +336,9 @@ def _extract_shadowing_events_3d(
 
     Parameters
     ----------
-    dist_sq_generator : Iterator[tuple[int, NDArray[np.float64]]]
-        Yields ``(phase, dist_sq)`` tuples where ``dist_sq`` has shape
-        ``(num_timesteps, resolution)`` containing squared :math:`L_2`
+    dist_sq_generator : Iterator[tuple[int, int, NDArray[np.float64]]]
+        Yields ``(phase, chunk_start, dist_sq)`` tuples where ``dist_sq`` has
+        shape ``(chunk_len, resolution)`` containing squared :math:`L_2`
         distances.
     rpo_data : _RPOStateSpace
         Precomputed RPO trajectory in state space.

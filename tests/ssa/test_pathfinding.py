@@ -18,11 +18,12 @@ def make_dist_sq_generator(*distance_arrays):
 
     Each array becomes one phase. Arrays contain distances (not squared);
     they are squared internally to match the expected generator format.
+    Yields ``(phase, chunk_start, dist_sq)`` tuples with ``chunk_start=0``.
     """
 
     def generator():
         for phase, distances in enumerate(distance_arrays):
-            yield phase, distances**2
+            yield phase, 0, distances**2
 
     return generator
 
@@ -56,8 +57,8 @@ class TestCollectClosePasses3D:
         phase1_sq = np.array([[1.0, 0.64, 1.44, 0.16], [4.0, 4.0, 4.0, 4.0], [4.0, 4.0, 4.0, 4.0]])
 
         def gen():
-            yield 0, phase0_sq
-            yield 1, phase1_sq
+            yield 0, 0, phase0_sq
+            yield 1, 0, phase1_sq
 
         passes = _collect_close_passes_3d(gen(), threshold=1.0)
         assert len(passes) == 5
@@ -67,7 +68,7 @@ class TestCollectClosePasses3D:
         """Returns empty array when no entries below threshold."""
 
         def gen():
-            yield 0, np.full((2, 4), 100.0)  # All squared distances > 1.0^2
+            yield 0, 0, np.full((2, 4), 100.0)  # All squared distances > 1.0^2
 
         passes = _collect_close_passes_3d(gen(), threshold=1.0)
         assert len(passes) == 0
