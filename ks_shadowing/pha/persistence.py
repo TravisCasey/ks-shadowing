@@ -1,11 +1,8 @@
-"""Persistence diagram computation with `GUDHI <https://gudhi.inria.fr/>`_ for
-PHA shadowing detection.
-"""
+"""Persistence diagram computation for PHA shadowing detection."""
 
 from dataclasses import dataclass
 from typing import Self
 
-import gudhi
 import numpy as np
 from numpy.typing import NDArray
 
@@ -15,12 +12,17 @@ from ks_shadowing.core.transforms import interleaved_to_physical
 
 
 def _compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Compute sublevel-set persistence diagram for a 1D periodic field.
+    r"""Compute sublevel-set persistence diagram for a 1D periodic field.
 
-    Uses GUDHI's periodic cubical complex for persistence on 1D periodic
-    domains. The persistence diagram captures the birth and death of connected
-    components in the sublevel sets as the threshold increases. This
-    representation is invariant to spatial translations.
+    Computes :math:`H_0` sublevel-set persistence on a circle (1D periodic
+    domain). Entires are processed in order of increasing field value; connected
+    components are tracked with union-find to record birth-death pairs when two
+    distinct components merge.
+
+    Each local minimum of the discrete field births a connected component in the
+    sublevel set :math:`\{x : f(x) \le t\}`. When two components merge (at an
+    entry between two distinct minima), the younger component (higher birth
+    value) dies. The resulting diagram is invariant to spatial translations.
 
     Parameters
     ----------
@@ -30,20 +32,60 @@ def _compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float
     Returns
     -------
     NDArray[np.float64], shape (n_points, 2)
-        Persistence pairs ``(birth, death)``. Points with infinite death are
-        excluded (the single essential class).
+        Persistence pairs ``(birth, death)`` with ``birth < death``. The single
+        essential class (infinite death) is excluded.
     """
-    cubical_complex = gudhi.PeriodicCubicalComplex(  # ty: ignore[unresolved-attribute]
-        top_dimensional_cells=field,
-        periodic_dimensions=[True],
-    )
+    if field.size == 0:
+        return np.empty((0, 2), dtype=np.float64)
 
-    cubical_complex.compute_persistence()
+    ordered = np.argsort(field, kind="stable")
 
-    persistence_pairs = cubical_complex.persistence_intervals_in_dimension(0)
-    finite_pairs = persistence_pairs[np.isfinite(persistence_pairs[:, 1])]
+    # Union-find data
+    parent = list(range(field.size))
+    comp_birth = list(field)
+    active = [False] * field.size
+    pairs: list[tuple[float, float]] = []
 
-    return finite_pairs.astype(np.float64)
+    def _find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]  # path halving
+            x = parent[x]
+        return x
+
+    for entry in ordered:
+        active[entry] = True
+
+        left = (entry - 1) % field.size
+        right = (entry + 1) % field.size
+
+        neighbor_roots: list[int] = []
+        if active[left]:
+            neighbor_roots.append(_find(left))
+        if active[right]:
+            root_right = _find(right)
+            if not neighbor_roots or root_right != neighbor_roots[0]:
+                neighbor_roots.append(root_right)
+
+        if not neighbor_roots:
+            pass  # new component; birth already in comp_birth[vertex]
+        elif len(neighbor_roots) == 1:
+            parent[entry] = neighbor_roots[0]
+        else:
+            root_a, root_b = neighbor_roots
+            # Elder rule: component with lower birth survives
+            if comp_birth[root_a] > comp_birth[root_b]:
+                root_a, root_b = root_b, root_a
+            # root_a is elder, root_b is younger and dies
+            death = float(field[entry])
+            if comp_birth[root_b] < death:
+                pairs.append((comp_birth[root_b], death))
+            # Merge: younger and vertex attach to elder
+            parent[root_b] = root_a
+            parent[entry] = root_a
+
+    if not pairs:
+        return np.empty((0, 2), dtype=np.float64)
+    return np.array(pairs, dtype=np.float64)
 
 
 def _compute_trajectory_diagrams(

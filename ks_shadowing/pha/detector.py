@@ -1,10 +1,9 @@
-"""Persistent Homology Approach (PHAA) shadowing detector.
+"""Persistent Homology Approach (PHA) shadowing detector.
 
 Detects shadowing by computing Wasserstein distances between trajectory
-snapshots and RPO phases in the space of persistence diagrams, using
-`GUDHI <https://gudhi.inria.fr/>`_ for efficient computation of persistence
-diagrams and a custom `Hera <https://github.com/anigmetov/hera>`_ harness for
-batched Wasserstein computations.
+snapshots and RPO phases in the space of persistence diagrams, using a custom
+`Hera <https://github.com/anigmetov/hera>`_ harness for batched Wasserstein
+computations.
 """
 
 from collections.abc import Sequence
@@ -73,7 +72,7 @@ class PHADetector:
     The detection pipeline operates as follows:
 
     1. Convert trajectory and RPO to physical space and compute sublevel-set
-       persistence diagrams (GUDHI periodic cubical complex) for each timestep.
+       persistence diagrams for each timestep.
     2. Compute the full Wasserstein distance matrix between trajectory and RPO
        diagrams using the Hera C++ batch API.
     3. Apply time-delay embedding: sum :math:`w` consecutive diagonal entries

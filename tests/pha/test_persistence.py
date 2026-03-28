@@ -49,6 +49,27 @@ class TestComputePersistenceDiagram:
             sorted2 = diagram2[np.lexsort((diagram2[:, 1], diagram2[:, 0]))]
             np.testing.assert_allclose(sorted1, sorted2, rtol=1e-10)
 
+    def test_two_minima_one_pair(self):
+        """A field with exactly two local minima produces one persistence pair."""
+        x = np.linspace(0, 2 * np.pi, 64, endpoint=False)
+        field = np.cos(2 * x)  # two minima, two maxima
+
+        diagram = _compute_persistence_diagram(field)
+
+        assert diagram.shape == (1, 2)
+        np.testing.assert_allclose(diagram[0, 0], -1.0, atol=1e-6)
+        np.testing.assert_allclose(diagram[0, 1], 1.0, atol=1e-6)
+
+    def test_pair_count_matches_local_minima(self):
+        """Number of pairs equals number of local minima minus one."""
+        x = np.linspace(0, 2 * np.pi, 128, endpoint=False)
+        # 5 local minima
+        field = np.sin(5 * x)
+
+        diagram = _compute_persistence_diagram(field)
+
+        assert len(diagram) == 4
+
 
 class TestComputeTrajectoryDiagrams:
     def test_returns_valid_diagrams(self):
