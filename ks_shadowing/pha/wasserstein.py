@@ -113,16 +113,22 @@ def _wasserstein_matrix(
 
 
 def _wasserstein_column(
-    traj_diagrams: list[NDArray[np.float64]],
+    traj_points: NDArray[np.float64],
+    traj_offsets: NDArray[np.int64],
+    num_traj: int,
     rpo_diagram: NDArray[np.float64],
     delta: float = 0.01,
 ) -> NDArray[np.float64]:
-    r"""Compute Wasserstein distances from all trajectory diagrams to one RPO diagram.
+    r"""Compute Wasserstein distances from pre-flattened trajectory diagrams to one RPO diagram.
 
     Parameters
     ----------
-    traj_diagrams : list[NDArray[np.float64]]
-        List of ``I`` trajectory persistence diagrams.
+    traj_points : NDArray[np.float64], shape (total_points, 2)
+        Concatenated persistence points from all trajectory diagrams.
+    traj_offsets : NDArray[np.int64], shape (num_traj + 1,)
+        Cumulative offsets into ``traj_points`` for each diagram.
+    num_traj : int
+        Number of trajectory diagrams.
     rpo_diagram : NDArray[np.float64], shape (n_points, 2)
         Single RPO persistence diagram.
     delta : float, optional
@@ -130,7 +136,29 @@ def _wasserstein_column(
 
     Returns
     -------
-    NDArray[np.float64], shape (I,)
+    NDArray[np.float64], shape (num_traj,)
         Wasserstein distance from each trajectory diagram to the RPO diagram.
     """
-    return _wasserstein_matrix(traj_diagrams, [rpo_diagram], delta)[:, 0]
+    if num_traj == 0:
+        return np.empty(0, dtype=np.float64)
+
+    lib = _get_lib()
+
+    rpo_points, rpo_offsets = _flatten_diagrams([rpo_diagram])
+    out = np.empty((num_traj, 1), dtype=np.float64)
+
+    traj_ptr = traj_points.ctypes.data_as(POINTER(c_double)) if traj_points.size > 0 else None
+    rpo_ptr = rpo_points.ctypes.data_as(POINTER(c_double)) if rpo_points.size > 0 else None
+
+    lib.wasserstein_matrix_c(
+        traj_ptr,
+        traj_offsets.ctypes.data_as(POINTER(c_int64)),
+        c_int64(num_traj),
+        rpo_ptr,
+        rpo_offsets.ctypes.data_as(POINTER(c_int64)),
+        c_int64(1),
+        c_double(delta),
+        out.ctypes.data_as(POINTER(c_double)),
+    )
+
+    return out[:, 0]

@@ -6,8 +6,8 @@ optimize over spatial shifts.
 """
 
 from collections.abc import Iterator, Sequence
-from functools import partial
 from multiprocessing import Pool
+from multiprocessing.shared_memory import SharedMemory
 
 import numpy as np
 from numpy.typing import NDArray
@@ -80,32 +80,48 @@ def _compute_distances_sq(
         yield phase, np.maximum(dist_sq, 0.0)
 
 
+# Module-level state for pool workers (set by initializer)
+_shared_traj_shm_name: str | None = None
+_shared_traj_shape: tuple[int, int] = (0, 0)
+
+
+def _ssa_pool_initializer(shm_name: str, shape: tuple[int, int]) -> None:
+    """Store shared memory metadata for trajectory array."""
+    global _shared_traj_shm_name, _shared_traj_shape  # noqa: PLW0603
+    _shared_traj_shm_name = shm_name
+    _shared_traj_shape = shape
+
+
 def _detect_single_rpo(
-    rpo_data: _RPOStateSpace,
-    trajectory_physical: NDArray[np.float64],
-    threshold: float,
-    min_duration: int,
+    args: tuple[_RPOStateSpace, float, int],
 ) -> list[ShadowingEvent]:
-    """Worker function for parallel detection."""
-    return _extract_shadowing_events_3d(
-        _compute_distances_sq(trajectory_physical, rpo_data),
-        rpo_data,
-        threshold,
-        min_duration,
-    )
+    """Worker function for parallel detection using shared trajectory."""
+    rpo_data, threshold, min_duration = args
+    shm = SharedMemory(name=_shared_traj_shm_name)
+    try:
+        trajectory_physical = np.ndarray(_shared_traj_shape, dtype=np.float64, buffer=shm.buf)
+        return _extract_shadowing_events_3d(
+            _compute_distances_sq(trajectory_physical, rpo_data),
+            rpo_data,
+            threshold,
+            min_duration,
+        )
+    finally:
+        shm.close()
 
 
-def _min_dist_single_rpo(
-    rpo_data: _RPOStateSpace,
-    trajectory_physical: NDArray[np.float64],
-) -> NDArray[np.float64]:
-    """Worker function for parallel min distance computation."""
-    min_dists_sq = np.full(len(trajectory_physical), np.inf, dtype=np.float64)
-    for _, dist_sq in _compute_distances_sq(trajectory_physical, rpo_data):
-        # Min over shift dimension, keeping timestep dimension
-        phase_min_sq = np.min(dist_sq, axis=1)
-        np.minimum(min_dists_sq, phase_min_sq, out=min_dists_sq)
-    return np.sqrt(min_dists_sq)
+def _min_dist_single_rpo(rpo_data: _RPOStateSpace) -> NDArray[np.float64]:
+    """Worker function for parallel min distance using shared trajectory."""
+    shm = SharedMemory(name=_shared_traj_shm_name)
+    try:
+        trajectory_physical = np.ndarray(_shared_traj_shape, dtype=np.float64, buffer=shm.buf)
+        min_dists_sq = np.full(trajectory_physical.shape[0], np.inf, dtype=np.float64)
+        for _, dist_sq in _compute_distances_sq(trajectory_physical, rpo_data):
+            phase_min_sq = np.min(dist_sq, axis=1)
+            np.minimum(min_dists_sq, phase_min_sq, out=min_dists_sq)
+        return np.sqrt(min_dists_sq)
+    finally:
+        shm.close()
 
 
 class SSADetector:
@@ -241,22 +257,28 @@ class SSADetector:
         n_workers: int,
     ) -> list[ShadowingEvent]:
         """Run detection in parallel over RPOs."""
-        events: list[ShadowingEvent] = []
-        worker = partial(
-            _detect_single_rpo,
-            trajectory_physical=trajectory_physical,
-            threshold=threshold,
-            min_duration=min_duration,
-        )
+        shm = SharedMemory(create=True, size=max(1, trajectory_physical.nbytes))
+        try:
+            view = np.ndarray(trajectory_physical.shape, dtype=np.float64, buffer=shm.buf)
+            view[:] = trajectory_physical
 
-        with Pool(n_workers) as pool:
-            results = pool.imap_unordered(worker, self.rpo_data)
+            tasks = [(rpo_data, threshold, min_duration) for rpo_data in self.rpo_data]
 
-            if show_progress:
-                results = tqdm(results, total=len(self.rpo_data), desc="Detecting", leave=False)
+            with Pool(
+                n_workers,
+                initializer=_ssa_pool_initializer,
+                initargs=(shm.name, trajectory_physical.shape),
+            ) as pool:
+                results = pool.imap_unordered(_detect_single_rpo, tasks)
+                if show_progress:
+                    results = tqdm(results, total=len(self.rpo_data), desc="Detecting", leave=False)
 
-            for rpo_events in results:
-                events.extend(rpo_events)
+                events: list[ShadowingEvent] = []
+                for rpo_events in results:
+                    events.extend(rpo_events)
+        finally:
+            shm.close()
+            shm.unlink()
 
         return events
 
@@ -323,20 +345,31 @@ class SSADetector:
         n_workers: int,
     ) -> NDArray[np.float64]:
         """Compute min distances in parallel."""
-        min_dists = np.full(len(trajectory_physical), np.inf, dtype=np.float64)
-        worker = partial(
-            _min_dist_single_rpo,
-            trajectory_physical=trajectory_physical,
-        )
+        shm = SharedMemory(create=True, size=max(1, trajectory_physical.nbytes))
+        try:
+            view = np.ndarray(trajectory_physical.shape, dtype=np.float64, buffer=shm.buf)
+            view[:] = trajectory_physical
 
-        with Pool(n_workers) as pool:
-            results = pool.imap_unordered(worker, self.rpo_data)
+            with Pool(
+                n_workers,
+                initializer=_ssa_pool_initializer,
+                initargs=(shm.name, trajectory_physical.shape),
+            ) as pool:
+                results = pool.imap_unordered(_min_dist_single_rpo, self.rpo_data)
+                if show_progress:
+                    results = tqdm(
+                        results,
+                        total=len(self.rpo_data),
+                        desc="Min distances",
+                        leave=False,
+                    )
 
-            if show_progress:
-                results = tqdm(results, total=len(self.rpo_data), desc="Min distances", leave=False)
-
-            for rpo_min in results:
-                np.minimum(min_dists, rpo_min, out=min_dists)
+                min_dists = np.full(trajectory_physical.shape[0], np.inf, dtype=np.float64)
+                for rpo_min in results:
+                    np.minimum(min_dists, rpo_min, out=min_dists)
+        finally:
+            shm.close()
+            shm.unlink()
 
         return min_dists
 

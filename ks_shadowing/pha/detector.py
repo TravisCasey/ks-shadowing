@@ -8,6 +8,7 @@ computations.
 
 from collections.abc import Sequence
 from multiprocessing import Pool
+from multiprocessing.shared_memory import SharedMemory
 
 import numpy as np
 from numpy.typing import NDArray
@@ -24,22 +25,34 @@ from ks_shadowing.pha.persistence import (
     _RPOPersistence,
 )
 from ks_shadowing.pha.shifts import _compute_event_shifts
-from ks_shadowing.pha.wasserstein import _wasserstein_column
+from ks_shadowing.pha.wasserstein import _flatten_diagrams, _wasserstein_column
 
-# Module-level globals for pool initializer (set once per worker process)
-_shared_traj_diagrams: list[NDArray[np.float64]] | None = None
+# Module-level state for pool workers (set by initializer)
+_shared_points_shm_name: str | None = None
+_shared_offsets_shm_name: str | None = None
+_shared_num_traj: int = 0
+_shared_points_shape: tuple[int, int] = (0, 2)
 
 
-def _pha_pool_initializer(traj_diagrams: list[NDArray[np.float64]]) -> None:
-    """Store trajectory diagrams in worker process memory."""
-    global _shared_traj_diagrams  # noqa: PLW0603
-    _shared_traj_diagrams = traj_diagrams
+def _pha_pool_initializer(
+    points_shm_name: str,
+    offsets_shm_name: str,
+    num_traj: int,
+    points_shape: tuple[int, int],
+) -> None:
+    """Attach to shared memory containing pre-flattened trajectory diagrams."""
+    global _shared_points_shm_name, _shared_offsets_shm_name  # noqa: PLW0603
+    global _shared_num_traj, _shared_points_shape  # noqa: PLW0603
+    _shared_points_shm_name = points_shm_name
+    _shared_offsets_shm_name = offsets_shm_name
+    _shared_num_traj = num_traj
+    _shared_points_shape = points_shape
 
 
 def _compute_single_column(
     args: tuple[int, int, NDArray[np.float64]],
 ) -> tuple[int, int, NDArray[np.float64]]:
-    """Compute one Wasserstein column: all trajectory diagrams vs one RPO diagram.
+    """Compute one Wasserstein column using shared pre-flattened trajectory data.
 
     Parameters
     ----------
@@ -54,8 +67,18 @@ def _compute_single_column(
         ``(I,)``.
     """
     rpo_list_index, phase_index, rpo_diagram = args
-    assert _shared_traj_diagrams is not None
-    column = _wasserstein_column(_shared_traj_diagrams, rpo_diagram)
+
+    points_shm = SharedMemory(name=_shared_points_shm_name)
+    offsets_shm = SharedMemory(name=_shared_offsets_shm_name)
+    try:
+        traj_points = np.ndarray(_shared_points_shape, dtype=np.float64, buffer=points_shm.buf)
+        traj_offsets = np.ndarray((_shared_num_traj + 1,), dtype=np.int64, buffer=offsets_shm.buf)
+
+        column = _wasserstein_column(traj_points, traj_offsets, _shared_num_traj, rpo_diagram)
+    finally:
+        points_shm.close()
+        offsets_shm.close()
+
     return rpo_list_index, phase_index, column
 
 
@@ -177,6 +200,8 @@ class PHADetector:
         show_progress: bool,
     ) -> list[ShadowingEvent]:
         """Run detection sequentially, one Wasserstein column at a time."""
+        traj_points, traj_offsets = _flatten_diagrams(traj_diagrams)
+        num_traj = len(traj_diagrams)
         events: list[ShadowingEvent] = []
         total_phases = sum(len(rd.diagrams) for rd in self.rpo_data)
 
@@ -201,7 +226,7 @@ class PHADetector:
                 columns = []
                 current_rpo = rpo_data
 
-            columns.append(_wasserstein_column(traj_diagrams, diagram))
+            columns.append(_wasserstein_column(traj_points, traj_offsets, num_traj, diagram))
 
         # Process last RPO
         if current_rpo is not None and columns:
@@ -222,23 +247,48 @@ class PHADetector:
         n_workers: int,
     ) -> list[ShadowingEvent]:
         """Run detection in parallel, one Wasserstein column per task."""
-        tasks: list[tuple[int, int, NDArray[np.float64]]] = []
-        for rpo_index, rpo_data in enumerate(self.rpo_data):
-            for phase_index, diagram in enumerate(rpo_data.diagrams):
-                tasks.append((rpo_index, phase_index, diagram))
+        traj_points, traj_offsets = _flatten_diagrams(traj_diagrams)
+        num_traj = len(traj_diagrams)
 
-        total_tasks = len(tasks)
+        points_shm = SharedMemory(create=True, size=max(1, traj_points.nbytes))
+        offsets_shm = SharedMemory(create=True, size=max(1, traj_offsets.nbytes))
 
-        with Pool(n_workers, initializer=_pha_pool_initializer, initargs=(traj_diagrams,)) as pool:
-            results = pool.imap_unordered(_compute_single_column, tasks)
+        try:
+            points_view = np.ndarray(traj_points.shape, dtype=np.float64, buffer=points_shm.buf)
+            points_view[:] = traj_points
+            offsets_view = np.ndarray(traj_offsets.shape, dtype=np.int64, buffer=offsets_shm.buf)
+            offsets_view[:] = traj_offsets
 
-            if show_progress:
-                results = tqdm(results, total=total_tasks, desc="Detecting", leave=False)
+            tasks: list[tuple[int, int, NDArray[np.float64]]] = [
+                (rpo_index, phase_index, diagram)
+                for rpo_index, rpo_data in enumerate(self.rpo_data)
+                for phase_index, diagram in enumerate(rpo_data.diagrams)
+            ]
 
-            # Collect columns grouped by RPO
-            columns_by_rpo: dict[int, dict[int, NDArray[np.float64]]] = {}
-            for rpo_index, phase_index, column in results:
-                columns_by_rpo.setdefault(rpo_index, {})[phase_index] = column
+            with Pool(
+                n_workers,
+                initializer=_pha_pool_initializer,
+                initargs=(
+                    points_shm.name,
+                    offsets_shm.name,
+                    num_traj,
+                    traj_points.shape,
+                ),
+            ) as pool:
+                results = pool.imap_unordered(_compute_single_column, tasks)
+
+                if show_progress:
+                    results = tqdm(results, total=len(tasks), desc="Detecting", leave=False)
+
+                # Collect columns grouped by RPO
+                columns_by_rpo: dict[int, dict[int, NDArray[np.float64]]] = {}
+                for rpo_index, phase_index, column in results:
+                    columns_by_rpo.setdefault(rpo_index, {})[phase_index] = column
+        finally:
+            points_shm.close()
+            points_shm.unlink()
+            offsets_shm.close()
+            offsets_shm.unlink()
 
         # Assemble matrices and run pathfinding in parent (cheap)
         events: list[ShadowingEvent] = []
@@ -247,7 +297,6 @@ class PHADetector:
             if phase_columns is None:
                 continue
             num_phases = len(rpo_data.diagrams)
-            num_traj = len(traj_diagrams)
             wass_matrix = np.empty((num_traj, num_phases), dtype=np.float64)
             for j in range(num_phases):
                 wass_matrix[:, j] = phase_columns[j]
@@ -301,6 +350,7 @@ class PHADetector:
         show_progress: bool,
     ) -> NDArray[np.float64]:
         """Compute min distances sequentially, one Wasserstein column at a time."""
+        traj_points, traj_offsets = _flatten_diagrams(traj_diagrams)
         num_traj = len(traj_diagrams)
         min_dists = np.full(num_traj, np.inf, dtype=np.float64)
         total_phases = sum(len(rd.diagrams) for rd in self.rpo_data)
@@ -325,7 +375,7 @@ class PHADetector:
                 columns = []
                 current_rpo = rpo_data
 
-            columns.append(_wasserstein_column(traj_diagrams, diagram))
+            columns.append(_wasserstein_column(traj_points, traj_offsets, num_traj, diagram))
 
         # Process last RPO
         if current_rpo is not None and columns:
@@ -343,25 +393,53 @@ class PHADetector:
         n_workers: int,
     ) -> NDArray[np.float64]:
         """Compute min distances in parallel, one Wasserstein column per task."""
+        traj_points, traj_offsets = _flatten_diagrams(traj_diagrams)
         num_traj = len(traj_diagrams)
         min_dists = np.full(num_traj, np.inf, dtype=np.float64)
 
-        tasks: list[tuple[int, int, NDArray[np.float64]]] = []
-        for rpo_index, rpo_data in enumerate(self.rpo_data):
-            for phase_index, diagram in enumerate(rpo_data.diagrams):
-                tasks.append((rpo_index, phase_index, diagram))
+        points_shm = SharedMemory(create=True, size=max(1, traj_points.nbytes))
+        offsets_shm = SharedMemory(create=True, size=max(1, traj_offsets.nbytes))
 
-        total_tasks = len(tasks)
+        try:
+            points_view = np.ndarray(traj_points.shape, dtype=np.float64, buffer=points_shm.buf)
+            points_view[:] = traj_points
+            offsets_view = np.ndarray(traj_offsets.shape, dtype=np.int64, buffer=offsets_shm.buf)
+            offsets_view[:] = traj_offsets
 
-        with Pool(n_workers, initializer=_pha_pool_initializer, initargs=(traj_diagrams,)) as pool:
-            results = pool.imap_unordered(_compute_single_column, tasks)
+            tasks: list[tuple[int, int, NDArray[np.float64]]] = [
+                (rpo_index, phase_index, diagram)
+                for rpo_index, rpo_data in enumerate(self.rpo_data)
+                for phase_index, diagram in enumerate(rpo_data.diagrams)
+            ]
 
-            if show_progress:
-                results = tqdm(results, total=total_tasks, desc="Min distances", leave=False)
+            with Pool(
+                n_workers,
+                initializer=_pha_pool_initializer,
+                initargs=(
+                    points_shm.name,
+                    offsets_shm.name,
+                    num_traj,
+                    traj_points.shape,
+                ),
+            ) as pool:
+                results = pool.imap_unordered(_compute_single_column, tasks)
 
-            columns_by_rpo: dict[int, dict[int, NDArray[np.float64]]] = {}
-            for rpo_index, phase_index, column in results:
-                columns_by_rpo.setdefault(rpo_index, {})[phase_index] = column
+                if show_progress:
+                    results = tqdm(
+                        results,
+                        total=len(tasks),
+                        desc="Min distances",
+                        leave=False,
+                    )
+
+                columns_by_rpo: dict[int, dict[int, NDArray[np.float64]]] = {}
+                for rpo_index, phase_index, column in results:
+                    columns_by_rpo.setdefault(rpo_index, {})[phase_index] = column
+        finally:
+            points_shm.close()
+            points_shm.unlink()
+            offsets_shm.close()
+            offsets_shm.unlink()
 
         # Assemble matrices, apply delay embedding, reduce
         for rpo_index, rpo_data in enumerate(self.rpo_data):

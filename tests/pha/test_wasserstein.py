@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from ks_shadowing.pha.persistence import _compute_persistence_diagram
-from ks_shadowing.pha.wasserstein import _wasserstein_matrix
+from ks_shadowing.pha.wasserstein import _flatten_diagrams, _wasserstein_column, _wasserstein_matrix
 
 
 class TestWassersteinMatrix:
@@ -77,3 +77,24 @@ class TestWassersteinMatrix:
         # Both empty
         result = _wasserstein_matrix([], [])
         assert result.shape == (0, 0)
+
+
+class TestWassersteinColumn:
+    def test_matches_matrix_output(self):
+        """Column result matches corresponding column of the full matrix."""
+        rng = np.random.default_rng(42)
+        traj_diagrams = [_compute_persistence_diagram(rng.standard_normal(32)) for _ in range(5)]
+        rpo_diagram = _compute_persistence_diagram(rng.standard_normal(32))
+
+        traj_points, traj_offsets = _flatten_diagrams(traj_diagrams)
+        column = _wasserstein_column(traj_points, traj_offsets, len(traj_diagrams), rpo_diagram)
+
+        expected = _wasserstein_matrix(traj_diagrams, [rpo_diagram])[:, 0]
+        np.testing.assert_allclose(column, expected, rtol=1e-10)
+
+    def test_empty_trajectory(self):
+        """Handles empty trajectory list."""
+        traj_points, traj_offsets = _flatten_diagrams([])
+        rpo_diagram = np.array([[0.0, 1.0]])
+        column = _wasserstein_column(traj_points, traj_offsets, 0, rpo_diagram)
+        assert column.shape == (0,)

@@ -355,7 +355,7 @@ requires-dist = [
     { name = "h5py", specifier = ">=3.16.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "numpy", specifier = ">=2.4.1" },
-    { name = "scipy", specifier = ">=1.17.0" },
+    { name = "scipy", specifier = ">=1.16.0" },
     { name = "tqdm", specifier = ">=4.0.0" },
 ]
 
