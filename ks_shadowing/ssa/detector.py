@@ -27,16 +27,6 @@ from ks_shadowing.ssa.pathfinding import _extract_shadowing_events_3d
 from ks_shadowing.ssa.rpo import _RPOStateSpace
 
 
-def _tqdm_wrap_generator(
-    generator: Iterator[tuple[int, int, NDArray[np.float64]]],
-    progress: tqdm,
-) -> Iterator[tuple[int, int, NDArray[np.float64]]]:
-    """Wrap a phase generator to update a shared tqdm progress bar."""
-    for item in generator:
-        progress.update(1)
-        yield item
-
-
 def _compute_distances_sq(
     trajectory_physical: NDArray[np.float64],
     rpo_data: _RPOStateSpace,
@@ -224,7 +214,11 @@ class SSADetector:
         self.resolution = resolution
         self.chunk_size = chunk_size
         self.rpos = list(rpos)
-        self.rpo_data = [_RPOStateSpace.from_rpo(rpo, resolution) for rpo in rpos]
+        self.rpo_data = sorted(
+            [_RPOStateSpace.from_rpo(rpo, resolution) for rpo in rpos],
+            key=lambda rd: rd.time_steps,
+            reverse=True,
+        )
 
     def detect(
         self,
@@ -277,23 +271,24 @@ class SSADetector:
         min_duration: int,
         show_progress: bool,
     ) -> list[ShadowingEvent]:
-        """Run detection sequentially with phase-level progress."""
+        """Run detection sequentially with two-level progress (RPO, then phases)."""
         events: list[ShadowingEvent] = []
-        total_phases = sum(rd.time_steps for rd in self.rpo_data)
-        progress = (
-            tqdm(total=total_phases, desc="Detecting", leave=False) if show_progress else None
-        )
+        num_timesteps = trajectory_physical.shape[0]
+        num_chunks = (num_timesteps + self.chunk_size - 1) // self.chunk_size
 
-        for rpo_data in self.rpo_data:
+        rpo_iter = iter(self.rpo_data)
+        if show_progress:
+            rpo_iter = tqdm(rpo_iter, total=len(self.rpo_data), desc="Detecting", leave=False)
+
+        for rpo_data in rpo_iter:
             generator = _compute_distances_sq(trajectory_physical, rpo_data, self.chunk_size)
-            if progress is not None:
-                generator = _tqdm_wrap_generator(generator, progress)
+            if show_progress:
+                total_yields = num_chunks * rpo_data.time_steps
+                generator = tqdm(generator, total=total_yields, desc="  Phases", leave=False)
 
             rpo_events = _extract_shadowing_events_3d(generator, rpo_data, threshold, min_duration)
             events.extend(rpo_events)
 
-        if progress is not None:
-            progress.close()
         return events
 
     def _detect_parallel(
@@ -370,17 +365,26 @@ class SSADetector:
         trajectory_physical: NDArray[np.float64],
         show_progress: bool,
     ) -> NDArray[np.float64]:
-        """Compute min distances sequentially with phase-level progress."""
+        """Compute min distances sequentially with two-level progress."""
         min_dists_sq = np.full(len(trajectory_physical), np.inf, dtype=np.float64)
-        total_phases = sum(rd.time_steps for rd in self.rpo_data)
-        progress = (
-            tqdm(total=total_phases, desc="Min distances", leave=False) if show_progress else None
-        )
+        num_timesteps = trajectory_physical.shape[0]
+        num_chunks = (num_timesteps + self.chunk_size - 1) // self.chunk_size
 
-        for rpo_data in self.rpo_data:
-            for _, chunk_start, dist_sq in _compute_distances_sq(
+        rpo_iter = iter(self.rpo_data)
+        if show_progress:
+            rpo_iter = tqdm(
+                rpo_iter, total=len(self.rpo_data), desc="Min distances", leave=False
+            )
+
+        for rpo_data in rpo_iter:
+            generator = _compute_distances_sq(
                 trajectory_physical, rpo_data, self.chunk_size
-            ):
+            )
+            if show_progress:
+                total_yields = num_chunks * rpo_data.time_steps
+                generator = tqdm(generator, total=total_yields, desc="  Phases", leave=False)
+
+            for _, chunk_start, dist_sq in generator:
                 chunk_end = chunk_start + dist_sq.shape[0]
                 phase_min_sq = np.min(dist_sq, axis=1)
                 np.minimum(
@@ -388,11 +392,7 @@ class SSADetector:
                     phase_min_sq,
                     out=min_dists_sq[chunk_start:chunk_end],
                 )
-                if progress is not None:
-                    progress.update(1)
 
-        if progress is not None:
-            progress.close()
         return np.sqrt(min_dists_sq)
 
     def _min_distances_parallel(

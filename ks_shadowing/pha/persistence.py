@@ -162,19 +162,13 @@ def _apply_delay_embedding(
     if delay > trajectory_timesteps:
         raise ValueError(f"delay ({delay}) exceeds trajectory length ({trajectory_timesteps})")
 
-    # Tile RPO dimension to handle wraparound: append first (delay-1) columns
-    if delay > 1:
-        tiled = np.concatenate([wasserstein_matrix, wasserstein_matrix[:, : delay - 1]], axis=1)
-    else:
-        tiled = wasserstein_matrix
-
-    # Output dimensions
     delayed_timesteps = trajectory_timesteps - delay + 1
     delayed = np.zeros((delayed_timesteps, rpo_timesteps), dtype=np.float64)
 
     for offset in range(delay):
-        # At offset l: trajectory index is (i + l), RPO index is (j + l)
-        delayed += tiled[offset : offset + delayed_timesteps, offset : offset + rpo_timesteps]
+        # At offset l: trajectory index is (i + l), RPO index is (j + l) % J
+        col_indices = (np.arange(rpo_timesteps) + offset) % rpo_timesteps
+        delayed += wasserstein_matrix[offset : offset + delayed_timesteps][:, col_indices]
 
     return delayed
 
