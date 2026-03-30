@@ -441,14 +441,13 @@ class PHADetector:
 
         return min_dists
 
-    def auto_detect(  # noqa: PLR0913
+    def auto_detect(
         self,
         trajectory: KSTrajectory,
         threshold_quantile: float = 0.4,
         min_duration: int = 1,
         show_progress: bool = False,
         n_jobs: int = 1,
-        downsample: int = 1,
     ) -> tuple[list[ShadowingEvent], float]:
         """Detect shadowing events with automatic threshold selection.
 
@@ -468,11 +467,6 @@ class PHADetector:
             Whether to display a progress bar. Default is ``False``.
         n_jobs : int, optional
             Number of parallel workers. Use -1 for all CPUs. Default is 1.
-        downsample : int, optional
-            Stride for subsampling the trajectory during threshold estimation.
-            Only every ``downsample``-th timestep is used for computing minimum
-            distances. The full trajectory is still used for detection.
-            Default is 1 (no subsampling).
 
         Returns
         -------
@@ -481,9 +475,8 @@ class PHADetector:
         threshold : float
             The automatically selected threshold.
         """
-        threshold_trajectory = trajectory[::downsample]
         min_distances = self.compute_min_distances(
-            threshold_trajectory, show_progress=show_progress, n_jobs=n_jobs
+            trajectory, show_progress=show_progress, n_jobs=n_jobs
         )
         # Filter out infinite distances (from delay embedding edge effects)
         finite_distances = min_distances[np.isfinite(min_distances)]

@@ -37,7 +37,6 @@ def build_parser() -> ArgumentParser:
 
     parser.add_argument("--threshold-quantile", type=float, default=DEFAULT_THRESHOLD_QUANTILE)
     parser.add_argument("--threshold", type=float, default=None)
-    parser.add_argument("--downsample", type=int, default=1)
     parser.add_argument("--min-duration", type=int, default=DEFAULT_MIN_DURATION)
     parser.add_argument("--delay", type=int, default=DEFAULT_DELAY)
 
@@ -108,7 +107,6 @@ def main() -> None:
             min_duration=arguments.min_duration,
             show_progress=arguments.show_progress,
             n_jobs=arguments.n_jobs,
-            downsample=arguments.downsample,
         )
         threshold_quantile = arguments.threshold_quantile
     elapsed_seconds = time.perf_counter() - t0
