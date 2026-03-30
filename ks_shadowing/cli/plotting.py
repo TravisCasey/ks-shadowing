@@ -5,9 +5,8 @@ from numpy.typing import NDArray
 
 from ks_shadowing.core import DOMAIN_SIZE
 from ks_shadowing.core.event import ShadowingEvent
-from ks_shadowing.core.integrator import ksint
 from ks_shadowing.core.rpo import RPO
-from ks_shadowing.core.transforms import interleaved_to_complex, to_physical
+from ks_shadowing.core.trajectory import KSTrajectory
 
 
 def _align_rpo_to_window(
@@ -47,9 +46,10 @@ def _align_rpo_to_window(
         trajectory at each timestep.
     """
     rpo_dt = rpo.period / rpo.time_steps
-    rpo_fourier = ksint(rpo.fourier_coeffs, rpo_dt, rpo.time_steps)[:-1]
-    rpo_complex = interleaved_to_complex(rpo_fourier)
-    rpo_physical = to_physical(rpo_complex, resolution)
+    rpo_trajectory = KSTrajectory.from_initial_state(
+        rpo.fourier_coeffs, rpo_dt, rpo.time_steps + 1, resolution
+    )[:-1]
+    rpo_physical = rpo_trajectory.to_physical()
 
     period = rpo_physical.shape[0]
     # Double the spatial axis for wraparound extraction
@@ -60,10 +60,9 @@ def _align_rpo_to_window(
     mean_shift = int(np.round(np.mean(event.shifts)))
 
     timesteps = np.arange(window_start, window_end)
-    phases = (event.start_phase + timesteps) % period
+    phases = (event.start_phase + timesteps - event.start_timestep) % period
 
     # Lab-frame shift: undo co-moving transform and apply event deviation.
-    # See AGENTS.md "Spatial Shifts" for the derivation.
     lab_shift = mean_shift - np.round(drift_per_step * (timesteps - phases)).astype(np.int64)
     extraction_offsets = lab_shift % resolution
 

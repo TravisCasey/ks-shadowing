@@ -8,9 +8,10 @@ from ks_shadowing.core.integrator import ksint
 
 class TestKsint:
     def test_output_shape(self, sample_initial_state: np.ndarray):
-        """Output shape matches `(steps // save_every + 1, 30)`."""
+        """Output shape matches ``(steps // save_every + 1, 17)``."""
         result = ksint(sample_initial_state, dt=0.25, steps=100, save_every=10)
-        assert result.shape == (11, 30)
+        assert result.shape == (11, 17)
+        assert result.dtype == np.complex128
 
     def test_initial_condition_preserved(self, sample_initial_state: np.ndarray):
         """First row of output equals input initial state."""
@@ -24,12 +25,12 @@ class TestKsint:
         np.testing.assert_array_equal(result1, result2)
 
     def test_invalid_shape_raises(self):
-        """Non-(30,) input raises ValueError."""
+        """Non-(17,) input raises ValueError."""
         with pytest.raises(ValueError, match="shape"):
-            ksint(np.zeros(29), dt=0.25, steps=10)
+            ksint(np.zeros(16, dtype=np.complex128), dt=0.25, steps=10)
 
         with pytest.raises(ValueError, match="shape"):
-            ksint(np.zeros((30, 2)), dt=0.25, steps=10)
+            ksint(np.zeros((17, 2), dtype=np.complex128), dt=0.25, steps=10)
 
     def test_invalid_steps_raises(self, sample_initial_state: np.ndarray):
         """Non-positive steps raises ValueError."""

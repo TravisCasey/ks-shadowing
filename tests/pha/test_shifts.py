@@ -4,6 +4,7 @@ import numpy as np
 
 from ks_shadowing import RPO
 from ks_shadowing.core.event import ShadowingEvent
+from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.pha.shifts import (
     _compute_event_shifts,
     _find_optimal_shifts,
@@ -64,7 +65,7 @@ class TestComputeEventShifts:
         """Computes shifts with correct continuity, dtype, and preserves other fields."""
         rpo = RPO(
             index=5,
-            fourier_coeffs=np.zeros(30),
+            fourier_coeffs=np.zeros(17, dtype=np.complex128),
             period=1.0,
             time_steps=10,
             spatial_shift=0.0,
@@ -82,8 +83,9 @@ class TestComputeEventShifts:
             shifts=original_shifts,
         )
 
-        trajectory_fourier = np.zeros((20, 30))
-        result = _compute_event_shifts(event, trajectory_fourier, rpo, resolution)
+        modes = np.zeros((20, 17), dtype=np.complex128)
+        trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=resolution)
+        result = _compute_event_shifts(event, trajectory, rpo)
 
         # Check shifts are valid
         assert len(result.shifts) == 4

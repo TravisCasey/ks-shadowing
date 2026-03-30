@@ -17,8 +17,10 @@ def rng() -> np.random.Generator:
 
 @pytest.fixture
 def sample_initial_state(rng: np.random.Generator) -> np.ndarray:
-    """Random valid initial condition (30 coefficients)."""
-    return rng.standard_normal(30) * 0.1
+    """Random valid initial condition (17 complex Fourier modes)."""
+    modes = np.zeros(17, dtype=np.complex128)
+    modes[1:16] = (rng.standard_normal(15) + 1j * rng.standard_normal(15)) * 0.1
+    return modes
 
 
 @pytest.fixture

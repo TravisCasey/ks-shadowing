@@ -75,7 +75,7 @@ def save_results(
 
     The trajectory is not stored; it can be reproduced from the initial state
     and ``trajectory_steps`` metadata via
-    :func:`~ks_shadowing.core.integrator.ksint`.
+    :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_initial_state`.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -130,7 +130,7 @@ def load_results(path: Path) -> tuple[DetectionMetadata, np.ndarray, list[Shadow
 
     Returns the initial state rather than the trajectory. Callers that need
     the trajectory can reconstruct it via
-    :func:`~ks_shadowing.core.integrator.ksint`.
+    :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_initial_state`.
     """
     with h5py.File(path, "r") as f:
         attrs = f.attrs
@@ -152,7 +152,7 @@ def load_results(path: Path) -> tuple[DetectionMetadata, np.ndarray, list[Shadow
             ),
         )
 
-        initial_state = f["initial_state"][:].astype(np.float64, copy=False)
+        initial_state = f["initial_state"][:]
         event_records = f["events"][:]
         shifts = f["shifts"][:].astype(np.int32, copy=False)
 

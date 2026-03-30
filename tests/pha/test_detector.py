@@ -6,8 +6,13 @@ import numpy as np
 import pytest
 
 from ks_shadowing import RPO, load_all_rpos
-from ks_shadowing.core.integrator import ksint
+from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.pha import PHADetector
+
+
+def _make_trajectory(modes: np.ndarray, dt: float, resolution: int) -> KSTrajectory:
+    """Wrap a raw modes array as a KSTrajectory."""
+    return KSTrajectory(modes=modes, dt=dt, resolution=resolution)
 
 
 class TestPHADetector:
@@ -15,9 +20,12 @@ class TestPHADetector:
         """RPO trajectory shadows itself with high threshold."""
         rpo = RPO.load(rpo_data_path, 0)
         dt = rpo.period / rpo.time_steps
-        detector = PHADetector([rpo], dt, resolution=32, delay=3)
+        resolution = 32
+        detector = PHADetector([rpo], dt, resolution=resolution, delay=3)
 
-        trajectory = ksint(rpo.fourier_coeffs, dt, rpo.time_steps * 2)
+        trajectory = KSTrajectory.from_initial_state(
+            rpo.fourier_coeffs, dt, rpo.time_steps * 2 + 1, resolution
+        )
         events = detector.detect(trajectory, threshold=1.0)
 
         assert len(events) > 0
@@ -27,9 +35,13 @@ class TestPHADetector:
     def test_zero_threshold_no_events(self, rpo_data_path: Path, rng: np.random.Generator):
         """Zero threshold finds no events."""
         rpo = RPO.load(rpo_data_path, 0)
-        detector = PHADetector([rpo], dt=rpo.period / rpo.time_steps, resolution=32, delay=3)
+        dt = rpo.period / rpo.time_steps
+        resolution = 32
+        detector = PHADetector([rpo], dt=dt, resolution=resolution, delay=3)
 
-        trajectory = rng.standard_normal((20, 30)) * 0.1
+        modes = np.zeros((20, 17), dtype=np.complex128)
+        modes[:, 1:16] = (rng.standard_normal((20, 15)) + 1j * rng.standard_normal((20, 15))) * 0.1
+        trajectory = _make_trajectory(modes, dt, resolution)
 
         events = detector.detect(trajectory, threshold=0.0)
         assert len(events) == 0
@@ -38,9 +50,13 @@ class TestPHADetector:
         """compute_min_distances returns correct shape with proper edge effects."""
         rpo = RPO.load(rpo_data_path, 0)
         delay = 5
-        detector = PHADetector([rpo], dt=rpo.period / rpo.time_steps, resolution=32, delay=delay)
+        dt = rpo.period / rpo.time_steps
+        resolution = 32
+        detector = PHADetector([rpo], dt=dt, resolution=resolution, delay=delay)
 
-        trajectory = rng.standard_normal((20, 30)) * 0.1
+        modes = np.zeros((20, 17), dtype=np.complex128)
+        modes[:, 1:16] = (rng.standard_normal((20, 15)) + 1j * rng.standard_normal((20, 15))) * 0.1
+        trajectory = _make_trajectory(modes, dt, resolution)
 
         min_dists = detector.compute_min_distances(trajectory)
 
@@ -54,9 +70,13 @@ class TestPHADetector:
     def test_auto_detect_returns_threshold(self, rpo_data_path: Path, rng: np.random.Generator):
         """auto_detect returns events and the computed threshold."""
         rpo = RPO.load(rpo_data_path, 0)
-        detector = PHADetector([rpo], dt=rpo.period / rpo.time_steps, resolution=32, delay=3)
+        dt = rpo.period / rpo.time_steps
+        resolution = 32
+        detector = PHADetector([rpo], dt=dt, resolution=resolution, delay=3)
 
-        trajectory = rng.standard_normal((20, 30)) * 0.1
+        modes = np.zeros((20, 17), dtype=np.complex128)
+        modes[:, 1:16] = (rng.standard_normal((20, 15)) + 1j * rng.standard_normal((20, 15))) * 0.1
+        trajectory = _make_trajectory(modes, dt, resolution)
 
         _, threshold = detector.auto_detect(trajectory, threshold_quantile=0.4)
 
@@ -69,9 +89,10 @@ class TestParallelExecution:
         """Parallel detection produces same results as sequential."""
         rpos = load_all_rpos(rpo_data_path)[:3]
         dt = rpos[0].period / rpos[0].time_steps
-        detector = PHADetector(rpos, dt, resolution=32, delay=3)
+        resolution = 32
+        detector = PHADetector(rpos, dt, resolution=resolution, delay=3)
 
-        trajectory = ksint(rpos[0].fourier_coeffs, dt, 25)
+        trajectory = KSTrajectory.from_initial_state(rpos[0].fourier_coeffs, dt, 26, resolution)
 
         events_seq = detector.detect(trajectory, threshold=5.0, n_jobs=1)
         events_par = detector.detect(trajectory, threshold=5.0, n_jobs=2)
@@ -88,11 +109,14 @@ class TestDelayEmbedding:
         """Different delay values produce different results."""
         rpo = RPO.load(rpo_data_path, 0)
         dt = rpo.period / rpo.time_steps
+        resolution = 32
 
-        trajectory = rng.standard_normal((25, 30)) * 0.1
+        modes = np.zeros((25, 17), dtype=np.complex128)
+        modes[:, 1:16] = (rng.standard_normal((25, 15)) + 1j * rng.standard_normal((25, 15))) * 0.1
+        trajectory = _make_trajectory(modes, dt, resolution)
 
-        detector_delay1 = PHADetector([rpo], dt, resolution=32, delay=1)
-        detector_delay7 = PHADetector([rpo], dt, resolution=32, delay=7)
+        detector_delay1 = PHADetector([rpo], dt, resolution=resolution, delay=1)
+        detector_delay7 = PHADetector([rpo], dt, resolution=resolution, delay=7)
 
         min_dists_1 = detector_delay1.compute_min_distances(trajectory)
         min_dists_7 = detector_delay7.compute_min_distances(trajectory)

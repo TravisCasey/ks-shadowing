@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.pha.persistence import (
     _apply_delay_embedding,
     _compute_persistence_diagram,
@@ -74,8 +75,11 @@ class TestComputePersistenceDiagram:
 class TestComputeTrajectoryDiagrams:
     def test_returns_valid_diagrams(self):
         """Returns one valid diagram per timestep."""
-        trajectory_fourier = np.random.default_rng(42).standard_normal((10, 30))
-        diagrams = _compute_trajectory_diagrams(trajectory_fourier, resolution=32)
+        rng = np.random.default_rng(42)
+        modes = np.zeros((10, 17), dtype=np.complex128)
+        modes[:, 1:16] = rng.standard_normal((10, 15)) + 1j * rng.standard_normal((10, 15))
+        trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=32)
+        diagrams = _compute_trajectory_diagrams(trajectory)
 
         assert len(diagrams) == 10
         for diagram in diagrams:
@@ -86,11 +90,13 @@ class TestComputeTrajectoryDiagrams:
 class TestChunkedTrajectoryDiagrams:
     def test_chunked_matches_unchunked(self):
         """Chunked diagram computation produces identical diagrams."""
-        trajectory = np.random.default_rng(42).standard_normal((50, 30))
-        resolution = 32
+        rng = np.random.default_rng(42)
+        modes = np.zeros((50, 17), dtype=np.complex128)
+        modes[:, 1:16] = rng.standard_normal((50, 15)) + 1j * rng.standard_normal((50, 15))
+        trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=32)
 
-        diagrams_default = _compute_trajectory_diagrams(trajectory, resolution)
-        diagrams_chunked = _compute_trajectory_diagrams(trajectory, resolution, chunk_size=10)
+        diagrams_default = _compute_trajectory_diagrams(trajectory)
+        diagrams_chunked = _compute_trajectory_diagrams(trajectory, chunk_size=10)
 
         assert len(diagrams_default) == len(diagrams_chunked)
         for d1, d2 in zip(diagrams_default, diagrams_chunked, strict=True):

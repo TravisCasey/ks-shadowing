@@ -369,14 +369,20 @@ def _extract_shadowing_events_3d(
             continue
         path, mean_distance, min_distance = result
 
+        start_timestep = int(path["timestep"][0])
+        phase_offset = int(path["phase"][0])
+        # Convert raw phase offset to RPO phase at start_timestep.
+        # In detection, phase offset p means RPO index at timestep t is
+        # (p + t) % period. The event stores the RPO phase at start_timestep.
+        start_phase = (phase_offset + start_timestep) % period
         events.append(
             ShadowingEvent(
                 rpo_index=rpo_data.index,
-                start_timestep=int(path["timestep"][0]),
+                start_timestep=start_timestep,
                 end_timestep=int(path["timestep"][-1]) + 1,
                 mean_distance=mean_distance,
                 min_distance=min_distance,
-                start_phase=int(path["phase"][0]),
+                start_phase=start_phase,
                 shifts=path["shift"],
             )
         )

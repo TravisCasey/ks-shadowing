@@ -7,10 +7,10 @@ core.integrator
 .. automodule:: ks_shadowing.core.integrator
    :members:
 
-core.transforms
+core.trajectory
 ---------------
 
-.. automodule:: ks_shadowing.core.transforms
+.. automodule:: ks_shadowing.core.trajectory
    :members:
 
 core.event
@@ -23,6 +23,12 @@ core.rpo
 --------
 
 .. automodule:: ks_shadowing.core.rpo
+   :members:
+
+core.matching
+-------------
+
+.. automodule:: ks_shadowing.core.matching
    :members:
 
 ssa.detector

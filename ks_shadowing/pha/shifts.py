@@ -10,24 +10,16 @@ from dataclasses import replace
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy import fft
 
-from ks_shadowing.core import DOMAIN_SIZE
 from ks_shadowing.core.event import ShadowingEvent
-from ks_shadowing.core.integrator import ksint
 from ks_shadowing.core.rpo import RPO
-from ks_shadowing.core.transforms import (
-    _tile_periodic,
-    interleaved_to_physical,
-    to_comoving_frame,
-)
+from ks_shadowing.core.trajectory import KSTrajectory, shift_distances_sq
 
 
 def _compute_event_shifts(
     event: ShadowingEvent,
-    trajectory_fourier: NDArray[np.float64],
+    trajectory: KSTrajectory,
     rpo: RPO,
-    resolution: int,
 ) -> ShadowingEvent:
     r"""Compute spatial shifts for a PHA shadowing event.
 
@@ -39,12 +31,10 @@ def _compute_event_shifts(
     ----------
     event : :class:`~ks_shadowing.core.event.ShadowingEvent`
         The shadowing event to compute shifts for.
-    trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
-        Full trajectory in interleaved Fourier format.
+    trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
+        Full trajectory in spectral form.
     rpo : :class:`~ks_shadowing.core.rpo.RPO`
         The RPO that was shadowed.
-    resolution : int
-        Spatial resolution for physical-space computation.
 
     Returns
     -------
@@ -52,68 +42,34 @@ def _compute_event_shifts(
         New event with computed shifts.
     """
     period = rpo.time_steps
+    resolution = trajectory.resolution
 
-    # Integrate RPO for one period and convert to physical space
+    # Integrate RPO for one period
     rpo_dt = rpo.period / period
-    rpo_fourier = ksint(rpo.fourier_coeffs, rpo_dt, period)[:-1]
-    rpo_physical = interleaved_to_physical(rpo_fourier, resolution)
+    rpo_trajectory = KSTrajectory.from_initial_state(
+        rpo.fourier_coeffs, rpo_dt, period + 1, resolution
+    )[:-1]
 
     # Extract the relevant slice of the trajectory
-    start = event.start_timestep
-    end = event.end_timestep
-    duration = end - start
-
-    # Convert trajectory slice to physical space
-    trajectory_physical = interleaved_to_physical(trajectory_fourier[start:end], resolution)
+    duration = event.end_timestep - event.start_timestep
+    traj_slice = trajectory[event.start_timestep : event.end_timestep]
 
     # Compute drift rate and transform to co-moving frame
-    drift_per_step = (rpo.spatial_shift / DOMAIN_SIZE) * resolution / period
-    trajectory_comoving = to_comoving_frame(trajectory_physical, drift_per_step)
-    rpo_comoving = to_comoving_frame(rpo_physical, drift_per_step)
+    drift_rate = rpo.spatial_shift / period
+    traj_comoving = traj_slice.to_comoving(drift_rate, start_step=event.start_timestep)
+    rpo_comoving = rpo_trajectory.to_comoving(drift_rate)
 
     # Tile RPO to cover the event duration with the correct phase alignment
-    rpo_tiled = _tile_periodic(rpo_comoving, duration + period)
+    rpo_tiled = rpo_comoving.tile(duration + period)
 
-    # Compute distances for each timestep to all shifts
-    distances = _compute_distance_matrix(trajectory_comoving, rpo_tiled, event.start_phase)
+    # Compute distances using shift_distances_sq
+    rpo_slice_modes = rpo_tiled.modes[event.start_phase : event.start_phase + duration]
+    dist_sq = shift_distances_sq(traj_comoving.modes, rpo_slice_modes, resolution)
+    distances = np.sqrt(np.maximum(dist_sq, 0.0))
+
     shifts = _find_optimal_shifts(distances, resolution)
 
     return replace(event, shifts=shifts.astype(np.int32))
-
-
-def _compute_distance_matrix(
-    trajectory_comoving: NDArray[np.float64],
-    rpo_tiled: NDArray[np.float64],
-    start_phase: int,
-) -> NDArray[np.float64]:
-    r"""Compute :math:`L_2` distance matrix between trajectory and RPO for all shifts.
-
-    Uses FFT-based cross-correlation for efficient computation of distances
-    to all spatial shifts simultaneously.
-    """
-    duration = trajectory_comoving.shape[0]
-    resolution = trajectory_comoving.shape[1]
-
-    # Extract the RPO slice aligned with the event phase
-    rpo_slice = rpo_tiled[start_phase : start_phase + duration]
-
-    # Compute FFTs for cross-correlation
-    traj_fft = fft.rfft(trajectory_comoving, axis=-1)
-    rpo_fft = fft.rfft(rpo_slice, axis=-1)
-
-    # Norms squared
-    norm_traj_sq = np.sum(trajectory_comoving**2, axis=-1)
-    norm_rpo_sq = np.sum(rpo_slice**2, axis=-1)
-
-    # Cross-correlation via FFT: <u, roll(v, -s)> for all s
-    cross_corr = fft.irfft(np.conj(traj_fft) * rpo_fft, resolution, axis=-1)
-
-    # L2 distance squared:
-    # ||u - roll(v, -s)||^2 = ||u||^2 + ||v||^2 - 2<u, roll(v, -s)>
-    dist_sq = norm_traj_sq[:, np.newaxis] + norm_rpo_sq[:, np.newaxis] - 2 * cross_corr
-    dist_sq = np.maximum(dist_sq, 0.0)
-
-    return np.sqrt(dist_sq)
 
 
 def _find_optimal_shifts(

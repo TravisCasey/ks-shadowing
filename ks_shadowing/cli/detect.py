@@ -9,7 +9,7 @@ import numpy as np
 from ks_shadowing import PHADetector, SSADetector, load_all_rpos
 from ks_shadowing.cli.results import DetectionMetadata, save_results
 from ks_shadowing.core import DEFAULT_CHUNK_SIZE, TRAJECTORY_DT
-from ks_shadowing.core.integrator import ksint
+from ks_shadowing.core.trajectory import KSTrajectory
 
 DEFAULT_INITIAL_AMPLITUDE = 0.1
 DEFAULT_THRESHOLD_QUANTILE = 0.4
@@ -62,28 +62,35 @@ def main() -> None:
     rng = np.random.default_rng(arguments.seed)
 
     print("Generating trajectory...")
-    initial_state = rng.standard_normal(30) * arguments.initial_amplitude
-    trajectory = ksint(initial_state, TRAJECTORY_DT, arguments.trajectory_steps)
+    initial_state = np.zeros(17, dtype=np.complex128)
+    initial_state[1:16] = (
+        rng.standard_normal(15) + 1j * rng.standard_normal(15)
+    ) * arguments.initial_amplitude
+    resolution = arguments.resolution
+    trajectory = KSTrajectory.from_initial_state(
+        initial_state, TRAJECTORY_DT, arguments.trajectory_steps + 1, resolution
+    )
     print(
-        f"  Shape: {trajectory.shape} "
+        f"  Shape: {trajectory.modes.shape} "
         f"({arguments.trajectory_steps * TRAJECTORY_DT:.0f} time units, dt={TRAJECTORY_DT})"
     )
 
     if method == "ssa":
         detector = SSADetector(
-            rpos, TRAJECTORY_DT, resolution=arguments.resolution, chunk_size=arguments.chunk_size
+            rpos, TRAJECTORY_DT, resolution=resolution, chunk_size=arguments.chunk_size
         )
     else:
         detector = PHADetector(
             rpos,
             TRAJECTORY_DT,
-            resolution=arguments.resolution,
+            resolution=resolution,
             delay=arguments.delay,
             chunk_size=arguments.chunk_size,
         )
 
     print(f"Detecting events with {method.upper()}...")
     t0 = time.perf_counter()
+
     if arguments.threshold is not None:
         events = detector.detect(
             trajectory,
@@ -126,7 +133,7 @@ def main() -> None:
     )
 
     print(f"Saving results to {output_path}...")
-    save_results(output_path, metadata, initial_state, events)
+    save_results(output_path, metadata, trajectory.modes[0], events)
 
     if events:
         best_event = min(events, key=lambda event: event.mean_distance)

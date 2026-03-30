@@ -4,7 +4,7 @@ A relative periodic orbit is an orbit of the Kuramoto-Sivashinsky equation that
 is periodic under a certain spatial shift.
 
 RPO data is saved in npz files, with one array for each field:
-  - ``fourier_coeffs``: initial condition in interleaved format
+  - ``fourier_coeffs``: initial condition as 17-mode complex128 coefficients
   - ``periods``: temporal period
   - ``time_steps``: number of time steps in a period
   - ``spatial_shifts``: accumulated spatial shift over one period.
@@ -36,9 +36,10 @@ class RPO:
     ----------
     index : int
         Index of this RPO in the data file it was loaded from.
-    fourier_coeffs : NDArray[np.float64], shape (30,)
-        Initial Fourier coefficients in interleaved real/imaginary format.
-        See :func:`~ks_shadowing.core.integrator.ksint` for format details.
+    fourier_coeffs : NDArray[np.complex128], shape (17,)
+        Initial Fourier coefficients as complex modes:
+        ``[0, a_1, a_2, ..., a_15, 0]`` where mode 0 and the Nyquist
+        mode (16) are zero.
     period : float
         Temporal period of the RPO.
     time_steps : int
@@ -48,7 +49,7 @@ class RPO:
     """
 
     index: int
-    fourier_coeffs: NDArray[np.float64]
+    fourier_coeffs: NDArray[np.complex128]
     period: float
     time_steps: int
     spatial_shift: float
@@ -84,7 +85,7 @@ class RPO:
 
         return cls(
             index=rpo_index,
-            fourier_coeffs=data["fourier_coeffs"][rpo_index].astype(np.float64),
+            fourier_coeffs=data["fourier_coeffs"][rpo_index].astype(np.complex128),
             period=float(data["periods"][rpo_index]),
             time_steps=int(data["time_steps"][rpo_index]),
             spatial_shift=float(data["spatial_shifts"][rpo_index]),
@@ -110,7 +111,7 @@ def load_all_rpos(path: Path) -> list[RPO]:
     return [
         RPO(
             index=rpo_index,
-            fourier_coeffs=data["fourier_coeffs"][rpo_index].astype(np.float64),
+            fourier_coeffs=data["fourier_coeffs"][rpo_index].astype(np.complex128),
             period=float(data["periods"][rpo_index]),
             time_steps=int(data["time_steps"][rpo_index]),
             spatial_shift=float(data["spatial_shifts"][rpo_index]),

@@ -6,16 +6,15 @@ from typing import Self
 import numpy as np
 from numpy.typing import NDArray
 
-from ks_shadowing.core.integrator import ksint
 from ks_shadowing.core.rpo import RPO
-from ks_shadowing.core.transforms import interleaved_to_physical
+from ks_shadowing.core.trajectory import KSTrajectory
 
 
 def _compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float64]:
     r"""Compute sublevel-set persistence diagram for a 1D periodic field.
 
     Computes :math:`H_0` sublevel-set persistence on a circle (1D periodic
-    domain). Entires are processed in order of increasing field value; connected
+    domain). Entries are processed in order of increasing field value; connected
     components are tracked with union-find to record birth-death pairs when two
     distinct components merge.
 
@@ -89,8 +88,7 @@ def _compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float
 
 
 def _compute_trajectory_diagrams(
-    trajectory_fourier: NDArray[np.float64],
-    resolution: int,
+    trajectory: KSTrajectory,
     chunk_size: int | None = None,
 ) -> list[NDArray[np.float64]]:
     """Compute persistence diagrams for each timestep of a trajectory.
@@ -99,10 +97,8 @@ def _compute_trajectory_diagrams(
 
     Parameters
     ----------
-    trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
-        Trajectory in interleaved Fourier format.
-    resolution : int
-        Spatial resolution for physical-space conversion.
+    trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
+        Trajectory in spectral form.
     chunk_size : int or None, optional
         Number of timesteps to convert to physical space at once.
         If ``None``, convert all at once.
@@ -113,16 +109,13 @@ def _compute_trajectory_diagrams(
         One persistence diagram per timestep. Each diagram has shape
         ``(n_points, 2)`` with ``(birth, death)`` pairs.
     """
-    num_timesteps = trajectory_fourier.shape[0]
-    if chunk_size is None:
-        chunk_size = num_timesteps
-
     diagrams: list[NDArray[np.float64]] = []
-    for start in range(0, num_timesteps, chunk_size):
-        chunk_physical = interleaved_to_physical(
-            trajectory_fourier[start : start + chunk_size], resolution
-        )
-        diagrams.extend(_compute_persistence_diagram(field) for field in chunk_physical)
+    if chunk_size is None:
+        physical = trajectory.to_physical()
+        diagrams.extend(_compute_persistence_diagram(field) for field in physical)
+    else:
+        for _start, physical_chunk in trajectory.chunks_physical(chunk_size):
+            diagrams.extend(_compute_persistence_diagram(field) for field in physical_chunk)
 
     return diagrams
 
@@ -208,8 +201,10 @@ class _RPOPersistence:
             Instance with precomputed diagrams.
         """
         rpo_dt = rpo.period / rpo.time_steps
-        fourier_trajectory = ksint(rpo.fourier_coeffs, rpo_dt, rpo.time_steps)[:-1]
-        diagrams = _compute_trajectory_diagrams(fourier_trajectory, resolution)
+        rpo_trajectory = KSTrajectory.from_initial_state(
+            rpo.fourier_coeffs, rpo_dt, rpo.time_steps + 1, resolution
+        )[:-1]
+        diagrams = _compute_trajectory_diagrams(rpo_trajectory)
         return cls(rpo=rpo, diagrams=diagrams)
 
     @property

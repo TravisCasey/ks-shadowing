@@ -3,42 +3,47 @@
 from dataclasses import dataclass
 from typing import Self
 
-import numpy as np
-from numpy.typing import NDArray
-
-from ks_shadowing.core.integrator import ksint
 from ks_shadowing.core.rpo import RPO
-from ks_shadowing.core.transforms import interleaved_to_physical
+from ks_shadowing.core.trajectory import KSTrajectory
 
 
 @dataclass
 class _RPOStateSpace:
-    """Precomputed RPO trajectory in physical space for state-space detection.
+    """Precomputed RPO trajectory in spectral form for state-space detection.
 
-    Holds both the source RPO metadata and its integrated trajectory. Used
-    by SSA detector for distance computation in physical space.
+    Holds both the source RPO metadata and its integrated trajectory as a
+    :class:`~ks_shadowing.core.trajectory.KSTrajectory`. Used by the SSA
+    detector for distance computation via
+    :func:`~ks_shadowing.core.trajectory.shift_distances_sq`.
 
-    Attributes:
-        rpo: Source RPO containing metadata (index, period, spatial_shift).
-        trajectory: Physical space trajectory over one period, shape
-            `(time_steps, resolution)`. Integrated with the RPO's specific time
-            step.
+    Attributes
+    ----------
+    rpo : RPO
+        Source RPO containing metadata (index, period, spatial_shift).
+    trajectory : KSTrajectory
+        Spectral trajectory over one period, with ``len(trajectory) ==
+        time_steps``. Integrated with the RPO's specific timestep.
     """
 
     rpo: RPO
-    trajectory: NDArray[np.float64]
+    trajectory: KSTrajectory
 
     @classmethod
     def from_rpo(cls, rpo: RPO, resolution: int) -> Self:
-        """Integrate an RPO and convert to physical space trajectory.
+        """Integrate an RPO to a spectral trajectory over one period.
 
-        Integrates the RPO for one full period using its native timestep,
-        then transforms to physical space at the given resolution.
+        Parameters
+        ----------
+        rpo : RPO
+            Source RPO to integrate.
+        resolution : int
+            Number of physical-space grid points for the trajectory.
         """
         rpo_dt = rpo.period / rpo.time_steps
-        fourier_trajectory = ksint(rpo.fourier_coeffs, rpo_dt, rpo.time_steps)[:-1]
-        physical_trajectory = interleaved_to_physical(fourier_trajectory, resolution)
-        return cls(rpo=rpo, trajectory=physical_trajectory)
+        trajectory = KSTrajectory.from_initial_state(
+            rpo.fourier_coeffs, rpo_dt, rpo.time_steps + 1, resolution
+        )[:-1]
+        return cls(rpo=rpo, trajectory=trajectory)
 
     @property
     def time_steps(self) -> int:
@@ -58,4 +63,4 @@ class _RPOStateSpace:
     @property
     def resolution(self) -> int:
         """Spatial resolution of the trajectory."""
-        return self.trajectory.shape[1]
+        return self.trajectory.resolution

@@ -11,8 +11,7 @@ from ks_shadowing.cli.plotting import _align_rpo_to_window
 from ks_shadowing.cli.results import load_results
 from ks_shadowing.core import DOMAIN_SIZE, TRAJECTORY_DT
 from ks_shadowing.core.event import ShadowingEvent
-from ks_shadowing.core.integrator import ksint
-from ks_shadowing.core.transforms import interleaved_to_complex, to_physical
+from ks_shadowing.core.trajectory import KSTrajectory
 
 DEFAULT_OUTPUT = Path("plots/shadowing_visualization.png")
 DEFAULT_CONTEXT_FRACTION = 1.2
@@ -127,14 +126,16 @@ def main() -> None:
 
     print(f"Loading results from {arguments.input}...")
     metadata, initial_state, events = load_results(arguments.input)
-    trajectory = ksint(initial_state, TRAJECTORY_DT, metadata.trajectory_steps)
+    resolution = metadata.spatial_resolution
+    trajectory = KSTrajectory.from_initial_state(
+        initial_state, TRAJECTORY_DT, metadata.trajectory_steps + 1, resolution
+    )
 
     if not events:
         print("No events found in this file.")
         return
 
     detector_type = metadata.detector_type
-    resolution = metadata.spatial_resolution
     rpo_file = Path(metadata.rpo_file)
 
     print(f"  Detector type: {detector_type}")
@@ -169,8 +170,7 @@ def main() -> None:
             plot_end_timestep = min(len(trajectory), plot_start_timestep + minimum_window)
 
     trajectory_slice = trajectory[plot_start_timestep:plot_end_timestep]
-    trajectory_complex = interleaved_to_complex(trajectory_slice)
-    trajectory_physical = to_physical(trajectory_complex, resolution)
+    trajectory_physical = trajectory_slice.to_physical()
 
     aligned_rpo = _align_rpo_to_window(
         rpo,

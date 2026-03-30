@@ -18,6 +18,7 @@ from ks_shadowing.core import DEFAULT_CHUNK_SIZE
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.parallel import _resolve_n_jobs
 from ks_shadowing.core.rpo import RPO
+from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.pha.pathfinding import _extract_shadowing_events_2d
 from ks_shadowing.pha.persistence import (
     _apply_delay_embedding,
@@ -149,7 +150,7 @@ class PHADetector:
 
     def detect(
         self,
-        trajectory_fourier: NDArray[np.float64],
+        trajectory: KSTrajectory,
         threshold: float,
         min_duration: int = 1,
         show_progress: bool = False,
@@ -159,9 +160,8 @@ class PHADetector:
 
         Parameters
         ----------
-        trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
-            Trajectory in interleaved Fourier format from
-            :func:`~ks_shadowing.core.integrator.ksint`.
+        trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
+            Trajectory in spectral form.
         threshold : float
             Maximum Wasserstein distance for a point to be considered close.
         min_duration : int, optional
@@ -176,9 +176,7 @@ class PHADetector:
         list[ShadowingEvent]
             Events sorted by ``(start_timestep, rpo_index)``.
         """
-        traj_diagrams = _compute_trajectory_diagrams(
-            trajectory_fourier, self.resolution, chunk_size=self.chunk_size
-        )
+        traj_diagrams = _compute_trajectory_diagrams(trajectory, chunk_size=self.chunk_size)
 
         n_workers = _resolve_n_jobs(n_jobs)
 
@@ -194,9 +192,7 @@ class PHADetector:
         # distances in the co-moving frame.
         rpo_by_index = {rpo.index: rpo for rpo in self.rpos}
         events = [
-            _compute_event_shifts(
-                event, trajectory_fourier, rpo_by_index[event.rpo_index], self.resolution
-            )
+            _compute_event_shifts(event, trajectory, rpo_by_index[event.rpo_index])
             for event in events
         ]
 
@@ -225,9 +221,7 @@ class PHADetector:
 
             diagram_iter = enumerate(rpo_data.diagrams)
             if show_progress:
-                diagram_iter = tqdm(
-                    diagram_iter, total=num_phases, desc="  Phases", leave=False
-                )
+                diagram_iter = tqdm(diagram_iter, total=num_phases, desc="  Phases", leave=False)
 
             for phase_index, diagram in diagram_iter:
                 wass_matrix[:, phase_index] = _wasserstein_column(
@@ -236,9 +230,7 @@ class PHADetector:
 
             embedded = _apply_delay_embedding(wass_matrix, self.delay)
             del wass_matrix
-            events.extend(
-                _extract_shadowing_events_2d(embedded, rpo_data, threshold, min_duration)
-            )
+            events.extend(_extract_shadowing_events_2d(embedded, rpo_data, threshold, min_duration))
             del embedded
 
         return events
@@ -291,9 +283,7 @@ class PHADetector:
                     ]
                     results = pool.imap_unordered(_compute_single_column, tasks)
                     if show_progress:
-                        results = tqdm(
-                            results, total=num_phases, desc="  Phases", leave=False
-                        )
+                        results = tqdm(results, total=num_phases, desc="  Phases", leave=False)
 
                     for _, phase_index, column in results:
                         wass_matrix[:, phase_index] = column
@@ -301,9 +291,7 @@ class PHADetector:
                     embedded = _apply_delay_embedding(wass_matrix, self.delay)
                     del wass_matrix
                     events.extend(
-                        _extract_shadowing_events_2d(
-                            embedded, rpo_data, threshold, min_duration
-                        )
+                        _extract_shadowing_events_2d(embedded, rpo_data, threshold, min_duration)
                     )
                     del embedded
         finally:
@@ -316,7 +304,7 @@ class PHADetector:
 
     def compute_min_distances(
         self,
-        trajectory_fourier: NDArray[np.float64],
+        trajectory: KSTrajectory,
         show_progress: bool = False,
         n_jobs: int = 1,
     ) -> NDArray[np.float64]:
@@ -331,8 +319,8 @@ class PHADetector:
 
         Parameters
         ----------
-        trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
-            Trajectory in interleaved Fourier format.
+        trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
+            Trajectory in spectral form.
         show_progress : bool, optional
             Whether to display a progress bar. Default is ``False``.
         n_jobs : int, optional
@@ -343,9 +331,7 @@ class PHADetector:
         NDArray[np.float64], shape (num_timesteps,)
             Minimum Wasserstein distance to any RPO at each timestep.
         """
-        traj_diagrams = _compute_trajectory_diagrams(
-            trajectory_fourier, self.resolution, chunk_size=self.chunk_size
-        )
+        traj_diagrams = _compute_trajectory_diagrams(trajectory, chunk_size=self.chunk_size)
         n_workers = _resolve_n_jobs(n_jobs)
 
         if n_workers == 1:
@@ -365,9 +351,7 @@ class PHADetector:
 
         rpo_iter = enumerate(self.rpo_data)
         if show_progress:
-            rpo_iter = tqdm(
-                rpo_iter, total=len(self.rpo_data), desc="Min distances", leave=False
-            )
+            rpo_iter = tqdm(rpo_iter, total=len(self.rpo_data), desc="Min distances", leave=False)
 
         for _, rpo_data in rpo_iter:
             num_phases = len(rpo_data.diagrams)
@@ -375,9 +359,7 @@ class PHADetector:
 
             diagram_iter = enumerate(rpo_data.diagrams)
             if show_progress:
-                diagram_iter = tqdm(
-                    diagram_iter, total=num_phases, desc="  Phases", leave=False
-                )
+                diagram_iter = tqdm(diagram_iter, total=num_phases, desc="  Phases", leave=False)
 
             for phase_index, diagram in diagram_iter:
                 wass_matrix[:, phase_index] = _wasserstein_column(
@@ -441,9 +423,7 @@ class PHADetector:
                     ]
                     results = pool.imap_unordered(_compute_single_column, tasks)
                     if show_progress:
-                        results = tqdm(
-                            results, total=num_phases, desc="  Phases", leave=False
-                        )
+                        results = tqdm(results, total=num_phases, desc="  Phases", leave=False)
 
                     for _, phase_index, column in results:
                         wass_matrix[:, phase_index] = column
@@ -451,9 +431,7 @@ class PHADetector:
                     embedded = _apply_delay_embedding(wass_matrix, self.delay)
                     del wass_matrix
                     rpo_min = np.min(embedded, axis=1)
-                    min_dists[: len(rpo_min)] = np.minimum(
-                        min_dists[: len(rpo_min)], rpo_min
-                    )
+                    min_dists[: len(rpo_min)] = np.minimum(min_dists[: len(rpo_min)], rpo_min)
                     del embedded
         finally:
             points_shm.close()
@@ -465,7 +443,7 @@ class PHADetector:
 
     def auto_detect(  # noqa: PLR0913
         self,
-        trajectory_fourier: NDArray[np.float64],
+        trajectory: KSTrajectory,
         threshold_quantile: float = 0.4,
         min_duration: int = 1,
         show_progress: bool = False,
@@ -480,8 +458,8 @@ class PHADetector:
 
         Parameters
         ----------
-        trajectory_fourier : NDArray[np.float64], shape (num_timesteps, 30)
-            Trajectory in interleaved Fourier format.
+        trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
+            Trajectory in spectral form.
         threshold_quantile : float, optional
             Quantile for threshold selection. Default is 0.4.
         min_duration : int, optional
@@ -503,14 +481,12 @@ class PHADetector:
         threshold : float
             The automatically selected threshold.
         """
-        threshold_trajectory = trajectory_fourier[::downsample]
+        threshold_trajectory = trajectory[::downsample]
         min_distances = self.compute_min_distances(
             threshold_trajectory, show_progress=show_progress, n_jobs=n_jobs
         )
         # Filter out infinite distances (from delay embedding edge effects)
         finite_distances = min_distances[np.isfinite(min_distances)]
         threshold = float(np.quantile(finite_distances, threshold_quantile))
-        events = self.detect(
-            trajectory_fourier, threshold, min_duration, show_progress, n_jobs=n_jobs
-        )
+        events = self.detect(trajectory, threshold, min_duration, show_progress, n_jobs=n_jobs)
         return events, threshold

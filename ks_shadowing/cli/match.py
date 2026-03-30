@@ -63,11 +63,11 @@ def _validate_result_pair(
     ----------
     metadata_a : DetectionMetadata
         Metadata from the first result file.
-    initial_state_a : NDArray[np.float64], shape (30,)
+    initial_state_a : NDArray[np.complex128], shape (17,)
         Initial state from the first result file.
     metadata_b : DetectionMetadata
         Metadata from the second result file.
-    initial_state_b : NDArray[np.float64], shape (30,)
+    initial_state_b : NDArray[np.complex128], shape (17,)
         Initial state from the second result file.
 
     Raises

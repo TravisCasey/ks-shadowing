@@ -6,18 +6,18 @@ import numpy as np
 import pytest
 
 from ks_shadowing import RPO, load_all_rpos
-from ks_shadowing.core.integrator import ksint
-from ks_shadowing.core.transforms import interleaved_to_complex, to_physical
+from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.ssa import SSADetector
 from ks_shadowing.ssa.detector import _compute_distances_sq
 from ks_shadowing.ssa.rpo import _RPOStateSpace
 
 
-def make_rpo_physical_trajectory(rpo, resolution: int) -> np.ndarray:
-    """Integrate RPO and convert to physical space for testing."""
+def _make_rpo_trajectory(rpo: RPO, resolution: int) -> KSTrajectory:
+    """Integrate RPO over one period and return as KSTrajectory."""
     rpo_dt = rpo.period / rpo.time_steps
-    fourier_trajectory = ksint(rpo.fourier_coeffs, rpo_dt, rpo.time_steps)[:-1]
-    return to_physical(interleaved_to_complex(fourier_trajectory), resolution)
+    return KSTrajectory.from_initial_state(
+        rpo.fourier_coeffs, rpo_dt, rpo.time_steps + 1, resolution
+    )[:-1]
 
 
 class TestSSADetector:
@@ -27,7 +27,9 @@ class TestSSADetector:
         dt = rpo.period / rpo.time_steps
         detector = SSADetector([rpo], dt, resolution=64)
 
-        trajectory = ksint(rpo.fourier_coeffs, dt, rpo.time_steps * 2)
+        trajectory = KSTrajectory.from_initial_state(
+            rpo.fourier_coeffs, dt, rpo.time_steps * 2 + 1, resolution=64
+        )
         events = detector.detect(trajectory, threshold=1.0)
 
         assert len(events) > 0
@@ -37,19 +39,29 @@ class TestSSADetector:
     def test_zero_threshold_no_events(self, rpo_data_path: Path, rng: np.random.Generator):
         """Zero threshold finds no events."""
         rpo = RPO.load(rpo_data_path, 0)
-        detector = SSADetector([rpo], rpo.period / rpo.time_steps, resolution=128)
-        trajectory = rng.standard_normal((20, 30)) * 0.1
+        dt = rpo.period / rpo.time_steps
+        detector = SSADetector([rpo], dt, resolution=128)
+        fake_modes = np.zeros((20, 17), dtype=np.complex128)
+        fake_modes[:, 1:16] = (
+            rng.standard_normal((20, 15)) + 1j * rng.standard_normal((20, 15))
+        ) * 0.1
+        fake_trajectory = KSTrajectory(modes=fake_modes, dt=dt, resolution=128)
 
-        events = detector.detect(trajectory, threshold=0.0)
+        events = detector.detect(fake_trajectory, threshold=0.0)
         assert len(events) == 0
 
     def test_compute_min_distances_shape(self, rpo_data_path: Path, rng: np.random.Generator):
         """compute_min_distances returns correct shape."""
         rpo = RPO.load(rpo_data_path, 0)
-        detector = SSADetector([rpo], rpo.period / rpo.time_steps, resolution=128)
-        trajectory = rng.standard_normal((15, 30)) * 0.1
+        dt = rpo.period / rpo.time_steps
+        detector = SSADetector([rpo], dt, resolution=128)
+        fake_modes = np.zeros((15, 17), dtype=np.complex128)
+        fake_modes[:, 1:16] = (
+            rng.standard_normal((15, 15)) + 1j * rng.standard_normal((15, 15))
+        ) * 0.1
+        fake_trajectory = KSTrajectory(modes=fake_modes, dt=dt, resolution=128)
 
-        min_dists = detector.compute_min_distances(trajectory)
+        min_dists = detector.compute_min_distances(fake_trajectory)
         assert min_dists.shape == (15,)
         assert np.all(min_dists >= 0)
 
@@ -60,7 +72,7 @@ class TestParallelExecution:
         rpos = load_all_rpos(rpo_data_path)[:4]
         dt = rpos[0].period / rpos[0].time_steps
         detector = SSADetector(rpos, dt, resolution=64)
-        trajectory = ksint(rpos[0].fourier_coeffs, dt, 200)
+        trajectory = KSTrajectory.from_initial_state(rpos[0].fourier_coeffs, dt, 201, resolution=64)
 
         events_seq = detector.detect(trajectory, threshold=0.8, n_jobs=1)
         events_par = detector.detect(trajectory, threshold=0.8, n_jobs=2)
@@ -77,10 +89,11 @@ class TestComputeDistancesSq:
         """Yields one squared distance array per phase with shape (timesteps, resolution)."""
         rpo = RPO.load(rpo_data_path, 0)
         resolution = 128
-        rpo_physical = make_rpo_physical_trajectory(rpo, resolution)
-        rpo_data = _RPOStateSpace(rpo=rpo, trajectory=rpo_physical)
+        rpo_trajectory = _make_rpo_trajectory(rpo, resolution)
+        rpo_data = _RPOStateSpace(rpo=rpo, trajectory=rpo_trajectory)
 
-        results = list(_compute_distances_sq(rpo_physical[:5], rpo_data))
+        short_trajectory = rpo_trajectory[:5]
+        results = list(_compute_distances_sq(short_trajectory, rpo_data))
 
         assert len(results) == rpo_data.time_steps
         for _, chunk_start, dist_sq in results:
@@ -91,10 +104,11 @@ class TestComputeDistancesSq:
         """RPO trajectory has near-zero squared distance to itself at shift=0."""
         rpo = RPO.load(rpo_data_path, 0)
         resolution = 128
-        rpo_physical = make_rpo_physical_trajectory(rpo, resolution)
-        rpo_data = _RPOStateSpace(rpo=rpo, trajectory=rpo_physical)
+        rpo_trajectory = _make_rpo_trajectory(rpo, resolution)
+        rpo_data = _RPOStateSpace(rpo=rpo, trajectory=rpo_trajectory)
 
-        phase, chunk_start, dist_sq = next(_compute_distances_sq(rpo_physical[:10], rpo_data))
+        short_trajectory = rpo_trajectory[:10]
+        phase, chunk_start, dist_sq = next(_compute_distances_sq(short_trajectory, rpo_data))
         assert phase == 0
         assert chunk_start == 0
 
@@ -110,7 +124,9 @@ class TestChunkedComputation:
         detector_default = SSADetector([rpo], dt, resolution=32)
         detector_chunked = SSADetector([rpo], dt, resolution=32, chunk_size=100)
 
-        trajectory = ksint(rpo.fourier_coeffs, dt, rpo.time_steps * 2)
+        trajectory = KSTrajectory.from_initial_state(
+            rpo.fourier_coeffs, dt, rpo.time_steps * 2 + 1, resolution=32
+        )
         events_default = detector_default.detect(trajectory, threshold=0.5, min_duration=1)
         events_chunked = detector_chunked.detect(trajectory, threshold=0.5, min_duration=1)
 

@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from ks_shadowing import RPO
+from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.ssa.pathfinding import (
     _CLOSE_PASS_DTYPE_3D,
     _collect_close_passes_3d,
@@ -32,12 +33,13 @@ def make_mock_rpo_state_space(rpo_index: int, period: int, resolution: int) -> _
     """Create a mock _RPOStateSpace for testing pathfinding logic."""
     mock_rpo = RPO(
         index=rpo_index,
-        fourier_coeffs=np.zeros(30),
+        fourier_coeffs=np.zeros(17, dtype=np.complex128),
         period=1.0,
         time_steps=period,
         spatial_shift=0.0,
     )
-    mock_trajectory = np.zeros((period, resolution))
+    mock_modes = np.zeros((period, 17), dtype=np.complex128)
+    mock_trajectory = KSTrajectory(modes=mock_modes, dt=0.02, resolution=resolution)
     return _RPOStateSpace(rpo=mock_rpo, trajectory=mock_trajectory)
 
 

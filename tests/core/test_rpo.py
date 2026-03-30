@@ -10,10 +10,10 @@ from ks_shadowing import RPO, load_all_rpos
 
 class TestLoadRpo:
     def test_rpo_has_valid_fourier_coeffs(self, rpo_data_path: Path):
-        """Loaded RPO has 30 Fourier coefficients."""
+        """Loaded RPO has 17 complex Fourier coefficients."""
         rpo = RPO.load(rpo_data_path, 0)
-        assert rpo.fourier_coeffs.shape == (30,)
-        assert rpo.fourier_coeffs.dtype == np.float64
+        assert rpo.fourier_coeffs.shape == (17,)
+        assert rpo.fourier_coeffs.dtype == np.complex128
 
     def test_index_out_of_range_raises(self, rpo_data_path: Path):
         """Invalid index raises IndexError."""
