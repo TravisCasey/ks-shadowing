@@ -2,7 +2,7 @@
 Wasserstein distance computation.
 """
 
-from ctypes import CDLL, POINTER, c_double, c_int64
+from ctypes import CDLL, POINTER, c_double, c_int, c_int64
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +27,7 @@ def _get_lib() -> CDLL:
             c_double,  #          delta
             POINTER(c_double),  # out
         ]
-        _lib.wasserstein_column_c.restype = None
+        _lib.wasserstein_column_c.restype = c_int
 
     return _lib
 
@@ -82,7 +82,7 @@ def _wasserstein_column(
     diagrams_a_ptr = diagrams_a.ctypes.data_as(POINTER(c_double)) if diagrams_a.size > 0 else None
     rpo_ptr = diagram_b.ctypes.data_as(POINTER(c_double)) if diagram_b.size > 0 else None
 
-    lib.wasserstein_column_c(
+    ret = lib.wasserstein_column_c(
         diagrams_a_ptr,
         offsets_a.ctypes.data_as(POINTER(c_int64)),
         c_int64(num_diagrams_a),
@@ -91,5 +91,7 @@ def _wasserstein_column(
         c_double(delta),
         out.ctypes.data_as(POINTER(c_double)),
     )
+    if ret != 0:
+        raise RuntimeError("wasserstein_column_c failed")
 
     return out

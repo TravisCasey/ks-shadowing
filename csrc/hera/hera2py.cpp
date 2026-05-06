@@ -8,17 +8,31 @@
 
 #include <cstdint>
 #include <hera/wasserstein.h>
+#include <span>
 #include <utility>
 #include <vector>
 
+namespace {
+
+std::vector<std::pair<double, double>>
+pair_dgm_from_flat(std::span<const double> flat) {
+  std::vector<std::pair<double, double>> out;
+  out.reserve(flat.size() / 2);
+  for (std::size_t k = 0; k + 1 < flat.size(); k += 2) {
+    out.emplace_back(flat[k], flat[k + 1]);
+  }
+  return out;
+}
+
+} // namespace
+
 extern "C" {
 
-/**
- * Compute Wasserstein-2 distance matrix from a set of persistence diagrams to
- * another diagram.
+/*
+ * Compute W_2 distances from each diagram in dgms_a to dgm_b.
  *
- * The set of diagrams are flattened into a single array, with an offset array
- * indicating where each diagram starts.
+ * Returns 0 on success, 1 on any internal failure. Python-side validates
+ * inputs before calling.
  *
  * Parameters:
  *   dgms_a    - Flattened (birth, death) pairs for all A diagrams
@@ -29,36 +43,34 @@ extern "C" {
  *   delta     - Relative error tolerance for (1+delta)-approximation
  *   out       - Output distances; out[i] = W_2(dgm_a_i, dgm_b)
  */
-void wasserstein_column_c(const double *dgms_a, const int64_t *offsets_a,
-                          int64_t num_a, const double *dgm_b, int64_t length_b,
-                          double delta, double *out) {
-  // Configure for W_2 distance with given tolerance
-  hera::AuctionParams<double> params;
-  params.wasserstein_power = 2.0;
-  params.delta = delta;
-  params.internal_p = hera::get_infinity<double>();
+int wasserstein_column_c(const double *dgms_a, const int64_t *offsets_a,
+                         int64_t num_a, const double *dgm_b, int64_t length_b,
+                         double delta, double *out) {
+  try {
+    // Configure for W_2 distance with given tolerance
+    hera::AuctionParams<double> params;
+    params.wasserstein_power = 2.0;
+    params.delta = delta;
+    params.internal_p = hera::get_infinity<double>();
 
-  // Pre-convert all A diagrams
-  std::vector<std::vector<std::pair<double, double>>> pair_dgms_a(num_a);
-  for (int64_t i = 0; i < num_a; ++i) {
-    int64_t start = offsets_a[i];
-    int64_t end = offsets_a[i + 1];
-    pair_dgms_a[i].reserve(end - start);
-    for (int64_t k = start; k < end; ++k) {
-      pair_dgms_a[i].emplace_back(dgms_a[2 * k], dgms_a[2 * k + 1]);
+    std::vector<std::vector<std::pair<double, double>>> pair_dgms_a;
+    pair_dgms_a.reserve(num_a);
+    for (int64_t i = 0; i < num_a; ++i) {
+      int64_t start = offsets_a[i];
+      int64_t end = offsets_a[i + 1];
+      pair_dgms_a.push_back(pair_dgm_from_flat(std::span<const double>{
+          dgms_a + (2 * start), static_cast<std::size_t>(2 * (end - start))}));
     }
-  }
 
-  // Convert B diagram
-  std::vector<std::pair<double, double>> pair_dgm_b;
-  pair_dgm_b.reserve(length_b);
-  for (int64_t k = 0; k < length_b; ++k) {
-    pair_dgm_b.emplace_back(dgm_b[2 * k], dgm_b[2 * k + 1]);
-  }
+    std::vector<std::pair<double, double>> pair_dgm_b = pair_dgm_from_flat(
+        std::span<const double>{dgm_b, static_cast<std::size_t>(2 * length_b)});
 
-  // Compute distances
-  for (int64_t i = 0; i < num_a; ++i) {
-    out[i] = hera::wasserstein_dist(pair_dgms_a[i], pair_dgm_b, params);
+    for (int64_t i = 0; i < num_a; ++i) {
+      out[i] = hera::wasserstein_dist(pair_dgms_a[i], pair_dgm_b, params);
+    }
+    return 0;
+  } catch (...) {
+    return 1;
   }
 }
 

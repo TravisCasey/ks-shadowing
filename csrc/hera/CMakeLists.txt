@@ -7,15 +7,7 @@ target_include_directories(hera2py PRIVATE
     ${Boost_INCLUDE_DIRS}
 )
 
-target_compile_features(hera2py PRIVATE cxx_std_14)
-
-target_compile_options(hera2py PRIVATE
-    -O3
-    -march=x86-64-v3
-    -Wall
-    -Wextra
-    -Wpedantic
-)
+target_link_libraries(hera2py PRIVATE project_options)
 
 set_target_properties(hera2py PROPERTIES
     OUTPUT_NAME "hera2py"

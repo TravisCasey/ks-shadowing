@@ -19,7 +19,7 @@ conversion between complex and interleaved representations is handled inside
 :func:`ksint`, so callers work exclusively with complex arrays.
 """
 
-from ctypes import CDLL, POINTER, c_double, c_int
+from ctypes import CDLL, POINTER, c_double, c_int, c_size_t
 from functools import cache
 from pathlib import Path
 
@@ -90,10 +90,10 @@ def _get_lib() -> CDLL:
         POINTER(c_double),  # initial_state
         c_double,  # domain_size
         c_double,  # time_step
-        c_int,  # num_steps
-        c_int,  # save_interval
+        c_size_t,  # num_steps
+        c_size_t,  # save_interval
     ]
-    lib.ksf.restype = None
+    lib.ksf.restype = c_int
 
     return lib
 
@@ -140,14 +140,16 @@ def ksint(
     # timestep is one column of a (30, steps + 1) matrix.
     trajectory = np.empty((_INTERLEAVED_COEFFS, steps + 1), dtype=np.float64, order="F")
 
-    lib.ksf(
+    ret = lib.ksf(
         trajectory.ctypes.data_as(POINTER(c_double)),
         interleaved_input.ctypes.data_as(POINTER(c_double)),
         c_double(DOMAIN_SIZE),
         c_double(dt),
-        c_int(steps),
-        c_int(1),
+        c_size_t(steps),
+        c_size_t(1),
     )
+    if ret != 0:
+        raise RuntimeError("ksf failed")
 
     # Transpose to (steps + 1, 30) so trajectory[i] gives timestep i. This is a
     # zero-copy view: the Fortran-ordered columns become C-ordered rows.

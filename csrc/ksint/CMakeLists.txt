@@ -13,18 +13,12 @@ target_include_directories(ks2py PRIVATE
 )
 
 target_link_libraries(ks2py PRIVATE
+    project_options
     ${FFTW3_LIBRARIES}
     Eigen3::Eigen
 )
 
-target_compile_options(ks2py PRIVATE
-    -O3
-    -march=x86-64-v3
-    -ffast-math
-    -Wall
-    -Wextra
-    -Wpedantic
-)
+target_compile_options(ks2py PRIVATE -ffast-math)
 
 set_target_properties(ks2py PROPERTIES
     OUTPUT_NAME "ks2py"

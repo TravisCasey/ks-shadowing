@@ -1,6 +1,6 @@
 """Batch union-find via C++ for connected component labeling."""
 
-from ctypes import CDLL, POINTER, c_int32, c_int64
+from ctypes import CDLL, POINTER, c_int, c_int32
 from functools import cache
 from pathlib import Path
 
@@ -18,10 +18,10 @@ def _get_lib() -> CDLL:
         c_int32,  # n
         POINTER(c_int32),  # edges_a
         POINTER(c_int32),  # edges_b
-        c_int64,  # num_edges
+        c_int32,  # num_edges
         POINTER(c_int32),  # out
     ]
-    lib.connected_components_c.restype = None
+    lib.connected_components_c.restype = c_int
 
     return lib
 
@@ -57,12 +57,14 @@ def _find_components(
     num_edges = len(edges_a)
     out = np.empty(num_elements, dtype=np.int32)
 
-    lib.connected_components_c(
+    ret = lib.connected_components_c(
         c_int32(num_elements),
         edges_a.ctypes.data_as(POINTER(c_int32)) if num_edges > 0 else None,
         edges_b.ctypes.data_as(POINTER(c_int32)) if num_edges > 0 else None,
-        c_int64(num_edges),
+        c_int32(num_edges),
         out.ctypes.data_as(POINTER(c_int32)),
     )
+    if ret != 0:
+        raise RuntimeError("connected_components_c failed")
 
     return out

@@ -5,3 +5,4 @@ PointerAlignment: Right
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
 DerivePointerAlignment: false
+Standard: c++20

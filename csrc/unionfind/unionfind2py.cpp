@@ -30,14 +30,16 @@ public:
   void unite(int32_t x, int32_t y) {
     int32_t rx = find(x);
     int32_t ry = find(y);
-    if (rx == ry)
+    if (rx == ry) {
       return;
+    }
     if (rank[rx] < rank[ry]) {
       std::swap(rx, ry);
     }
     parent[ry] = rx;
-    if (rank[rx] == rank[ry])
+    if (rank[rx] == rank[ry]) {
       ++rank[rx];
+    }
   }
 
 private:
@@ -49,30 +51,38 @@ private:
 
 extern "C" {
 
-/**
+/*
  * Perform union-find on a set of edges and write component labels.
  *
- * Creates a disjoint set of `n` elements (0 to n-1), unions all given
- * edge pairs, then writes the component root for each element to `out`.
+ * Creates a disjoint set of n elements (0 to n-1), unions all given
+ * edge pairs, then writes the component root for each element to out.
+ *
+ * Returns 0 on success, 1 on any internal failure. Python-side validates
+ * inputs before calling.
  *
  * Parameters:
  *   n         - Number of elements
  *   edges_a   - First element of each edge pair
  *   edges_b   - Second element of each edge pair
- *   num_edges - Number of edge pairs
+ *   num_edges - Number of edge pairs (int32_t; sufficient for our scales)
  *   out       - Output array of size n, filled with component root per element
  */
-void connected_components_c(int32_t n, const int32_t *edges_a,
-                            const int32_t *edges_b, int64_t num_edges,
-                            int32_t *out) {
-  UnionFind uf(n);
+int connected_components_c(int32_t n, const int32_t *edges_a,
+                           const int32_t *edges_b, int32_t num_edges,
+                           int32_t *out) {
+  try {
+    UnionFind uf(n);
 
-  for (int64_t i = 0; i < num_edges; ++i) {
-    uf.unite(edges_a[i], edges_b[i]);
-  }
+    for (int32_t i = 0; i < num_edges; ++i) {
+      uf.unite(edges_a[i], edges_b[i]);
+    }
 
-  for (int32_t i = 0; i < n; ++i) {
-    out[i] = uf.find(i);
+    for (int32_t i = 0; i < n; ++i) {
+      out[i] = uf.find(i);
+    }
+    return 0;
+  } catch (...) {
+    return 1;
   }
 }
 
