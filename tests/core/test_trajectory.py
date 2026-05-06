@@ -1,18 +1,12 @@
 """Tests for KSTrajectory and shift_distances_sq."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 from scipy import fft
 
 from ks_shadowing.core.trajectory import KSTrajectory, shift_distances_sq
-
-
-@pytest.fixture
-def random_trajectory(rng: np.random.Generator) -> KSTrajectory:
-    """Random KSTrajectory for transform tests."""
-    modes = np.zeros((20, 17), dtype=np.complex128)
-    modes[:, 1:16] = (rng.standard_normal((20, 15)) + 1j * rng.standard_normal((20, 15))) * 0.1
-    return KSTrajectory(modes=modes, dt=0.02, resolution=64)
 
 
 def test_post_init_rejects_invalid_modes() -> None:
@@ -96,3 +90,18 @@ def test_chunks_physical_reconstructs(random_trajectory: KSTrajectory) -> None:
     reconstructed = np.vstack([chunk for _, chunk in chunks])
     expected = random_trajectory.to_physical()
     np.testing.assert_allclose(reconstructed, expected, rtol=1e-6, atol=1e-6)
+
+
+def test_trajectory_roundtrip_preserves_modes_and_dt(
+    random_trajectory: KSTrajectory, tmp_path: Path
+) -> None:
+    """``KSTrajectory.save`` / ``load`` preserves ``modes`` and ``dt``;
+    ``resolution`` is supplied at load time, not stored on disk."""
+    path = tmp_path / "trajectory.h5"
+
+    random_trajectory.save(path)
+    loaded = KSTrajectory.load(path, resolution=128)
+
+    np.testing.assert_array_equal(loaded.modes, random_trajectory.modes)
+    assert loaded.dt == random_trajectory.dt
+    assert loaded.resolution == 128

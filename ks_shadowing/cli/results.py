@@ -5,9 +5,9 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-from numpy.typing import NDArray
 
 from ks_shadowing.core.event import ShadowingEvent
+from ks_shadowing.core.trajectory import KSTrajectory
 
 _EVENT_DTYPE = np.dtype(
     [
@@ -26,90 +26,96 @@ _EVENT_DTYPE = np.dtype(
 class DetectionMetadata:
     """Metadata describing a detection run.
 
+    Trajectory data lives in a sibling file (see
+    :meth:`~ks_shadowing.core.trajectory.KSTrajectory.save`) referenced
+    by the ``trajectory_path`` HDF5 attribute, which stores just the
+    filename; this dataclass holds only fields specific to the
+    detection run itself.
+
     Attributes
     ----------
     detector_type : str
         Detection method used: ``"SSA"`` or ``"PHA"``.
-    seed : int
-        RNG seed for trajectory generation. ``-1`` if not specified.
-    spatial_resolution : int
-        Number of spatial grid points.
-    trajectory_steps : int
-        Number of integration steps in the trajectory.
-    initial_amplitude : float
-        Scale factor for the random initial condition.
     min_duration : int
         Minimum event duration in timesteps.
     threshold : float
         Distance threshold used for detection.
     rpo_file : str
         Path to the RPO data file used for detection.
+    spatial_resolution : int
+        Number of physical-space grid points the trajectory was loaded
+        at for detection. Required to interpret ``ShadowingEvent.shifts``,
+        which are recorded in grid cells.
     threshold_quantile : float or None
         Quantile used for automatic threshold selection. ``None`` when
-        ``threshold_mode`` is ``"manual"``.
+        ``threshold`` was supplied manually.
     delay : int or None
         Time-delay embedding window size. ``None`` for SSA detection.
-    elapsed_seconds : float or None
-        Wall-clock time for detection in seconds. ``None`` if not recorded.
     """
 
     detector_type: str
-    seed: int
-    spatial_resolution: int
-    trajectory_steps: int
-    initial_amplitude: float
     min_duration: int
     threshold: float
     rpo_file: str
+    spatial_resolution: int
     threshold_quantile: float | None = None
     delay: int | None = None
-    elapsed_seconds: float | None = None
 
 
 def save_results(
     path: Path,
     metadata: DetectionMetadata,
-    initial_state: NDArray[np.complex128],
     events: list[ShadowingEvent],
+    *,
+    trajectory_path: Path,
 ) -> None:
-    """Save detection metadata, initial state, and events to an ``.h5`` file.
+    """Save detection metadata and events to an ``.h5`` file.
 
-    The trajectory is not stored; it can be reproduced from the initial state
-    and ``trajectory_steps`` metadata via
-    :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_initial_state`.
+    The trajectory itself is stored separately via
+    :meth:`~ks_shadowing.core.trajectory.KSTrajectory.save` and must
+    be a sibling of ``path`` (same parent directory). Only its
+    filename is recorded in ``attrs["trajectory_path"]``; on load the
+    trajectory is read from ``path.parent / attrs["trajectory_path"]``.
 
     Parameters
     ----------
     path : Path
-        Destination ``.h5`` path. Parent directories are created if missing.
+        Destination ``.h5`` path. Parent directories are created if
+        missing.
     metadata : DetectionMetadata
         Run metadata serialized to file-level attributes.
-    initial_state : NDArray[np.complex128], shape (17,)
-        Trajectory initial condition in 17-mode complex Fourier form.
     events : list[ShadowingEvent]
-        Detected events. Variable-length ``shifts`` are concatenated into a
-        single dataset and indexed by per-event ``shifts_end`` offsets in the
-        events table.
+        Detected events. Variable-length ``shifts`` are concatenated
+        into a single dataset and indexed by per-event ``shifts_end``
+        offsets in the events table.
+    trajectory_path : Path
+        Path to the trajectory file. Must live in the same directory
+        as ``path``.
+
+    Raises
+    ------
+    ValueError
+        If ``trajectory_path`` is not a sibling of ``path``.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    with h5py.File(path, "w") as f:
-        f.create_dataset("initial_state", data=initial_state)
+    if trajectory_path.parent.resolve() != path.parent.resolve():
+        raise ValueError(
+            f"trajectory_path must be a sibling of path; got "
+            f"trajectory={trajectory_path}, result={path}"
+        )
 
+    with h5py.File(path, "w") as f:
         f.attrs["detector_type"] = metadata.detector_type
-        f.attrs["seed"] = metadata.seed
-        f.attrs["spatial_resolution"] = metadata.spatial_resolution
-        f.attrs["trajectory_steps"] = metadata.trajectory_steps
-        f.attrs["initial_amplitude"] = metadata.initial_amplitude
         f.attrs["min_duration"] = metadata.min_duration
         f.attrs["threshold"] = metadata.threshold
         f.attrs["rpo_file"] = metadata.rpo_file
+        f.attrs["spatial_resolution"] = metadata.spatial_resolution
+        f.attrs["trajectory_path"] = trajectory_path.name
         if metadata.threshold_quantile is not None:
             f.attrs["threshold_quantile"] = metadata.threshold_quantile
         if metadata.delay is not None:
             f.attrs["delay"] = metadata.delay
-        if metadata.elapsed_seconds is not None:
-            f.attrs["elapsed_seconds"] = metadata.elapsed_seconds
 
         shifts_list = [event.shifts for event in events]
         shifts_ends = (
@@ -141,12 +147,14 @@ def save_results(
 
 def load_results(
     path: Path,
-) -> tuple[DetectionMetadata, NDArray[np.complex128], list[ShadowingEvent]]:
-    """Load metadata, initial state, and events from an ``.h5`` file.
+) -> tuple[DetectionMetadata, KSTrajectory, list[ShadowingEvent]]:
+    """Load metadata, trajectory, and events for a result file.
 
-    Returns the initial state rather than the trajectory. Callers that need
-    the trajectory can reconstruct it via
-    :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_initial_state`.
+    The trajectory is loaded from
+    ``path.parent / attrs["trajectory_path"]`` (the attribute stores
+    just the filename; see :func:`save_results`) via
+    :meth:`~ks_shadowing.core.trajectory.KSTrajectory.load`, using
+    ``metadata.spatial_resolution`` for the grid.
 
     Parameters
     ----------
@@ -157,8 +165,9 @@ def load_results(
     -------
     metadata : DetectionMetadata
         Run metadata reconstructed from file-level attributes.
-    initial_state : NDArray[np.complex128], shape (17,)
-        Trajectory initial condition.
+    trajectory : KSTrajectory
+        Trajectory associated with the run, at the resolution recorded
+        in ``metadata.spatial_resolution``.
     events : list[ShadowingEvent]
         Detected events with their ``shifts`` arrays sliced from the
         concatenated dataset.
@@ -167,25 +176,21 @@ def load_results(
         attrs = f.attrs
         metadata = DetectionMetadata(
             detector_type=str(attrs["detector_type"]),
-            seed=int(attrs["seed"]),
-            spatial_resolution=int(attrs["spatial_resolution"]),
-            trajectory_steps=int(attrs["trajectory_steps"]),
-            initial_amplitude=float(attrs["initial_amplitude"]),
             min_duration=int(attrs["min_duration"]),
             threshold=float(attrs["threshold"]),
             rpo_file=str(attrs["rpo_file"]),
+            spatial_resolution=int(attrs["spatial_resolution"]),
             threshold_quantile=(
                 float(attrs["threshold_quantile"]) if "threshold_quantile" in attrs else None
             ),
             delay=int(attrs["delay"]) if "delay" in attrs else None,
-            elapsed_seconds=(
-                float(attrs["elapsed_seconds"]) if "elapsed_seconds" in attrs else None
-            ),
         )
-
-        initial_state = f["initial_state"][:]
+        trajectory_filename = str(attrs["trajectory_path"])
         event_records = f["events"][:]
         shifts = f["shifts"][:].astype(np.int32, copy=False)
+
+    trajectory_path = path.parent / trajectory_filename
+    trajectory = KSTrajectory.load(trajectory_path, resolution=metadata.spatial_resolution)
 
     shifts_start = 0
     events: list[ShadowingEvent] = []
@@ -204,4 +209,4 @@ def load_results(
         )
         shifts_start = shifts_end
 
-    return metadata, initial_state, events
+    return metadata, trajectory, events

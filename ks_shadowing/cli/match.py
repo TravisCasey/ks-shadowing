@@ -6,8 +6,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ks_shadowing.cli.results import DetectionMetadata, load_results
+from ks_shadowing.cli.results import load_results
 from ks_shadowing.core.matching import MatchedEvent, match_events
+from ks_shadowing.core.trajectory import KSTrajectory
 
 DEFAULT_OUTPUT = Path("plots/matched_events.png")
 DEFAULT_DPI = 150
@@ -52,48 +53,35 @@ def build_parser() -> ArgumentParser:
 
 
 def _validate_result_pair(
-    metadata_a: DetectionMetadata,
-    initial_state_a: np.ndarray,
-    metadata_b: DetectionMetadata,
-    initial_state_b: np.ndarray,
+    trajectory_a: KSTrajectory,
+    trajectory_b: KSTrajectory,
 ) -> None:
-    """Validate that two result sets are from different methods on the same trajectory.
+    """Validate two result files were detected against the same trajectory.
+
+    Compares trajectory length, resolution, and modes element-wise.
 
     Parameters
     ----------
-    metadata_a : DetectionMetadata
-        Metadata from the first result file.
-    initial_state_a : NDArray[np.complex128], shape (17,)
-        Initial state from the first result file.
-    metadata_b : DetectionMetadata
-        Metadata from the second result file.
-    initial_state_b : NDArray[np.complex128], shape (17,)
-        Initial state from the second result file.
+    trajectory_a, trajectory_b : KSTrajectory
+        Trajectories loaded alongside each result.
 
     Raises
     ------
     ValueError
-        If both results use the same detector type, or if the
-        trajectories differ (mismatched initial state or trajectory
-        steps).
+        If the trajectories differ in length, resolution, or content.
     """
-    types = {metadata_a.detector_type, metadata_b.detector_type}
-    if types != {"SSA", "PHA"}:
+    if trajectory_a.num_timesteps != trajectory_b.num_timesteps:
         raise ValueError(
-            f"Expected one SSA and one PHA result file, got "
-            f"{metadata_a.detector_type} and {metadata_b.detector_type}"
+            f"Result files have different trajectory lengths: "
+            f"{trajectory_a.num_timesteps} vs {trajectory_b.num_timesteps}"
         )
-    if not np.array_equal(initial_state_a, initial_state_b):
+    if trajectory_a.resolution != trajectory_b.resolution:
         raise ValueError(
-            "Result files have different initial_state arrays "
-            "and do not describe the same trajectory"
+            f"Result files have different resolutions: "
+            f"{trajectory_a.resolution} vs {trajectory_b.resolution}"
         )
-    if metadata_a.trajectory_steps != metadata_b.trajectory_steps:
-        raise ValueError(
-            f"Result files have different trajectory_steps: "
-            f"{metadata_a.trajectory_steps} vs "
-            f"{metadata_b.trajectory_steps}"
-        )
+    if not np.array_equal(trajectory_a.modes, trajectory_b.modes):
+        raise ValueError("Result files reference different trajectories (modes arrays differ).")
 
 
 def _plot_matches(matches: list[MatchedEvent]) -> plt.Figure:
@@ -156,23 +144,14 @@ def main() -> None:
     arguments = parser.parse_args()
 
     print(f"Loading SSA results from {arguments.ssa_input}...")
-    ssa_metadata, ssa_state, ssa_events = load_results(
-        arguments.ssa_input,
-    )
+    _, ssa_trajectory, ssa_events = load_results(arguments.ssa_input)
     print(f"  Events: {len(ssa_events)}")
 
     print(f"Loading PHA results from {arguments.pha_input}...")
-    pha_metadata, pha_state, pha_events = load_results(
-        arguments.pha_input,
-    )
+    _, pha_trajectory, pha_events = load_results(arguments.pha_input)
     print(f"  Events: {len(pha_events)}")
 
-    _validate_result_pair(
-        ssa_metadata,
-        ssa_state,
-        pha_metadata,
-        pha_state,
-    )
+    _validate_result_pair(ssa_trajectory, pha_trajectory)
 
     matches = match_events(ssa_events, pha_events)
 

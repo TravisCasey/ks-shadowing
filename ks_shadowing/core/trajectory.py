@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Self
 
+import h5py
 import numpy as np
 from numpy.typing import NDArray
 from scipy import fft
@@ -86,6 +88,47 @@ class KSTrajectory:
             Trajectory with ``len(result) == num_timesteps``.
         """
         modes = ksint(initial_state, dt, num_timesteps - 1)
+        return cls(modes=modes, dt=dt, resolution=resolution)
+
+    def save(self, path: Path) -> None:
+        """Persist this trajectory's modes and ``dt`` to an HDF5 file.
+
+        Resolution is not stored: it is an inverse-FFT grid parameter
+        rather than a property of the 17 stored modes.
+
+        Parameters
+        ----------
+        path : Path
+            Destination ``.h5`` path. Parent directories are created if
+            missing.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with h5py.File(path, "w") as f:
+            f.create_dataset("modes", data=self.modes)
+            f.attrs["dt"] = self.dt
+
+    @classmethod
+    def load(cls, path: Path, resolution: int) -> Self:
+        """Load a trajectory from a file written by :meth:`save`.
+
+        Parameters
+        ----------
+        path : Path
+            Source ``.h5`` file.
+        resolution : int
+            Number of physical-space grid points to associate with the
+            loaded trajectory; controls the ``irfft`` grid in
+            :meth:`to_physical`.
+
+        Returns
+        -------
+        Self
+            Trajectory reconstructed directly from stored modes; no
+            re-integration is performed.
+        """
+        with h5py.File(path, "r") as f:
+            modes = f["modes"][:]
+            dt = float(f.attrs["dt"])
         return cls(modes=modes, dt=dt, resolution=resolution)
 
     @property

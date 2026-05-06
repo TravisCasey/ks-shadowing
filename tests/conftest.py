@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from ks_shadowing.core.rpo import RPO, load_rpos
+from ks_shadowing.core.trajectory import KSTrajectory
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 RPO_FILE = DATA_DIR / "rpos_selected.npz"
@@ -31,6 +32,14 @@ def rpo_data_path() -> Path:
     if not RPO_FILE.exists():
         pytest.skip(f"RPO data file not found: {RPO_FILE}")
     return RPO_FILE
+
+
+@pytest.fixture
+def random_trajectory(rng: np.random.Generator) -> KSTrajectory:
+    """Random KSTrajectory for tests that don't exercise the integrator."""
+    modes = np.zeros((20, 17), dtype=np.complex128)
+    modes[:, 1:16] = (rng.standard_normal((20, 15)) + 1j * rng.standard_normal((20, 15))) * 0.1
+    return KSTrajectory(modes=modes, dt=0.02, resolution=64)
 
 
 @pytest.fixture

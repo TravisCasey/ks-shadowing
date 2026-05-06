@@ -116,8 +116,8 @@ def main() -> None:
     parser = build_parser()
     arguments = parser.parse_args()
 
-    ssa_metadata, ssa_state, ssa_events = load_results(arguments.ssa_input)
-    num_timesteps = ssa_metadata.trajectory_steps
+    _, ssa_trajectory, ssa_events = load_results(arguments.ssa_input)
+    num_timesteps = ssa_trajectory.num_timesteps
 
     ssa_mask = _events_to_union_mask(ssa_events, num_timesteps)
     print(
@@ -131,15 +131,15 @@ def main() -> None:
     f_pha_only: list[float] = []
 
     for pha_path in sorted(arguments.pha_inputs):
-        pha_metadata, pha_state, pha_events = load_results(pha_path)
+        pha_metadata, pha_trajectory, pha_events = load_results(pha_path)
 
-        if not np.array_equal(ssa_state, pha_state):
-            raise ValueError(f"Initial states differ: {arguments.ssa_input} vs {pha_path}")
-        if pha_metadata.trajectory_steps != num_timesteps:
+        if pha_trajectory.num_timesteps != num_timesteps:
             raise ValueError(
-                f"Trajectory steps differ: {num_timesteps} vs "
-                f"{pha_metadata.trajectory_steps} in {pha_path}"
+                f"Trajectory lengths differ: {num_timesteps} vs "
+                f"{pha_trajectory.num_timesteps} in {pha_path}"
             )
+        if not np.array_equal(ssa_trajectory.modes, pha_trajectory.modes):
+            raise ValueError(f"Trajectories differ between {arguments.ssa_input} and {pha_path}")
 
         delay = pha_metadata.delay
         if delay is None:

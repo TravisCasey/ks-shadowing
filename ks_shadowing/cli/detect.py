@@ -1,7 +1,7 @@
 """CLI entry point for shadowing event detection."""
 
 import time
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 import numpy as np
@@ -31,9 +31,20 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--rpo-file", type=Path, default=DEFAULT_RPO_FILE)
 
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--trajectory-steps", type=int, required=True)
+    parser.add_argument("--trajectory-steps", type=int, default=None)
     parser.add_argument("--resolution", type=int, required=True)
-    parser.add_argument("--initial-amplitude", type=float, default=DEFAULT_INITIAL_AMPLITUDE)
+    parser.add_argument("--initial-amplitude", type=float, default=None)
+    parser.add_argument(
+        "--trajectory",
+        type=Path,
+        default=None,
+        help=(
+            "Use an existing trajectory file (written by ks-detect on a "
+            "prior run). Mutually exclusive with --seed, "
+            "--trajectory-steps, --initial-amplitude. --resolution is "
+            "still required. Must live in the same directory as --output."
+        ),
+    )
 
     parser.add_argument("--threshold-quantile", type=float, default=DEFAULT_THRESHOLD_QUANTILE)
     parser.add_argument("--threshold", type=float, default=None)
@@ -46,6 +57,78 @@ def build_parser() -> ArgumentParser:
     return parser
 
 
+def _resolve_trajectory(arguments: Namespace, output_path: Path) -> tuple[KSTrajectory, Path]:
+    """Return ``(trajectory, trajectory_path)``, integrating if needed.
+
+    Validates that ``--trajectory`` is not combined with trajectory-
+    generation flags, that any user-supplied ``--trajectory`` lives
+    next to ``--output`` (the sibling-co-location rule enforced by
+    :func:`save_results`), and that an integrating run does not
+    overwrite an existing ``trajectory.h5`` next to ``--output``.
+    """
+    generation_flags_set = (
+        arguments.trajectory_steps is not None
+        or arguments.seed is not None
+        or arguments.initial_amplitude is not None
+    )
+
+    if arguments.trajectory is not None:
+        if generation_flags_set:
+            raise SystemExit(
+                "ks-detect: --trajectory is mutually exclusive with "
+                "--trajectory-steps, --seed, --initial-amplitude."
+            )
+        if arguments.trajectory.parent.resolve() != output_path.parent.resolve():
+            raise SystemExit(
+                f"ks-detect: --trajectory must live in the same directory as "
+                f"--output. Got --trajectory {arguments.trajectory}, "
+                f"--output {output_path}."
+            )
+        print(f"Loading trajectory from {arguments.trajectory}...")
+        trajectory = KSTrajectory.load(arguments.trajectory, resolution=arguments.resolution)
+        print(f"  Shape: {trajectory.modes.shape} (dt={trajectory.dt})")
+        return trajectory, arguments.trajectory
+
+    if arguments.trajectory_steps is None:
+        raise SystemExit(
+            "ks-detect: --trajectory-steps is required when --trajectory is not given."
+        )
+
+    initial_amplitude = (
+        arguments.initial_amplitude
+        if arguments.initial_amplitude is not None
+        else DEFAULT_INITIAL_AMPLITUDE
+    )
+    rng = np.random.default_rng(arguments.seed)
+    print("Generating trajectory...")
+    initial_state = np.zeros(17, dtype=np.complex128)
+    initial_state[1:16] = (
+        rng.standard_normal(15) + 1j * rng.standard_normal(15)
+    ) * initial_amplitude
+    trajectory = KSTrajectory.from_initial_state(
+        initial_state,
+        TRAJECTORY_DT,
+        arguments.trajectory_steps + 1,
+        arguments.resolution,
+    )
+    print(
+        f"  Shape: {trajectory.modes.shape} "
+        f"({arguments.trajectory_steps * TRAJECTORY_DT:.0f} time units, "
+        f"dt={TRAJECTORY_DT})"
+    )
+
+    trajectory_path = output_path.parent / "trajectory.h5"
+    if trajectory_path.exists():
+        raise SystemExit(
+            f"ks-detect: refusing to overwrite existing trajectory at "
+            f"{trajectory_path}. Pass --trajectory {trajectory_path} to "
+            f"reuse it, or remove it first."
+        )
+    print(f"Saving trajectory to {trajectory_path}...")
+    trajectory.save(trajectory_path)
+    return trajectory, trajectory_path
+
+
 def main() -> None:
     """Run CLI detection and save events."""
     parser = build_parser()
@@ -54,25 +137,11 @@ def main() -> None:
     method = arguments.method
     output_path = arguments.output or DEFAULT_OUTPUT_BY_METHOD[method]
 
+    trajectory, trajectory_path = _resolve_trajectory(arguments, output_path)
+
     print("Loading RPOs...")
     rpos = load_rpos(arguments.rpo_file)
     print(f"  Loaded {len(rpos)} RPOs from {arguments.rpo_file}")
-
-    rng = np.random.default_rng(arguments.seed)
-
-    print("Generating trajectory...")
-    initial_state = np.zeros(17, dtype=np.complex128)
-    initial_state[1:16] = (
-        rng.standard_normal(15) + 1j * rng.standard_normal(15)
-    ) * arguments.initial_amplitude
-    resolution = arguments.resolution
-    trajectory = KSTrajectory.from_initial_state(
-        initial_state, TRAJECTORY_DT, arguments.trajectory_steps + 1, resolution
-    )
-    print(
-        f"  Shape: {trajectory.modes.shape} "
-        f"({arguments.trajectory_steps * TRAJECTORY_DT:.0f} time units, dt={TRAJECTORY_DT})"
-    )
 
     print(f"Detecting events with {method.upper()}...")
     start_time = time.perf_counter()
@@ -93,20 +162,16 @@ def main() -> None:
 
     metadata = DetectionMetadata(
         detector_type=method.upper(),
-        seed=arguments.seed if arguments.seed is not None else -1,
-        spatial_resolution=arguments.resolution,
-        trajectory_steps=arguments.trajectory_steps,
-        initial_amplitude=arguments.initial_amplitude,
         min_duration=arguments.min_duration,
         threshold=threshold,
         rpo_file=str(arguments.rpo_file),
+        spatial_resolution=arguments.resolution,
         threshold_quantile=threshold_quantile,
         delay=arguments.delay if method == "pha" else None,
-        elapsed_seconds=elapsed_seconds,
     )
 
     print(f"Saving results to {output_path}...")
-    save_results(output_path, metadata, trajectory.modes[0], events)
+    save_results(output_path, metadata, events, trajectory_path=trajectory_path)
 
     if events:
         best_event = min(events, key=lambda event: event.mean_distance)

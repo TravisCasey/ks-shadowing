@@ -11,7 +11,6 @@ from ks_shadowing.cli.results import load_results
 from ks_shadowing.core import DOMAIN_SIZE, TRAJECTORY_DT
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.rpo import load_rpos
-from ks_shadowing.core.trajectory import KSTrajectory
 
 DEFAULT_OUTPUT = Path("plots/shadowing_visualization.png")
 DEFAULT_CONTEXT_FRACTION = 1.2
@@ -127,11 +126,8 @@ def main() -> None:
     arguments = parser.parse_args()
 
     print(f"Loading results from {arguments.input}...")
-    metadata, initial_state, events = load_results(arguments.input)
-    resolution = metadata.spatial_resolution
-    trajectory = KSTrajectory.from_initial_state(
-        initial_state, TRAJECTORY_DT, metadata.trajectory_steps + 1, resolution
-    )
+    metadata, trajectory, events = load_results(arguments.input)
+    resolution = trajectory.resolution
 
     if not events:
         print("No events found in this file.")
