@@ -13,7 +13,10 @@
  */
 
 #include "ksint.hpp"
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <exception>
 
 constexpr int N = 32;
 
@@ -34,13 +37,20 @@ extern "C" {
  */
 void ksf(double *out_trajectory, double *initial_state, double domain_size,
          double time_step, int num_steps, int save_interval) {
+  try {
+    KS integrator(N, time_step, domain_size);
 
-  KS integrator(N, time_step, domain_size);
+    Map<ArrayXd> a0(initial_state, N - 2);
+    ArrayXXd result = integrator.intg(a0, num_steps, save_interval);
 
-  Map<ArrayXd> a0(initial_state, N - 2);
-  ArrayXXd result = integrator.intg(a0, num_steps, save_interval);
-
-  std::memcpy(out_trajectory, result.data(), result.size() * sizeof(double));
+    std::memcpy(out_trajectory, result.data(), result.size() * sizeof(double));
+  } catch (const std::exception &e) {
+    // Translating C++ exceptions across an extern "C" boundary is UB.
+    // The Python wrapper validates inputs before calling, so reaching here
+    // indicates a programming error; abort with a diagnostic.
+    std::fprintf(stderr, "ksf: %s\n", e.what());
+    std::abort();
+  }
 }
 
 } // extern "C"

@@ -19,11 +19,15 @@ target_link_libraries(ks2py PRIVATE
 
 target_compile_options(ks2py PRIVATE
     -O3
-    -march=native
+    -march=x86-64-v3
     -ffast-math
+    -Wall
+    -Wextra
+    -Wpedantic
 )
 
 set_target_properties(ks2py PROPERTIES
     OUTPUT_NAME "ks2py"
     PREFIX "lib"
+    INTERPROCEDURAL_OPTIMIZATION TRUE
 )

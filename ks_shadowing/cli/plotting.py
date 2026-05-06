@@ -45,10 +45,7 @@ def _align_rpo_to_window(
         RPO field in physical space, spatially shifted to align with the
         trajectory at each timestep.
     """
-    rpo_dt = rpo.period / rpo.time_steps
-    rpo_trajectory = KSTrajectory.from_initial_state(
-        rpo.fourier_coeffs, rpo_dt, rpo.time_steps + 1, resolution
-    )[:-1]
+    rpo_trajectory = KSTrajectory.from_initial_state(rpo.modes, rpo.dt, rpo.time_steps, resolution)
     rpo_physical = rpo_trajectory.to_physical()
 
     period = rpo_physical.shape[0]

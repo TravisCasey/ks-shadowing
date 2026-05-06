@@ -6,16 +6,16 @@ This package detects when chaotic trajectories closely follow unstable Relative 
 
 Two detection methods are implemented:
 
-- **State Space Approach (SSA)**: L2 distance in physical space with spatial shift optimization
-- **Persistent Homology Approach (PHA)**: Shift-invariant wasserstein distance between persistence diagrams
+- **State Space Approach (SSA)**: L2 distance in physical space with spatial shift optimization.
+- **Persistent Homology Approach (PHA)**: shift-invariant Wasserstein distance between persistence diagrams.
 
 ## Installation
 
 Requires Python 3.12+, CMake, and the following system libraries:
 
-- **FFTW3** - Fast Fourier Transform (for KS integrator)
-- **Eigen3** - Linear algebra (for KS integrator)
-- **Boost** - Headers only (for Hera Wasserstein distance)
+- **FFTW3** -- Fast Fourier Transform (for the KS integrator)
+- **Eigen3** -- Linear algebra (for the KS integrator)
+- **Boost** -- Headers only (for the Hera Wasserstein distance library)
 
 Clone with submodules and install:
 ```bash
@@ -24,7 +24,7 @@ cd ks-shadowing
 uv sync
 ```
 
-If you already cloned without `--recurse-submodules`, initialize them with:
+If you already cloned without `--recurse-submodules`:
 ```bash
 git submodule update --init --recursive
 ```
@@ -40,27 +40,29 @@ RPO data files are in the `data/` directory. All RPOs are for domain size L=22.
 
 ## Command-Line Usage
 
-The package exposes two CLI entry points via `uv run`:
-
 ```bash
 # Detect events with SSA
 uv run ks-detect --method ssa --trajectory-steps 50000 --resolution 64
 
-# Detect events with PHA
+# Detect events with PHA at delay 4
 uv run ks-detect --method pha --trajectory-steps 20000 --resolution 32 --delay 4
 
-# Use explicit threshold instead of threshold_quantile
+# Manual threshold instead of quantile-based auto-detection
 uv run ks-detect --method ssa --trajectory-steps 50000 --resolution 64 --threshold 1.0
 
-# Visualize the best event from a saved result file
+# Plot a saved result
 uv run ks-visualize --input results/shadowing_results_ssa.h5
 ```
+
+Other CLIs: `ks-match`, `ks-histogram`, `ks-coverage`. The plotting commands are
+slated to migrate to a Sphinx-Gallery `examples/` tree; only `ks-detect` will
+remain a CLI long-term.
 
 ## Development
 
 ```bash
 # Install with dev dependencies
-uv sync --extra dev
+uv sync --dev
 
 # Run tests
 uv run pytest
@@ -70,8 +72,8 @@ uv run ruff check .
 uv run ruff format .
 
 # Type checking
-uv run ty check
+uv run ty check src tests
 
-# Clear build cache if C++ library fails to build after a clean checkout
+# Clear build cache if the C++ library fails to build after a clean checkout
 uv cache clean ks-shadowing
 ```

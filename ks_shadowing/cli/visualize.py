@@ -6,11 +6,11 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ks_shadowing import load_all_rpos
 from ks_shadowing.cli.plotting import _align_rpo_to_window
 from ks_shadowing.cli.results import load_results
 from ks_shadowing.core import DOMAIN_SIZE, TRAJECTORY_DT
 from ks_shadowing.core.event import ShadowingEvent
+from ks_shadowing.core.rpo import load_rpos
 from ks_shadowing.core.trajectory import KSTrajectory
 
 DEFAULT_OUTPUT = Path("plots/shadowing_visualization.png")
@@ -35,7 +35,7 @@ def build_parser() -> ArgumentParser:
     return parser
 
 
-def select_event(
+def _select_event(
     events: list[ShadowingEvent],
     event_rank: int,
     event_index: int | None,
@@ -62,7 +62,7 @@ def _plot_event(  # noqa: PLR0913
 ) -> plt.Figure:
     """Create a two-panel trajectory/RPO comparison figure."""
     plot_end_timestep = plot_start_timestep + trajectory_physical.shape[0]
-    duration_timestep = event.end_timestep - event.start_timestep
+    duration_timesteps = event.end_timestep - event.start_timestep
 
     trajectory_time = np.arange(plot_start_timestep, plot_end_timestep) * TRAJECTORY_DT
     relative_time = (
@@ -106,12 +106,14 @@ def _plot_event(  # noqa: PLR0913
     axes[1].set_ylabel("Space")
     axes[1].set_title(f"RPO {event.rpo_index} (aligned)")
     axes[1].axvline(0, color="black", linestyle="--", linewidth=1.5)
-    axes[1].axvline(duration_timestep * TRAJECTORY_DT, color="black", linestyle="--", linewidth=1.5)
+    axes[1].axvline(
+        duration_timesteps * TRAJECTORY_DT, color="black", linestyle="--", linewidth=1.5
+    )
     figure.colorbar(image_bottom, ax=axes[1], label="u(x,t)")
 
-    duration_time = duration_timestep * TRAJECTORY_DT
+    duration_time = duration_timesteps * TRAJECTORY_DT
     figure.suptitle(
-        f"Shadowing Event: RPO {event.rpo_index}, duration={duration_timestep} steps "
+        f"Shadowing Event: RPO {event.rpo_index}, duration={duration_timesteps} steps "
         f"({duration_time:.1f} time units), mean distance={event.mean_distance:.3f}",
         y=1.02,
     )
@@ -145,24 +147,24 @@ def main() -> None:
     )
     print(f"  Events: {len(events)}")
 
-    selected_event = select_event(events, arguments.event_rank, arguments.event_index)
+    selected_event = _select_event(events, arguments.event_rank, arguments.event_index)
 
     print(f"Loading RPOs from {rpo_file}...")
-    rpos = load_all_rpos(rpo_file)
+    rpos = load_rpos(rpo_file)
     rpo = rpos[selected_event.rpo_index]
 
-    duration_timestep = selected_event.end_timestep - selected_event.start_timestep
+    duration_timesteps = selected_event.end_timestep - selected_event.start_timestep
     print(
         f"Selected event: RPO={selected_event.rpo_index}, start={selected_event.start_timestep}, "
-        f"end={selected_event.end_timestep}, duration={duration_timestep}, "
+        f"end={selected_event.end_timestep}, duration={duration_timesteps}, "
         f"mean_distance={selected_event.mean_distance:.4f}"
     )
 
-    context_timestep = int(duration_timestep * arguments.context_fraction)
-    plot_start_timestep = max(0, selected_event.start_timestep - context_timestep)
-    plot_end_timestep = min(len(trajectory), selected_event.end_timestep + context_timestep)
+    context_timesteps = int(duration_timesteps * arguments.context_fraction)
+    plot_start_timestep = max(0, selected_event.start_timestep - context_timesteps)
+    plot_end_timestep = min(len(trajectory), selected_event.end_timestep + context_timesteps)
 
-    minimum_window = duration_timestep + 2 * context_timestep
+    minimum_window = duration_timesteps + 2 * context_timesteps
     if plot_end_timestep - plot_start_timestep < minimum_window:
         if plot_start_timestep > 0:
             plot_start_timestep = max(0, plot_end_timestep - minimum_window)

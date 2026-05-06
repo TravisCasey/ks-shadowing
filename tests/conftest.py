@@ -5,6 +5,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from ks_shadowing.core.rpo import RPO, load_rpos
+
 DATA_DIR = Path(__file__).parent.parent / "data"
 RPO_FILE = DATA_DIR / "rpos_selected.npz"
 
@@ -29,3 +31,13 @@ def rpo_data_path() -> Path:
     if not RPO_FILE.exists():
         pytest.skip(f"RPO data file not found: {RPO_FILE}")
     return RPO_FILE
+
+
+@pytest.fixture
+def small_rpos(rpo_data_path: Path) -> list[RPO]:
+    """First two RPOs of ``rpos_selected.npz`` (the shortest periods).
+
+    Used by detection integration tests; keeps runtime small while still
+    exercising the multi-RPO dispatch path.
+    """
+    return load_rpos(rpo_data_path)[:2]

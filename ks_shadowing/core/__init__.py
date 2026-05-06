@@ -2,7 +2,7 @@
 
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.integrator import DOMAIN_SIZE, ksint
-from ks_shadowing.core.rpo import RPO, load_all_rpos
+from ks_shadowing.core.rpo import RPO, load_rpos
 from ks_shadowing.core.trajectory import (
     DEFAULT_CHUNK_SIZE,
     KSTrajectory,
@@ -20,6 +20,6 @@ __all__: list[str] = [
     "KSTrajectory",
     "ShadowingEvent",
     "ksint",
-    "load_all_rpos",
+    "load_rpos",
     "shift_distances_sq",
 ]

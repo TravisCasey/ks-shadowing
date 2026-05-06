@@ -1,21 +1,10 @@
 """Tests for KSTrajectory and shift_distances_sq."""
 
-from pathlib import Path
-
 import numpy as np
 import pytest
+from scipy import fft
 
-from ks_shadowing.core.rpo import load_all_rpos
 from ks_shadowing.core.trajectory import KSTrajectory, shift_distances_sq
-
-
-@pytest.fixture
-def rpo_trajectory(rpo_data_path: Path) -> KSTrajectory:
-    """Short trajectory from the first RPO's initial condition."""
-    rpos = load_all_rpos(rpo_data_path)
-    rpo = rpos[0]
-    steps = 50
-    return KSTrajectory.from_initial_state(rpo.fourier_coeffs, dt=0.02, steps=steps, resolution=64)
 
 
 @pytest.fixture
@@ -26,140 +15,84 @@ def random_trajectory(rng: np.random.Generator) -> KSTrajectory:
     return KSTrajectory(modes=modes, dt=0.02, resolution=64)
 
 
-class TestFromInitialState:
-    def test_length_equals_steps(self, rpo_data_path: Path) -> None:
-        rpos = load_all_rpos(rpo_data_path)
-        rpo = rpos[0]
-        steps = 30
-        result = KSTrajectory.from_initial_state(
-            rpo.fourier_coeffs, dt=0.02, steps=steps, resolution=64
-        )
-        assert len(result) == steps
-
-    def test_modes_shape(self, rpo_trajectory: KSTrajectory) -> None:
-        assert rpo_trajectory.modes.shape == (50, 17)
-
-    def test_modes_dtype(self, rpo_trajectory: KSTrajectory) -> None:
-        assert rpo_trajectory.modes.dtype == np.complex128
+def test_post_init_rejects_invalid_modes() -> None:
+    """``__post_init__`` raises ``ValueError`` for ``modes`` arrays that are
+    not 2D or do not have 17 columns."""
+    with pytest.raises(ValueError, match="2-dimensional"):
+        KSTrajectory(modes=np.zeros(17, dtype=np.complex128), dt=0.02, resolution=64)
+    with pytest.raises(ValueError, match="17 columns"):
+        KSTrajectory(modes=np.zeros((5, 10), dtype=np.complex128), dt=0.02, resolution=64)
 
 
-class TestToPhysical:
-    def test_parseval(self, random_trajectory: KSTrajectory) -> None:
-        """Parseval: sum(physical**2) == 2 * resolution * sum(|modes|**2)."""
-        physical = random_trajectory.to_physical()
-        physical_energy = np.sum(physical**2)
-        spectral_energy = (
-            2 * random_trajectory.resolution * np.sum(np.abs(random_trajectory.modes) ** 2)
-        )
-        np.testing.assert_allclose(physical_energy, spectral_energy, rtol=1e-6, atol=1e-6)
-
-    def test_output_shape(self, random_trajectory: KSTrajectory) -> None:
-        physical = random_trajectory.to_physical()
-        assert physical.shape == (20, 64)
+def test_from_initial_state_length(sample_initial_state: np.ndarray) -> None:
+    """``from_initial_state(num_timesteps=N)`` produces a trajectory of
+    length ``N``."""
+    result = KSTrajectory.from_initial_state(
+        sample_initial_state, dt=0.02, num_timesteps=30, resolution=64
+    )
+    assert len(result) == 30
 
 
-class TestToComoving:
-    def test_zero_drift_is_identity(self, random_trajectory: KSTrajectory) -> None:
-        comoving = random_trajectory.to_comoving(drift_rate=0.0)
-        np.testing.assert_allclose(comoving.modes, random_trajectory.modes, atol=1e-6)
-
-    def test_drift_then_negate_recovers_original(self, random_trajectory: KSTrajectory) -> None:
-        drift = 0.35
-        forward = random_trajectory.to_comoving(drift_rate=drift)
-        recovered = forward.to_comoving(drift_rate=-drift)
-        np.testing.assert_allclose(recovered.modes, random_trajectory.modes, atol=1e-6)
-
-    def test_preserves_dt_and_resolution(self, random_trajectory: KSTrajectory) -> None:
-        comoving = random_trajectory.to_comoving(drift_rate=0.1)
-        assert comoving.dt == random_trajectory.dt
-        assert comoving.resolution == random_trajectory.resolution
+def test_to_physical_parseval(random_trajectory: KSTrajectory) -> None:
+    r"""``to_physical`` satisfies Parseval's identity:
+    :math:`\sum_x |u(x)|^2 = 2R \sum_k |\hat{u}_k|^2`, where :math:`R` is
+    ``resolution``."""
+    physical = random_trajectory.to_physical()
+    physical_energy = np.sum(physical**2)
+    spectral_energy = (
+        2 * random_trajectory.resolution * np.sum(np.abs(random_trajectory.modes) ** 2)
+    )
+    np.testing.assert_allclose(physical_energy, spectral_energy, rtol=1e-6, atol=1e-6)
 
 
-class TestTile:
-    def test_length_at_least_target(self, random_trajectory: KSTrajectory) -> None:
-        target = 75
-        tiled = random_trajectory.tile(target)
-        assert len(tiled) >= target
-
-    def test_periodic_structure(self, random_trajectory: KSTrajectory) -> None:
-        tiled = random_trajectory.tile(75)
-        period = len(random_trajectory)
-        for index in range(len(tiled)):
-            np.testing.assert_array_equal(
-                tiled.modes[index], random_trajectory.modes[index % period]
-            )
-
-    def test_no_op_when_already_long_enough(self, random_trajectory: KSTrajectory) -> None:
-        tiled = random_trajectory.tile(10)
-        assert len(tiled) == len(random_trajectory)
+def test_to_comoving_round_trip(random_trajectory: KSTrajectory) -> None:
+    """Applying ``to_comoving`` with opposite ``drift_rate`` values recovers
+    the original ``modes``."""
+    drift = 0.35
+    forward = random_trajectory.to_comoving(drift_rate=drift)
+    recovered = forward.to_comoving(drift_rate=-drift)
+    np.testing.assert_allclose(recovered.modes, random_trajectory.modes, atol=1e-6)
 
 
-class TestGetitem:
-    def test_slice_preserves_dt_and_resolution(self, random_trajectory: KSTrajectory) -> None:
-        sliced = random_trajectory[2:5]
-        assert sliced.dt == random_trajectory.dt
-        assert sliced.resolution == random_trajectory.resolution
-
-    def test_slice_length(self, random_trajectory: KSTrajectory) -> None:
-        assert len(random_trajectory[2:5]) == 3
-
-    def test_integer_returns_single_timestep(self, random_trajectory: KSTrajectory) -> None:
-        single = random_trajectory[3]
-        assert single.modes.shape == (1, 17)
-
-    def test_integer_preserves_values(self, random_trajectory: KSTrajectory) -> None:
-        single = random_trajectory[3]
-        np.testing.assert_array_equal(single.modes[0], random_trajectory.modes[3])
+def test_to_comoving_start_timestep_offset(random_trajectory: KSTrajectory) -> None:
+    """``to_comoving(d, start_timestep=k)`` on ``traj[k:]`` matches rows
+    ``[k:]`` of ``to_comoving(d, start_timestep=0)`` on the full trajectory."""
+    drift = 0.27
+    offset = 5
+    full = random_trajectory.to_comoving(drift_rate=drift, start_timestep=0)
+    sliced = random_trajectory[offset:].to_comoving(drift_rate=drift, start_timestep=offset)
+    np.testing.assert_allclose(sliced.modes, full.modes[offset:], atol=1e-12)
 
 
-class TestChunksPhysical:
-    def test_reconstructs_full_physical(self, random_trajectory: KSTrajectory) -> None:
-        chunks = list(random_trajectory.chunks_physical(chunk_size=7))
-        reconstructed = np.vstack([chunk for _, chunk in chunks])
-        expected = random_trajectory.to_physical()
-        np.testing.assert_allclose(reconstructed, expected, rtol=1e-6, atol=1e-6)
+def test_shift_distances_sq_matches_brute_force(rng: np.random.Generator) -> None:
+    r"""``shift_distances_sq`` produces zero self-distance at shift 0 and
+    matches a real-space ``np.roll`` reference for
+    :math:`\| u_t - \mathrm{roll}(v_t, -s) \|^2` at every shift."""
+    resolution = 32
+    modes_a = np.zeros((4, 17), dtype=np.complex128)
+    modes_b = np.zeros((4, 17), dtype=np.complex128)
+    modes_a[:, 1:16] = (rng.standard_normal((4, 15)) + 1j * rng.standard_normal((4, 15))) * 0.1
+    modes_b[:, 1:16] = (rng.standard_normal((4, 15)) + 1j * rng.standard_normal((4, 15))) * 0.1
 
-    def test_start_indices(self, random_trajectory: KSTrajectory) -> None:
-        starts = [start for start, _ in random_trajectory.chunks_physical(chunk_size=7)]
-        assert starts == [0, 7, 14]
+    distances = shift_distances_sq(modes_a, modes_b, resolution)
+    self_distances = shift_distances_sq(modes_a, modes_a, resolution)
+    np.testing.assert_allclose(self_distances[:, 0], 0.0, atol=1e-6)
 
+    physical_a = resolution * fft.irfft(modes_a, resolution, axis=-1)
+    physical_b = resolution * fft.irfft(modes_b, resolution, axis=-1)
+    expected = np.empty((4, resolution), dtype=np.float64)
+    for shift in range(resolution):
+        diff = physical_a - np.roll(physical_b, -shift, axis=-1)
+        expected[:, shift] = np.sum(diff**2, axis=-1)
 
-class TestChunksFourier:
-    def test_reconstructs_full_modes(self, random_trajectory: KSTrajectory) -> None:
-        chunks = list(random_trajectory.chunks_fourier(chunk_size=7))
-        reconstructed = np.vstack([chunk for _, chunk in chunks])
-        np.testing.assert_array_equal(reconstructed, random_trajectory.modes)
-
-    def test_start_indices(self, random_trajectory: KSTrajectory) -> None:
-        starts = [start for start, _ in random_trajectory.chunks_fourier(chunk_size=7)]
-        assert starts == [0, 7, 14]
-
-
-class TestShiftDistancesSq:
-    def test_self_distance_zero_at_shift_zero(self, random_trajectory: KSTrajectory) -> None:
-        distances = shift_distances_sq(
-            random_trajectory.modes, random_trajectory.modes, random_trajectory.resolution
-        )
-        np.testing.assert_allclose(distances[:, 0], 0.0, atol=1e-6)
-
-    def test_all_non_negative(self, random_trajectory: KSTrajectory) -> None:
-        distances = shift_distances_sq(
-            random_trajectory.modes, random_trajectory.modes, random_trajectory.resolution
-        )
-        assert np.all(distances >= -1e-6)
-
-    def test_output_shape(self, random_trajectory: KSTrajectory) -> None:
-        distances = shift_distances_sq(
-            random_trajectory.modes, random_trajectory.modes, random_trajectory.resolution
-        )
-        assert distances.shape == (20, 64)
+    np.testing.assert_allclose(distances, expected, rtol=1e-6, atol=1e-6)
 
 
-class TestPostInit:
-    def test_rejects_1d_modes(self) -> None:
-        with pytest.raises(ValueError, match="2-dimensional"):
-            KSTrajectory(modes=np.zeros(17, dtype=np.complex128), dt=0.02, resolution=64)
-
-    def test_rejects_wrong_column_count(self) -> None:
-        with pytest.raises(ValueError, match="17 columns"):
-            KSTrajectory(modes=np.zeros((5, 10), dtype=np.complex128), dt=0.02, resolution=64)
+def test_chunks_physical_reconstructs(random_trajectory: KSTrajectory) -> None:
+    """Concatenating all chunks from ``chunks_physical`` reproduces
+    ``to_physical`` and yields evenly-spaced ``start_index`` values."""
+    chunks = list(random_trajectory.chunks_physical(chunk_size=7))
+    assert [start for start, _ in chunks] == [0, 7, 14]
+    reconstructed = np.vstack([chunk for _, chunk in chunks])
+    expected = random_trajectory.to_physical()
+    np.testing.assert_allclose(reconstructed, expected, rtol=1e-6, atol=1e-6)

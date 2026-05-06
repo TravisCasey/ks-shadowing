@@ -31,14 +31,14 @@ core.matching
 .. automodule:: ks_shadowing.core.matching
    :members:
 
-ssa.detector
-------------
+ssa.detection
+-------------
 
-.. automodule:: ks_shadowing.ssa.detector
+.. automodule:: ks_shadowing.ssa.detection
    :members:
 
-pha.detector
-------------
+pha.detection
+-------------
 
-.. automodule:: ks_shadowing.pha.detector
+.. automodule:: ks_shadowing.pha.detection
    :members:

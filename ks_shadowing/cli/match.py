@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from ks_shadowing.cli.results import DetectionMetadata, load_results
-from ks_shadowing.core.matching import MatchedEvent, find_matched_events
+from ks_shadowing.core.matching import MatchedEvent, match_events
 
 DEFAULT_OUTPUT = Path("plots/matched_events.png")
 DEFAULT_DPI = 150
@@ -126,9 +126,13 @@ def _plot_matches(matches: list[MatchedEvent]) -> plt.Figure:
         ax.set_title("Matched Shadowing Events (SSA vs PHA)")
         return figure
 
-    ssa_lengths = np.array([m.ssa_event.end_timestep - m.ssa_event.start_timestep for m in matches])
-    pha_lengths = np.array([m.pha_event.end_timestep - m.pha_event.start_timestep for m in matches])
-    iou = np.array([m.intersection_length / m.union_length for m in matches])
+    ssa_lengths = np.array(
+        [match.ssa_event.end_timestep - match.ssa_event.start_timestep for match in matches]
+    )
+    pha_lengths = np.array(
+        [match.pha_event.end_timestep - match.pha_event.start_timestep for match in matches]
+    )
+    iou = np.array([match.intersection_length / match.union_length for match in matches])
 
     scatter = ax.scatter(
         ssa_lengths,
@@ -170,12 +174,12 @@ def main() -> None:
         pha_state,
     )
 
-    matches = find_matched_events(ssa_events, pha_events)
+    matches = match_events(ssa_events, pha_events)
 
-    matched_ssa = {id(m.ssa_event) for m in matches}
-    matched_pha = {id(m.pha_event) for m in matches}
-    unmatched_ssa = sum(1 for e in ssa_events if id(e) not in matched_ssa)
-    unmatched_pha = sum(1 for e in pha_events if id(e) not in matched_pha)
+    matched_ssa_ids = {id(match.ssa_event) for match in matches}
+    matched_pha_ids = {id(match.pha_event) for match in matches}
+    unmatched_ssa = sum(1 for event in ssa_events if id(event) not in matched_ssa_ids)
+    unmatched_pha = sum(1 for event in pha_events if id(event) not in matched_pha_ids)
 
     print(f"\nMatched pairs: {len(matches)}")
     print(f"Unmatched SSA events: {unmatched_ssa}")

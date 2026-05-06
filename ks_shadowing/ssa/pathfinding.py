@@ -1,15 +1,17 @@
-"""Shadowing event characterization via longest pathfinding algorithm (3D version).
+"""Shadowing event extraction via longest pathfinding in 3D.
 
-This module implements the graph-based algorithm for extracting shadowing events
-from distance data in 3D space (timestep x phase x shift):
+Extracts shadowing events from streaming squared-distance data over the 3D
+``(timestep, phase, shift)`` grid with a three-stage pipeline:
 
-1. Collect "close passes" - points where trajectory is within threshold of an RPO
-2. Group close passes into connected components (26-connectivity in 3D grid)
-3. Find the longest valid path through each component
+1. Collect "close passes": grid entries whose distance falls below a threshold.
+2. Group close passes into 26-connected components, with wraparound in the
+   phase and shift dimensions.
+3. Find the longest valid path through each component.
 
-A valid path must satisfy temporal co-evolution (trajectory and RPO timesteps
-advance together) and spatial continuity (shift changes by at most 1, with
-wraparound).
+A valid path satisfies temporal co-evolution (trajectory and RPO timesteps
+advance together, so ``phase`` is constant along the path) and spatial
+continuity (``shift`` changes by at most 1 between steps, with wraparound
+modulo the spatial resolution).
 """
 
 from collections.abc import Iterator
@@ -19,10 +21,9 @@ from numpy.typing import NDArray
 
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.unionfind import _find_components
-from ks_shadowing.ssa.rpo import _RPOStateSpace
 
-# Structured dtype for close passes in 3D (timestep, phase, shift).
-_CLOSE_PASS_DTYPE_3D = np.dtype(
+# Structured dtype for close passes over the ``(timestep, phase, shift)`` grid.
+_CLOSE_PASS_DTYPE = np.dtype(
     [
         ("timestep", np.int32),
         ("phase", np.int32),
@@ -32,170 +33,109 @@ _CLOSE_PASS_DTYPE_3D = np.dtype(
 )
 
 
-class _ComponentPathFinder3D:
-    """Finds the longest valid shadowing path through a connected component.
+def _extract_shadowing_events(  # noqa: PLR0913
+    dist_sq_generator: Iterator[tuple[int, int, NDArray[np.float64]]],
+    rpo_index: int,
+    period: int,
+    resolution: int,
+    threshold: float,
+    min_duration: int,
+) -> list[ShadowingEvent]:
+    """Extract shadowing events from streaming squared distances.
 
-    A valid path satisfies these constraints at each step:
-    - Timestep advances by exactly 1
-    - Phase offset remains constant (trajectory and RPO advance together)
-    - Spatial shift changes by at most 1 (with wraparound)
+    Entry point for the 3D pathfinding pipeline. Collects close passes below
+    ``threshold``, groups them into 26-connected components, and returns the
+    longest valid path through each component as a
+    :class:`~ks_shadowing.core.event.ShadowingEvent`, skipping components
+    whose longest path is shorter than ``min_duration``.
+
+    Parameters
+    ----------
+    dist_sq_generator : Iterator[tuple[int, int, NDArray[np.float64]]]
+        Yields ``(phase, chunk_start, dist_sq)`` tuples where ``dist_sq`` has
+        shape ``(chunk_len, resolution)`` containing squared :math:`L_2`
+        distances.
+    rpo_index : int
+        Index of the RPO whose phases are being tested; stored on each
+        returned event.
+    period : int
+        RPO period in timesteps. Used for phase wraparound in component
+        grouping and for converting the detection phase offset to the event's
+        ``start_phase``.
+    resolution : int
+        Spatial resolution; shift dimension wraps modulo ``resolution``.
+    threshold : float
+        Maximum :math:`L_2` distance for a grid entry to count as a close pass.
+    min_duration : int
+        Minimum event duration in timesteps.
+
+    Returns
+    -------
+    list[ShadowingEvent]
     """
+    close_passes = _collect_close_passes(dist_sq_generator, threshold)
+    if len(close_passes) == 0:
+        return []
 
-    def __init__(self, passes: NDArray, period: int, resolution: int):
-        """Initialize with structured array of close passes."""
-        self.period = period
-        self.resolution = resolution
+    components = _find_connected_components(close_passes, period, resolution)
 
-        # Sort by timestep
-        sort_indices = np.argsort(passes["timestep"])
-        self.passes = passes[sort_indices]
-        self.pass_count = len(self.passes)
+    events: list[ShadowingEvent] = []
+    for component in components:
+        path, mean_distance, min_distance = _find_longest_path(component, resolution)
+        if len(path) < min_duration:
+            continue
 
-        # Build lookup: (timestep, phase) -> [(shift, pass_index), ...],
-        # where pass_index indexes into self.passes
-        self.lookup: dict[tuple[int, int], list[tuple[int, int]]] = {}
-        for pass_index in range(self.pass_count):
-            key = (int(self.passes["timestep"][pass_index]), int(self.passes["phase"][pass_index]))
-            if key not in self.lookup:
-                self.lookup[key] = []
-            self.lookup[key].append((int(self.passes["shift"][pass_index]), pass_index))
-
-    def find_longest_path(self) -> tuple[NDArray, float, float] | None:
-        """Find the longest valid path, breaking ties by lowest mean distance.
-
-        Returns `(path, mean_distance, min_distance)` or None if the component
-        is empty.
-        """
-        if self.pass_count == 0:
-            return None
-
-        path_length = np.ones(self.pass_count, dtype=np.int32)
-        dist_sum = self.passes["distance"].astype(np.float64)
-        min_dist = dist_sum.copy()
-        predecessor = np.full(self.pass_count, -1, dtype=np.int32)
-
-        # Process in timestep order, extending paths from valid predecessors
-        for pass_index in range(self.pass_count):
-            pass_timestep = int(self.passes["timestep"][pass_index])
-            pass_phase = int(self.passes["phase"][pass_index])
-            pass_shift = int(self.passes["shift"][pass_index])
-
-            best = self._find_best_predecessor(
-                pass_timestep, pass_phase, pass_shift, path_length, dist_sum
+        start_timestep = int(path["timestep"][0])
+        # Convert the raw phase offset to the RPO phase at ``start_timestep``.
+        # In detection, phase offset ``p`` at trajectory timestep ``t`` pairs
+        # with RPO index ``(p + t) % period``; the event records the RPO phase
+        # at its start timestep.
+        phase_offset = int(path["phase"][0])
+        start_phase = (phase_offset + start_timestep) % period
+        events.append(
+            ShadowingEvent(
+                rpo_index=rpo_index,
+                start_timestep=start_timestep,
+                end_timestep=int(path["timestep"][-1]) + 1,
+                mean_distance=mean_distance,
+                min_distance=min_distance,
+                start_phase=start_phase,
+                shifts=path["shift"],
             )
-            if best is None:
-                continue
+        )
 
-            path_length[pass_index] = path_length[best] + 1
-            dist_sum[pass_index] = dist_sum[best] + self.passes["distance"][pass_index]
-            min_dist[pass_index] = min(min_dist[best], self.passes["distance"][pass_index])
-            predecessor[pass_index] = best
-
-        # Find best endpoint (longest path, then lowest mean distance)
-        best_endpoint = self._find_best_endpoint(path_length, dist_sum)
-        path = self._reconstruct_path(predecessor, best_endpoint)
-        mean_distance = float(dist_sum[best_endpoint] / len(path))
-        return path, mean_distance, float(min_dist[best_endpoint])
-
-    def _find_best_predecessor(
-        self,
-        pass_timestep: int,
-        pass_phase: int,
-        pass_shift: int,
-        path_length: NDArray[np.int32],
-        dist_sum: NDArray[np.float64],
-    ) -> int | None:
-        """Find the best predecessor for a close pass, or ``None`` if none valid.
-
-        Phase must remain constant along a path (trajectory and RPO advance
-        together), while shift can vary by at most 1 with wraparound.
-        """
-        # Phase must be constant along path - only look at same phase
-        prev_key = (pass_timestep - 1, pass_phase)
-        if prev_key not in self.lookup:
-            return None
-
-        best_index: int | None = None
-        best_length = 0
-        best_mean = float("inf")
-
-        for prev_shift, prev_index in self.lookup[prev_key]:
-            if not self._is_valid_shift_transition(prev_shift, pass_shift):
-                continue
-
-            prev_len = path_length[prev_index]
-            prev_mean = dist_sum[prev_index] / prev_len
-
-            if prev_len > best_length or (prev_len == best_length and prev_mean < best_mean):
-                best_index = prev_index
-                best_length = prev_len
-                best_mean = prev_mean
-
-        return best_index
-
-    def _find_best_endpoint(
-        self,
-        path_length: NDArray[np.int32],
-        dist_sum: NDArray[np.float64],
-    ) -> int:
-        """Find the index with longest path, breaking ties by lowest mean distance."""
-        assert self.pass_count > 0
-        best_index = 0
-        best_length = 0
-        best_mean = float("inf")
-
-        for pass_index in range(self.pass_count):
-            pass_length = path_length[pass_index]
-            pass_mean = dist_sum[pass_index] / pass_length
-
-            if pass_length > best_length or (pass_length == best_length and pass_mean < best_mean):
-                best_index = pass_index
-                best_length = pass_length
-                best_mean = pass_mean
-
-        return best_index
-
-    def _reconstruct_path(self, predecessor: NDArray[np.int32], end: int) -> NDArray:
-        """Reconstruct path by following predecessor links."""
-        path_indices = []
-        current_index = end
-
-        while current_index >= 0:
-            path_indices.append(current_index)
-            current_index = predecessor[current_index]
-        path_indices.reverse()
-
-        return self.passes[path_indices]
-
-    def _is_valid_shift_transition(self, shift_from: int, shift_to: int) -> bool:
-        """Check if shift transition is valid (differs by at most 1, with wraparound)."""
-        diff = (shift_to - shift_from) % self.resolution
-        return diff <= 1 or diff == self.resolution - 1
+    return events
 
 
-def _collect_close_passes_3d(
+def _collect_close_passes(
     dist_sq_generator: Iterator[tuple[int, int, NDArray[np.float64]]],
     threshold: float,
 ) -> NDArray:
-    """Collect all entries below threshold from a squared distance generator.
+    """Collect all entries below threshold from a squared-distance generator.
 
-    The generator yields ``(phase, chunk_start, dist_sq)`` tuples where
-    ``dist_sq`` has shape ``(chunk_len, resolution)`` containing squared
-    distances.
+    Parameters
+    ----------
+    dist_sq_generator : Iterator[tuple[int, int, NDArray[np.float64]]]
+        Yields ``(phase, chunk_start, dist_sq)`` tuples where ``dist_sq`` has
+        shape ``(chunk_len, resolution)`` containing squared :math:`L_2`
+        distances.
+    threshold : float
+        Maximum :math:`L_2` distance for close passes.
 
-    Returns a structured array with dtype ``_CLOSE_PASS_DTYPE_3D``.
+    Returns
+    -------
+    NDArray
+        Structured array with dtype ``_CLOSE_PASS_DTYPE``.
     """
     threshold_sq = threshold * threshold
     chunks: list[NDArray] = []
 
     for phase, chunk_start, dist_sq in dist_sq_generator:
-        # Find entries below threshold (compare squared values)
         step_index, shift_index = np.asarray(dist_sq < threshold_sq).nonzero()
-        step_count = len(step_index)
-        if step_count == 0:
+        if len(step_index) == 0:
             continue
 
-        chunk: NDArray = np.empty(step_count, dtype=_CLOSE_PASS_DTYPE_3D)
+        chunk: NDArray = np.empty(len(step_index), dtype=_CLOSE_PASS_DTYPE)
         chunk["timestep"] = step_index + chunk_start
         chunk["phase"] = phase
         chunk["shift"] = shift_index
@@ -203,27 +143,43 @@ def _collect_close_passes_3d(
         chunks.append(chunk)
 
     if not chunks:
-        return np.array([], dtype=_CLOSE_PASS_DTYPE_3D)
+        return np.array([], dtype=_CLOSE_PASS_DTYPE)
     return np.concatenate(chunks)
 
 
-def _find_connected_components_3d(  # noqa: PLR0912
+def _find_connected_components(  # noqa: PLR0912
     close_passes: NDArray,
     period: int,
     resolution: int,
 ) -> list[NDArray]:
-    """Group close passes into connected components using 26-connectivity.
+    """Group close passes into 26-connected components.
 
-    Two points are adjacent if they differ by at most 1 in each dimension,
-    with wraparound in phase and shift dimensions.
+    Two close passes are adjacent if they differ by at most 1 in each
+    dimension, with wraparound in the phase and shift dimensions.
+    Components are found with a sweep-line pass over timesteps using two
+    ``(period, resolution)`` dense label slices, followed by a batch
+    union-find in C++.
 
-    Takes and returns structured arrays with dtype `_CLOSE_PASS_DTYPE_3D`.
+    Parameters
+    ----------
+    close_passes : NDArray
+        Structured array with dtype ``_CLOSE_PASS_DTYPE``.
+    period : int
+        RPO period; phase wraps modulo ``period``.
+    resolution : int
+        Spatial resolution; shift wraps modulo ``resolution``.
+
+    Returns
+    -------
+    list[NDArray]
+        One ``_CLOSE_PASS_DTYPE`` structured array per connected component.
     """
     if len(close_passes) == 0:
         return []
 
-    # Sort by (timestep, phase, shift) for sweep-line processing
-    # np.lexsort sorts by the last key first
+    # Sort by ``(timestep, phase, shift)`` so every backward neighbor has been
+    # processed when we visit a cell. ``np.lexsort`` uses the last key as
+    # primary.
     sort_order = np.lexsort(
         (
             close_passes["shift"],
@@ -232,22 +188,20 @@ def _find_connected_components_3d(  # noqa: PLR0912
         )
     )
     close_passes = close_passes[sort_order]
-
     pass_count = len(close_passes)
-
-    # Two-slice dense label arrays: -1 = no pass, >=0 = pass index
-    labels_prev = np.full((period, resolution), -1, dtype=np.int32)
-    labels_curr = np.full((period, resolution), -1, dtype=np.int32)
 
     timesteps = close_passes["timestep"]
     phases = close_passes["phase"]
     shifts = close_passes["shift"]
 
-    # Backward neighbors in previous slice (dt=-1): all 9 neighbors
-    prev_slice_offsets = [(dp, ds) for dp in (-1, 0, 1) for ds in (-1, 0, 1)]
+    # Two-slice dense label grid: -1 is an empty cell, otherwise pass index.
+    labels_prev = np.full((period, resolution), -1, dtype=np.int32)
+    labels_curr = np.full((period, resolution), -1, dtype=np.int32)
 
-    # Backward neighbors in current slice (dt=0): 4 neighbors in row-major order
-    # left, upper-left, up, upper-right
+    # Previous-slice neighbors (dt=-1): all nine.
+    prev_slice_offsets = [(dp, ds) for dp in (-1, 0, 1) for ds in (-1, 0, 1)]
+    # Current-slice backward neighbors (dt=0): left, upper-left, up,
+    # upper-right.
     curr_slice_offsets = [(-1, -1), (-1, 0), (-1, 1), (0, -1)]
 
     current_timestep = -1
@@ -259,133 +213,162 @@ def _find_connected_components_3d(  # noqa: PLR0912
         p = int(phases[pass_index])
         s = int(shifts[pass_index])
 
-        # Handle timestep transitions
+        # Handle timestep transitions between sweeps.
         if t != current_timestep:
             if t > current_timestep + 1:
-                # Skipped timesteps - clear both slices
+                # Skipped timesteps -- both slices are irrelevant.
                 labels_prev.fill(-1)
                 labels_curr.fill(-1)
             else:
-                # Normal advance - swap slices
+                # Normal advance -- yesterday's current slice becomes the new
+                # previous slice, and we clear the new current slice.
                 labels_prev, labels_curr = labels_curr, labels_prev
                 labels_curr.fill(-1)
             current_timestep = t
 
         labels_curr[p, s] = pass_index
 
-        # Check previous slice (dt=-1)
+        # Check previous slice (dt=-1).
         if t > 0:
             for dp, ds in prev_slice_offsets:
-                neighbor_label = labels_prev[(p + dp) % period, (s + ds) % resolution]
-                if neighbor_label >= 0:
+                neighbor = labels_prev[(p + dp) % period, (s + ds) % resolution]
+                if neighbor >= 0:
                     edges_a.append(pass_index)
-                    edges_b.append(neighbor_label)
+                    edges_b.append(neighbor)
 
-        # Check current slice backward neighbors (dt=0)
+        # Check current-slice backward neighbors (dt=0).
         for dp, ds in curr_slice_offsets:
-            neighbor_label = labels_curr[(p + dp) % period, (s + ds) % resolution]
-            if neighbor_label >= 0:
+            neighbor = labels_curr[(p + dp) % period, (s + ds) % resolution]
+            if neighbor >= 0:
                 edges_a.append(pass_index)
-                edges_b.append(neighbor_label)
+                edges_b.append(neighbor)
 
-        # Handle phase wraparound in current slice: when at last phase row,
-        # check phase 0 which has already been processed
+        # Phase wraparound in the current slice: when at the last phase row,
+        # phase 0 at the same timestep has already been processed.
         if p == period - 1:
             for ds in (-1, 0, 1):
-                neighbor_label = labels_curr[0, (s + ds) % resolution]
-                if neighbor_label >= 0:
+                neighbor = labels_curr[0, (s + ds) % resolution]
+                if neighbor >= 0:
                     edges_a.append(pass_index)
-                    edges_b.append(neighbor_label)
+                    edges_b.append(neighbor)
 
-        # Handle shift wraparound in current slice: when at last shift column,
-        # check shift 0 which has already been processed
+        # Shift wraparound in the current slice: when at the last shift
+        # column, shift 0 at the same ``(t, p)`` has already been processed.
         if s == resolution - 1:
-            neighbor_label = labels_curr[p, 0]
-            if neighbor_label >= 0:
+            neighbor = labels_curr[p, 0]
+            if neighbor >= 0:
                 edges_a.append(pass_index)
-                edges_b.append(neighbor_label)
+                edges_b.append(neighbor)
 
-    # Batch union-find in C++
     component_labels = _find_components(
         pass_count,
         np.array(edges_a, dtype=np.int32),
         np.array(edges_b, dtype=np.int32),
     )
 
-    # Group by component root
-    sort_order = np.argsort(component_labels)
-    sorted_labels = component_labels[sort_order]
+    # Partition passes by component root.
+    group_order = np.argsort(component_labels)
+    sorted_labels = component_labels[group_order]
     splits = np.where(np.diff(sorted_labels) != 0)[0] + 1
+    return [close_passes[group] for group in np.split(group_order, splits)]
 
-    return [close_passes[group] for group in np.split(sort_order, splits)]
 
+def _find_longest_path(
+    passes: NDArray,
+    resolution: int,
+) -> tuple[NDArray, float, float]:
+    """Find the longest valid path through a 3D connected component.
 
-def _extract_shadowing_events_3d(
-    dist_sq_generator: Iterator[tuple[int, int, NDArray[np.float64]]],
-    rpo_data: _RPOStateSpace,
-    threshold: float,
-    min_duration: int = 1,
-) -> list[ShadowingEvent]:
-    r"""Extract shadowing events from squared distances using connected components.
-
-    Main entry point for the 3D pathfinding algorithm: collects close passes
-    below ``threshold``, groups them into 26-connected components, and finds
-    the longest valid path through each. Returns one
-    :class:`~ks_shadowing.core.event.ShadowingEvent` per component (if longer
-    than ``min_duration``).
+    A valid path satisfies temporal co-evolution: from each step to the next,
+    ``timestep`` advances by exactly 1, ``phase`` remains constant (trajectory
+    and RPO advance together), and ``shift`` changes by at most 1 modulo
+    ``resolution``. Ties in path length are broken by lowest mean distance.
 
     Parameters
     ----------
-    dist_sq_generator : Iterator[tuple[int, int, NDArray[np.float64]]]
-        Yields ``(phase, chunk_start, dist_sq)`` tuples where ``dist_sq`` has
-        shape ``(chunk_len, resolution)`` containing squared :math:`L_2`
-        distances.
-    rpo_data : _RPOStateSpace
-        Precomputed RPO trajectory in state space.
-    threshold : float
-        Maximum :math:`L_2` distance for close passes.
-    min_duration : int, optional
-        Minimum event duration in timesteps. Default is 1.
+    passes : NDArray
+        Non-empty structured array with dtype ``_CLOSE_PASS_DTYPE``.
+    resolution : int
+        Spatial resolution; shift transitions wrap modulo ``resolution``.
 
     Returns
     -------
-    list[ShadowingEvent]
-        Events sorted by ``start_timestep``.
+    path : NDArray
+        Slice of ``passes`` with dtype ``_CLOSE_PASS_DTYPE`` forming the chosen
+        path, ordered by timestep.
+    mean_distance : float
+        Mean ``distance`` along ``path``.
+    min_distance : float
+        Minimum ``distance`` along ``path``.
     """
-    close_passes = _collect_close_passes_3d(dist_sq_generator, threshold)
-    if len(close_passes) == 0:
-        return []
+    # Sort so each successor is processed after its predecessor.
+    passes = passes[np.argsort(passes["timestep"])]
+    pass_count = len(passes)
 
-    period = rpo_data.time_steps
-    resolution = rpo_data.resolution
-    components = _find_connected_components_3d(close_passes, period, resolution)
-    events: list[ShadowingEvent] = []
+    # Lookup from ``(timestep, phase)`` to a list of ``(shift, pass_index)``
+    # pairs. Multiple shifts may share the same ``(timestep, phase)`` cell.
+    cell_to_entries: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for pass_index in range(pass_count):
+        key = (int(passes["timestep"][pass_index]), int(passes["phase"][pass_index]))
+        cell_to_entries.setdefault(key, []).append((int(passes["shift"][pass_index]), pass_index))
 
-    for component in components:
-        finder = _ComponentPathFinder3D(component, period, resolution)
-        result = finder.find_longest_path()
+    path_length = np.ones(pass_count, dtype=np.int32)
+    distance_sum = passes["distance"].astype(np.float64)
+    min_distance = distance_sum.copy()
+    predecessor = np.full(pass_count, -1, dtype=np.int32)
 
-        if result is None or len(result[0]) < min_duration:
+    for pass_index in range(pass_count):
+        pass_timestep = int(passes["timestep"][pass_index])
+        pass_phase = int(passes["phase"][pass_index])
+        pass_shift = int(passes["shift"][pass_index])
+
+        # Phase is constant along a valid path.
+        prev_entries = cell_to_entries.get((pass_timestep - 1, pass_phase))
+        if prev_entries is None:
             continue
-        path, mean_distance, min_distance = result
 
-        start_timestep = int(path["timestep"][0])
-        phase_offset = int(path["phase"][0])
-        # Convert raw phase offset to RPO phase at start_timestep.
-        # In detection, phase offset p means RPO index at timestep t is
-        # (p + t) % period. The event stores the RPO phase at start_timestep.
-        start_phase = (phase_offset + start_timestep) % period
-        events.append(
-            ShadowingEvent(
-                rpo_index=rpo_data.index,
-                start_timestep=start_timestep,
-                end_timestep=int(path["timestep"][-1]) + 1,
-                mean_distance=mean_distance,
-                min_distance=min_distance,
-                start_phase=start_phase,
-                shifts=path["shift"],
-            )
+        best_predecessor: int | None = None
+        best_length = 0
+        best_mean = float("inf")
+
+        for prev_shift, prev_index in prev_entries:
+            shift_diff = (pass_shift - prev_shift) % resolution
+            if shift_diff > 1 and shift_diff != resolution - 1:
+                continue
+
+            prev_length = int(path_length[prev_index])
+            prev_mean = float(distance_sum[prev_index]) / prev_length
+            if prev_length > best_length or (prev_length == best_length and prev_mean < best_mean):
+                best_predecessor = prev_index
+                best_length = prev_length
+                best_mean = prev_mean
+
+        if best_predecessor is None:
+            continue
+
+        path_length[pass_index] = path_length[best_predecessor] + 1
+        distance_sum[pass_index] = distance_sum[best_predecessor] + passes["distance"][pass_index]
+        min_distance[pass_index] = min(
+            min_distance[best_predecessor], passes["distance"][pass_index]
         )
+        predecessor[pass_index] = best_predecessor
 
-    events.sort(key=lambda e: e.start_timestep)
-    return events
+    # Pick the endpoint maximizing length, breaking ties by mean distance.
+    # ``np.lexsort`` treats its last key as primary; negating ``path_length``
+    # turns maximization into ascending sort.
+    mean_distances = distance_sum / path_length
+    best_end = int(np.lexsort((mean_distances, -path_length))[0])
+
+    # Walk predecessor links back to the start of the path.
+    path_indices: list[int] = []
+    cursor = best_end
+    while cursor >= 0:
+        path_indices.append(cursor)
+        cursor = int(predecessor[cursor])
+    path_indices.reverse()
+
+    return (
+        passes[path_indices],
+        float(distance_sum[best_end]) / len(path_indices),
+        float(min_distance[best_end]),
+    )

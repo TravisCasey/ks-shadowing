@@ -1,1 +1,0 @@
-"""PHA detection tests."""

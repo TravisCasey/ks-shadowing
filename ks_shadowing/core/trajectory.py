@@ -8,7 +8,6 @@ using 17-mode FFT cross-correlation.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Self
@@ -54,8 +53,7 @@ class KSTrajectory:
 
     def __post_init__(self) -> None:
         """Validate modes array shape."""
-        _expected_ndim = 2
-        if self.modes.ndim != _expected_ndim:
+        if self.modes.ndim != 2:  # noqa: PLR2004
             raise ValueError(f"modes must be 2-dimensional, got ndim={self.modes.ndim}")
         if self.modes.shape[1] != _COMPLEX_MODES:
             raise ValueError(f"modes must have {_COMPLEX_MODES} columns, got {self.modes.shape[1]}")
@@ -65,7 +63,7 @@ class KSTrajectory:
         cls,
         initial_state: NDArray[np.complex128],
         dt: float,
-        steps: int,
+        num_timesteps: int,
         resolution: int,
     ) -> Self:
         """Integrate the KS equation from an initial condition.
@@ -76,18 +74,18 @@ class KSTrajectory:
             Complex Fourier modes for the initial condition.
         dt : float
             Integration timestep in time units.
-        steps : int
+        num_timesteps : int
             Length of the resulting trajectory (including the initial
-            condition). Internally calls ``ksint(initial_state, dt, steps - 1)``.
+            condition).
         resolution : int
             Number of physical-space grid points for inverse FFT.
 
         Returns
         -------
         Self
-            Trajectory with ``len(result) == steps``.
+            Trajectory with ``len(result) == num_timesteps``.
         """
-        modes = ksint(initial_state, dt, steps - 1)
+        modes = ksint(initial_state, dt, num_timesteps - 1)
         return cls(modes=modes, dt=dt, resolution=resolution)
 
     @property
@@ -109,12 +107,12 @@ class KSTrajectory:
         """
         return self.resolution * fft.irfft(self.modes, self.resolution, axis=-1)
 
-    def to_comoving(self, drift_rate: float, start_step: int = 0) -> Self:
+    def to_comoving(self, drift_rate: float, start_timestep: int = 0) -> Self:
         r"""Transform to co-moving frame by phase-shifting Fourier modes.
 
         Multiplies mode ``k`` at timestep ``t`` by
         :math:`\exp(2 \pi i \cdot k \cdot \text{drift\_rate}
-        \cdot (\text{start\_step} + t) / L)` where :math:`L` is the
+        \cdot (\text{start\_timestep} + t) / L)` where :math:`L` is the
         domain size.
 
         Parameters
@@ -122,7 +120,7 @@ class KSTrajectory:
         drift_rate : float
             Spatial drift per timestep in domain units. Callers compute
             ``rpo.spatial_shift / rpo.time_steps``.
-        start_step : int, optional
+        start_timestep : int, optional
             Absolute timestep offset for the first row. Default 0.
 
         Returns
@@ -132,7 +130,7 @@ class KSTrajectory:
             and ``resolution``.
         """
         wavenumbers = np.arange(_COMPLEX_MODES)  # (17,)
-        timesteps = np.arange(start_step, start_step + self.num_timesteps)  # (T,)
+        timesteps = np.arange(start_timestep, start_timestep + self.num_timesteps)  # (T,)
         phase = (
             2j
             * np.pi
@@ -144,45 +142,20 @@ class KSTrajectory:
         comoving_modes = self.modes * np.exp(phase)
         return type(self)(modes=comoving_modes, dt=self.dt, resolution=self.resolution)
 
-    def tile(self, target_length: int) -> Self:
-        """Tile modes periodically to at least ``target_length`` timesteps.
-
-        Parameters
-        ----------
-        target_length : int
-            Minimum desired number of timesteps in the result.
-
-        Returns
-        -------
-        Self
-            New trajectory with ``len(result) >= target_length``.
-        """
-        period = self.num_timesteps
-        if period >= target_length:
-            return type(self)(modes=self.modes, dt=self.dt, resolution=self.resolution)
-
-        tile_count = math.ceil(target_length / period)
-        tiled_modes = np.tile(self.modes, (tile_count, 1))
-        return type(self)(modes=tiled_modes, dt=self.dt, resolution=self.resolution)
-
-    def __getitem__(self, key: int | slice) -> Self:
+    def __getitem__(self, key: slice) -> Self:
         """Slice along the timestep axis.
 
-        Integer indexing returns a single-timestep trajectory with shape
-        ``(1, 17)`` to keep the 2D invariant.
-
         Parameters
         ----------
-        key : int or slice
-            Timestep index or slice.
+        key : slice
+            Timestep slice.
 
         Returns
         -------
         Self
             New trajectory containing the selected timesteps.
         """
-        sliced_modes = self.modes[key : key + 1] if isinstance(key, int) else self.modes[key]
-        return type(self)(modes=sliced_modes, dt=self.dt, resolution=self.resolution)
+        return type(self)(modes=self.modes[key], dt=self.dt, resolution=self.resolution)
 
     def chunks_physical(
         self, chunk_size: int = DEFAULT_CHUNK_SIZE
@@ -196,7 +169,7 @@ class KSTrajectory:
         ----------
         chunk_size : int, optional
             Maximum number of timesteps per chunk.
-            Default is :data:`~ks_shadowing.core.DEFAULT_CHUNK_SIZE`.
+            Default is :data:`DEFAULT_CHUNK_SIZE`.
 
         Yields
         ------
@@ -221,7 +194,7 @@ class KSTrajectory:
         ----------
         chunk_size : int, optional
             Maximum number of timesteps per chunk.
-            Default is :data:`~ks_shadowing.core.DEFAULT_CHUNK_SIZE`.
+            Default is :data:`DEFAULT_CHUNK_SIZE`.
 
         Yields
         ------

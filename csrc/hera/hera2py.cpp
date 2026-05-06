@@ -1,7 +1,7 @@
 /*
- * C interface for Python ctypes binding to Hera Wasserstein distance.
+ * C interface for Python binding to Hera for Wasserstein distance computations.
  *
- * Exposes functions for computing W_2 distance between persistence diagrams.
+ * Exposes batched W_2 distance computations between persistence diagrams.
  * Diagrams are passed as flat arrays of (birth, death) pairs in row-major
  * order.
  */
@@ -14,99 +14,51 @@
 extern "C" {
 
 /**
- * Compute Wasserstein-2 distance between two persistence diagrams.
+ * Compute Wasserstein-2 distance matrix from a set of persistence diagrams to
+ * another diagram.
+ *
+ * The set of diagrams are flattened into a single array, with an offset array
+ * indicating where each diagram starts.
  *
  * Parameters:
- *   dgm_a  - First diagram, flat array of (birth, death) pairs, shape (n_a * 2)
- *   n_a    - Number of points in first diagram
- *   dgm_b  - diagram two, flat array of (birth, death) pairs, shape (n_b * 2)
- *   n_b    - Number of points in second diagram delta  - Relative error
- *     tolerance for (1+delta)-approximation
- *
- * Returns:
- *   The Wasserstein-2 distance between the diagrams.
+ *   dgms_a    - Flattened (birth, death) pairs for all A diagrams
+ *   offsets_a - Start index of each A diagram (num_a + 1,)
+ *   num_a     - Number of A diagrams
+ *   dgm_b     - Flattened (birth, death) pairs for the B diagram
+ *   length_b  - Number of (birth, death) pairs on dgm_b
+ *   delta     - Relative error tolerance for (1+delta)-approximation
+ *   out       - Output distances; out[i] = W_2(dgm_a_i, dgm_b)
  */
-double wasserstein_dist_c(const double *dgm_a, int n_a, const double *dgm_b,
-                          int n_b, double delta) {
-  // Convert flat arrays to vector of pairs
-  std::vector<std::pair<double, double>> A;
-  std::vector<std::pair<double, double>> B;
-  A.reserve(n_a);
-  B.reserve(n_b);
-
-  for (int i = 0; i < n_a; ++i) {
-    A.emplace_back(dgm_a[2 * i], dgm_a[2 * i + 1]);
-  }
-  for (int i = 0; i < n_b; ++i) {
-    B.emplace_back(dgm_b[2 * i], dgm_b[2 * i + 1]);
-  }
-
+void wasserstein_column_c(const double *dgms_a, const int64_t *offsets_a,
+                          int64_t num_a, const double *dgm_b, int64_t length_b,
+                          double delta, double *out) {
   // Configure for W_2 distance with given tolerance
   hera::AuctionParams<double> params;
   params.wasserstein_power = 2.0;
   params.delta = delta;
   params.internal_p = hera::get_infinity<double>();
 
-  return hera::wasserstein_dist(A, B, params);
-}
-
-/**
- * Compute Wasserstein-2 distance matrix between two sets of persistence
- * diagrams.
- *
- * Diagrams are flattened into a single array, with an offset array indicating
- * where each diagram starts.
- *
- * Parameters:
- *   traj_points  - Flattened (birth, death) pairs for all trajectory diagrams
- *   traj_offsets - Start index of each diagram (length num_traj + 1)
- *   num_traj     - Number of trajectory diagrams (I)
- *   rpo_points   - Flattened (birth, death) pairs for all RPO diagrams
- *   rpo_offsets  - Start index of each diagram (length num_rpo + 1)
- *   num_rpo      - Number of RPO diagrams (J)
- *   delta        - Relative error tolerance for (1+delta)-approximation
- *   out          - Output array of size I * J (row-major: out[i*J + j] =
- * dist(i,j))
- */
-void wasserstein_matrix_c(const double *traj_points,
-                          const int64_t *traj_offsets, int64_t num_traj,
-                          const double *rpo_points, const int64_t *rpo_offsets,
-                          int64_t num_rpo, double delta, double *out) {
-  // Configure for W_2 distance with given tolerance
-  hera::AuctionParams<double> params;
-  params.wasserstein_power = 2.0;
-  params.delta = delta;
-  params.internal_p = hera::get_infinity<double>();
-
-  // Pre-convert all trajectory diagrams (reused for every RPO column)
-  std::vector<std::vector<std::pair<double, double>>> traj_dgms(num_traj);
-  for (int64_t i = 0; i < num_traj; ++i) {
-    int64_t start = traj_offsets[i];
-    int64_t end = traj_offsets[i + 1];
-    traj_dgms[i].reserve(end - start);
+  // Pre-convert all A diagrams
+  std::vector<std::vector<std::pair<double, double>>> pair_dgms_a(num_a);
+  for (int64_t i = 0; i < num_a; ++i) {
+    int64_t start = offsets_a[i];
+    int64_t end = offsets_a[i + 1];
+    pair_dgms_a[i].reserve(end - start);
     for (int64_t k = start; k < end; ++k) {
-      traj_dgms[i].emplace_back(traj_points[2 * k], traj_points[2 * k + 1]);
+      pair_dgms_a[i].emplace_back(dgms_a[2 * k], dgms_a[2 * k + 1]);
     }
   }
 
-  // Reusable RPO diagram vector
-  std::vector<std::pair<double, double>> rpo_dgm;
+  // Convert B diagram
+  std::vector<std::pair<double, double>> pair_dgm_b;
+  pair_dgm_b.reserve(length_b);
+  for (int64_t k = 0; k < length_b; ++k) {
+    pair_dgm_b.emplace_back(dgm_b[2 * k], dgm_b[2 * k + 1]);
+  }
 
-  for (int64_t j = 0; j < num_rpo; ++j) {
-    int64_t start = rpo_offsets[j];
-    int64_t end = rpo_offsets[j + 1];
-
-    rpo_dgm.clear();
-    rpo_dgm.reserve(end - start);
-    for (int64_t k = start; k < end; ++k) {
-      rpo_dgm.emplace_back(rpo_points[2 * k], rpo_points[2 * k + 1]);
-    }
-
-    // Compute distances for this RPO against all trajectory diagrams
-    for (int64_t i = 0; i < num_traj; ++i) {
-      out[i * num_rpo + j] =
-          hera::wasserstein_dist(traj_dgms[i], rpo_dgm, params);
-    }
+  // Compute distances
+  for (int64_t i = 0; i < num_a; ++i) {
+    out[i] = hera::wasserstein_dist(pair_dgms_a[i], pair_dgm_b, params);
   }
 }
 

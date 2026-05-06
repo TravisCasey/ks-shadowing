@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ks_shadowing import PHADetector, SSADetector, load_all_rpos
+from ks_shadowing import load_rpos, pha, ssa
 from ks_shadowing.cli.results import DetectionMetadata, save_results
 from ks_shadowing.core import DEFAULT_CHUNK_SIZE, TRAJECTORY_DT
 from ks_shadowing.core.trajectory import KSTrajectory
@@ -55,7 +55,7 @@ def main() -> None:
     output_path = arguments.output or DEFAULT_OUTPUT_BY_METHOD[method]
 
     print("Loading RPOs...")
-    rpos = load_all_rpos(arguments.rpo_file)
+    rpos = load_rpos(arguments.rpo_file)
     print(f"  Loaded {len(rpos)} RPOs from {arguments.rpo_file}")
 
     rng = np.random.default_rng(arguments.seed)
@@ -74,42 +74,17 @@ def main() -> None:
         f"({arguments.trajectory_steps * TRAJECTORY_DT:.0f} time units, dt={TRAJECTORY_DT})"
     )
 
-    if method == "ssa":
-        detector = SSADetector(
-            rpos, TRAJECTORY_DT, resolution=resolution, chunk_size=arguments.chunk_size
-        )
-    else:
-        detector = PHADetector(
-            rpos,
-            TRAJECTORY_DT,
-            resolution=resolution,
-            delay=arguments.delay,
-            chunk_size=arguments.chunk_size,
-        )
-
     print(f"Detecting events with {method.upper()}...")
-    t0 = time.perf_counter()
+    start_time = time.perf_counter()
 
     if arguments.threshold is not None:
-        events = detector.detect(
-            trajectory,
-            threshold=arguments.threshold,
-            min_duration=arguments.min_duration,
-            show_progress=arguments.show_progress,
-            n_jobs=arguments.n_jobs,
-        )
+        events = _detect_with_threshold(method, trajectory, rpos, arguments)
         threshold = arguments.threshold
         threshold_quantile = None
     else:
-        events, threshold = detector.auto_detect(
-            trajectory,
-            threshold_quantile=arguments.threshold_quantile,
-            min_duration=arguments.min_duration,
-            show_progress=arguments.show_progress,
-            n_jobs=arguments.n_jobs,
-        )
+        events, threshold = _detect_with_auto_threshold(method, trajectory, rpos, arguments)
         threshold_quantile = arguments.threshold_quantile
-    elapsed_seconds = time.perf_counter() - t0
+    elapsed_seconds = time.perf_counter() - start_time
 
     auto_label = "auto" if threshold_quantile is not None else "manual"
     print(f"  Threshold ({auto_label}): {threshold:.4f}")
@@ -135,11 +110,44 @@ def main() -> None:
 
     if events:
         best_event = min(events, key=lambda event: event.mean_distance)
-        duration_timestep = best_event.end_timestep - best_event.start_timestep
+        duration_timesteps = best_event.end_timestep - best_event.start_timestep
         print(
-            f"Best event: RPO {best_event.rpo_index}, duration={duration_timestep}, "
+            f"Best event: RPO {best_event.rpo_index}, duration={duration_timesteps}, "
             f"mean_dist={best_event.mean_distance:.4f}"
         )
+
+
+def _detect_with_threshold(method, trajectory, rpos, arguments):
+    """Dispatch :func:`ssa.detect` or :func:`pha.detect` for a manual threshold."""
+    common_kwargs = {
+        "min_duration": arguments.min_duration,
+        "show_progress": arguments.show_progress,
+        "n_jobs": arguments.n_jobs,
+        "chunk_size": arguments.chunk_size,
+    }
+    if method == "ssa":
+        return ssa.detect(trajectory, rpos, threshold=arguments.threshold, **common_kwargs)
+    return pha.detect(
+        trajectory,
+        rpos,
+        delay=arguments.delay,
+        threshold=arguments.threshold,
+        **common_kwargs,
+    )
+
+
+def _detect_with_auto_threshold(method, trajectory, rpos, arguments):
+    """Dispatch :func:`ssa.auto_detect` or :func:`pha.auto_detect`."""
+    common_kwargs = {
+        "threshold_quantile": arguments.threshold_quantile,
+        "min_duration": arguments.min_duration,
+        "show_progress": arguments.show_progress,
+        "n_jobs": arguments.n_jobs,
+        "chunk_size": arguments.chunk_size,
+    }
+    if method == "ssa":
+        return ssa.auto_detect(trajectory, rpos, **common_kwargs)
+    return pha.auto_detect(trajectory, rpos, delay=arguments.delay, **common_kwargs)
 
 
 if __name__ == "__main__":

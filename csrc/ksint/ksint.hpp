@@ -6,8 +6,7 @@
  * Build requirements: C++17, Eigen >= 3.3, FFTW3
  */
 
-#ifndef KSINT_HPP
-#define KSINT_HPP
+#pragma once
 
 #include <Eigen/Dense>
 #include <complex>
@@ -94,5 +93,3 @@ private:
 
   static constexpr int CONTOUR_POINTS = 16;
 };
-
-#endif // KSINT_HPP

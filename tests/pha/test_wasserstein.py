@@ -1,100 +1,55 @@
-"""Tests for Wasserstein distance computation."""
+"""Tests for batched Wasserstein distance bindings."""
 
 import numpy as np
-import pytest
 
-from ks_shadowing.pha.persistence import _compute_persistence_diagram
-from ks_shadowing.pha.wasserstein import _flatten_diagrams, _wasserstein_column, _wasserstein_matrix
-
-
-class TestWassersteinMatrix:
-    def test_self_distance_zero(self):
-        """Diagonal of W(diagrams, diagrams) is zero."""
-        rng = np.random.default_rng(42)
-        diagrams = [_compute_persistence_diagram(rng.standard_normal(32)) for _ in range(4)]
-
-        result = _wasserstein_matrix(diagrams, diagrams)
-
-        assert result.shape == (4, 4)
-        for i in range(4):
-            assert result[i, i] == pytest.approx(0.0, abs=1e-10)
-
-    def test_symmetric(self):
-        """W(A, B) == W(B, A)^T."""
-        rng = np.random.default_rng(42)
-        diagrams_a = [_compute_persistence_diagram(rng.standard_normal(32)) for _ in range(3)]
-        diagrams_b = [_compute_persistence_diagram(rng.standard_normal(32)) for _ in range(4)]
-
-        ab = _wasserstein_matrix(diagrams_a, diagrams_b)
-        ba = _wasserstein_matrix(diagrams_b, diagrams_a)
-
-        np.testing.assert_allclose(ab, ba.T, rtol=1e-10)
-
-    def test_positive_distances(self):
-        """Distances between different diagrams are positive."""
-        rng = np.random.default_rng(42)
-        diagrams_a = [_compute_persistence_diagram(rng.standard_normal(64)) for _ in range(3)]
-        diagrams_b = [_compute_persistence_diagram(rng.standard_normal(64)) for _ in range(3)]
-
-        result = _wasserstein_matrix(diagrams_a, diagrams_b)
-
-        assert np.all(result >= 0)
-
-    def test_empty_diagrams_in_batch(self):
-        """Handles empty diagrams correctly in batch."""
-        diagrams_with_empty = [
-            np.zeros((0, 2)),
-            np.array([[0.0, 1.0]]),
-        ]
-        diagrams_nonempty = [
-            np.array([[0.0, 2.0]]),
-            np.zeros((0, 2)),
-        ]
-
-        result = _wasserstein_matrix(diagrams_with_empty, diagrams_nonempty)
-
-        assert result.shape == (2, 2)
-        # Empty vs empty = 0
-        assert result[0, 1] == pytest.approx(0.0)
-        # Empty vs non-empty = projection distance
-        assert result[0, 0] > 0
-        # Non-empty vs empty
-        assert result[1, 1] > 0
-
-    def test_empty_input_lists(self):
-        """Handles empty input lists."""
-        rng = np.random.default_rng(42)
-        diagrams = [_compute_persistence_diagram(rng.standard_normal(32)) for _ in range(3)]
-
-        # Empty trajectory list
-        result = _wasserstein_matrix([], diagrams)
-        assert result.shape == (0, 3)
-
-        # Empty RPO list
-        result = _wasserstein_matrix(diagrams, [])
-        assert result.shape == (3, 0)
-
-        # Both empty
-        result = _wasserstein_matrix([], [])
-        assert result.shape == (0, 0)
+from ks_shadowing.core.trajectory import KSTrajectory
+from ks_shadowing.pha.persistence import _KSPersistenceTrajectory
+from ks_shadowing.pha.wasserstein import _wasserstein_column
 
 
-class TestWassersteinColumn:
-    def test_matches_matrix_output(self):
-        """Column result matches corresponding column of the full matrix."""
-        rng = np.random.default_rng(42)
-        traj_diagrams = [_compute_persistence_diagram(rng.standard_normal(32)) for _ in range(5)]
-        rpo_diagram = _compute_persistence_diagram(rng.standard_normal(32))
+def _flatten(diagrams: list) -> tuple:
+    """Flatten ``diagrams`` via ``_KSPersistenceTrajectory._flatten``."""
+    return _KSPersistenceTrajectory(diagrams=diagrams, dt=0.02)._flatten()
 
-        traj_points, traj_offsets = _flatten_diagrams(traj_diagrams)
-        column = _wasserstein_column(traj_points, traj_offsets, len(traj_diagrams), rpo_diagram)
 
-        expected = _wasserstein_matrix(traj_diagrams, [rpo_diagram])[:, 0]
-        np.testing.assert_allclose(column, expected, rtol=1e-10)
+def test_flatten_offsets_for_variable_size_diagrams() -> None:
+    """``_flatten`` produces cumulative ``offsets`` that index each diagram's
+    starting row in the concatenated array."""
+    diagrams = [
+        np.array([[0.0, 1.0], [0.5, 2.0]], dtype=np.float64),
+        np.zeros((0, 2), dtype=np.float64),
+        np.array([[1.0, 3.0]], dtype=np.float64),
+    ]
+    flat, offsets = _flatten(diagrams)
+    np.testing.assert_array_equal(offsets, [0, 2, 2, 3])
+    assert flat.shape == (3, 2)
+    np.testing.assert_array_equal(
+        flat,
+        np.array([[0.0, 1.0], [0.5, 2.0], [1.0, 3.0]], dtype=np.float64),
+    )
 
-    def test_empty_trajectory(self):
-        """Handles empty trajectory list."""
-        traj_points, traj_offsets = _flatten_diagrams([])
-        rpo_diagram = np.array([[0.0, 1.0]])
-        column = _wasserstein_column(traj_points, traj_offsets, 0, rpo_diagram)
-        assert column.shape == (0,)
+
+def test_wasserstein_column_self_zero(rng: np.random.Generator) -> None:
+    """``_wasserstein_column`` returns 0 for a diagram compared against
+    itself."""
+    modes = np.zeros((4, 17), dtype=np.complex128)
+    modes[:, 1:16] = (rng.standard_normal((4, 15)) + 1j * rng.standard_normal((4, 15))) * 0.1
+    trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=32)
+    diagrams = _KSPersistenceTrajectory.from_trajectory(trajectory)
+    flat, offsets = diagrams._flatten()
+
+    column = _wasserstein_column(flat, offsets, diagrams.diagrams[0])
+    assert column.shape == (4,)
+    assert column[0] == 0.0
+
+
+def test_wasserstein_column_empty_inputs() -> None:
+    """``_wasserstein_column`` returns shape ``(0,)`` for an empty trajectory
+    list, and accepts an empty ``diagram_b``."""
+    flat_empty, offsets_empty = _flatten([])
+    nonempty = np.array([[0.0, 1.0]], dtype=np.float64)
+    assert _wasserstein_column(flat_empty, offsets_empty, nonempty).shape == (0,)
+
+    flat_mix, offsets_mix = _flatten([np.zeros((0, 2)), np.array([[0.0, 1.0]], dtype=np.float64)])
+    column = _wasserstein_column(flat_mix, offsets_mix, np.zeros((0, 2), dtype=np.float64))
+    assert column.shape == (2,)

@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -32,9 +33,7 @@ public:
     if (rx == ry)
       return;
     if (rank[rx] < rank[ry]) {
-      int32_t tmp = rx;
-      rx = ry;
-      ry = tmp;
+      std::swap(rx, ry);
     }
     parent[ry] = rx;
     if (rank[rx] == rank[ry])

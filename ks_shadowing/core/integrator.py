@@ -77,8 +77,9 @@ def _complex_to_interleaved(modes: NDArray[np.complex128]) -> NDArray[np.float64
     return interleaved
 
 
-def _load_library() -> CDLL:
-    """Load the integrated shared object from the package directory."""
+@cache
+def _get_lib() -> CDLL:
+    """Load and return the cached integrator shared object."""
     lib_path = Path(__file__).parent / "libks2py.so"
     if not lib_path.exists():
         raise RuntimeError(f"Could not find libks2py.so at {lib_path}.")
@@ -97,17 +98,10 @@ def _load_library() -> CDLL:
     return lib
 
 
-@cache
-def _get_lib() -> CDLL:
-    """Return the cached library singleton. See :func:`_load_library`."""
-    return _load_library()
-
-
 def ksint(
     initial_state: NDArray[np.complex128],
     dt: float,
     steps: int,
-    save_every: int = 1,
 ) -> NDArray[np.complex128]:
     r"""Integrate KS equation in Fourier space using
     `ETDRK4 <https://epubs.siam.org/doi/10.1137/S1064827502410633>`_.
@@ -121,21 +115,15 @@ def ksint(
         Integration timestep in time units.
     steps : int
         Number of integration steps.
-    save_every : int, optional
-        Step between saved trajectory points. Default is 1 (save all).
 
     Returns
     -------
-    NDArray[np.complex128], shape (steps // save_every + 1, 17)
+    NDArray[np.complex128], shape (steps + 1, 17)
         Trajectory in complex Fourier format. Row 0 is the initial
         condition.
     """
     if steps <= 0:
         raise ValueError(f"steps must be positive, got {steps}")
-    if save_every <= 0:
-        raise ValueError(f"save_every must be positive, got {save_every}")
-    if save_every > steps:
-        raise ValueError(f"save_every ({save_every}) cannot exceed steps ({steps})")
 
     initial_state = np.asarray(initial_state, dtype=np.complex128)
     if initial_state.shape != (_COMPLEX_MODES,):
@@ -143,16 +131,14 @@ def ksint(
             f"initial_state must have shape ({_COMPLEX_MODES},), got {initial_state.shape}"
         )
 
-    # Convert to interleaved format for the C library.
     interleaved_input = _complex_to_interleaved(initial_state)
     interleaved_input = np.ascontiguousarray(interleaved_input, dtype=np.float64)
 
     lib = _get_lib()
 
     # Eigen stores matrices column-major (Fortran, order = "F"), so each
-    # timestep is one column of a (30, num_saved) matrix.
-    num_saved = steps // save_every + 1
-    trajectory = np.empty((_INTERLEAVED_COEFFS, num_saved), dtype=np.float64, order="F")
+    # timestep is one column of a (30, steps + 1) matrix.
+    trajectory = np.empty((_INTERLEAVED_COEFFS, steps + 1), dtype=np.float64, order="F")
 
     lib.ksf(
         trajectory.ctypes.data_as(POINTER(c_double)),
@@ -160,10 +146,10 @@ def ksint(
         c_double(DOMAIN_SIZE),
         c_double(dt),
         c_int(steps),
-        c_int(save_every),
+        c_int(1),
     )
 
-    # Transpose to (num_saved, 30) so trajectory[i] gives timestep i. This is a
+    # Transpose to (steps + 1, 30) so trajectory[i] gives timestep i. This is a
     # zero-copy view: the Fortran-ordered columns become C-ordered rows.
     # Then convert from interleaved to complex format.
     return _interleaved_to_complex(trajectory.T)

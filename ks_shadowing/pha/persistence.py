@@ -1,27 +1,120 @@
 """Persistence diagram computation for PHA shadowing detection."""
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Self
 
 import numpy as np
 from numpy.typing import NDArray
 
-from ks_shadowing.core.rpo import RPO
+from ks_shadowing.core import DEFAULT_CHUNK_SIZE
 from ks_shadowing.core.trajectory import KSTrajectory
 
 
-def _compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float64]:
+@dataclass(frozen=True, slots=True)
+class _KSPersistenceTrajectory:
+    """A Kuramoto-Sivashinsky trajectory in the space of persistence diagrams.
+
+    Each element of ``diagrams`` is a ``(num_pairs, 2)`` array containing birth
+    and death pairs of the sublevel-set zeroth persistence diagram of each point
+    in physical space of a trajectory with constant timestep ``dt``. The
+    diagonal points and the single essential class (having infinite death) are
+    not included.
+
+    Prefer
+    :meth:`~ks_shadowing.pha.persistence._KSPersistenceTrajectory.from_trajectory`
+    for computation of the diagrams of a
+    :class:`~ks_shadowing.core.trajectory.KSTrajectory`.
+
+    Attributes
+    ----------
+    diagrams : list[NDArray[np.float64]]
+        One persistence diagram per timestep. Each diagram has shape
+        ``(num_pairs, 2)`` of ``(birth, death)`` pairs with ``birth < death``.
+        The essential class (infinite death) is excluded.
+    dt : float
+        The constant timestep of the trajectory between diagrams.
+    """
+
+    diagrams: list[NDArray[np.float64]]
+    dt: float
+
+    @classmethod
+    def from_trajectory(
+        cls, trajectory: KSTrajectory, chunk_size: int = DEFAULT_CHUNK_SIZE
+    ) -> Self:
+        """Compute the persistence diagrams of each point of ``trajectory``.
+
+        This effectively passes ``trajectory`` to the space of persistence
+        diagrams for the Persistent Homology Approach (PHA) for shadowing
+        detection.
+
+        Parameters
+        ----------
+        trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
+            Kuramoto-Sivashinsky trajectory to convert.
+        chunk_size : int, optional
+            Largest number of physical space timesteps of ``trajectory``
+            manifested at once; controls memory usage. Default value is
+            :data:`~ks_shadowing.core.DEFAULT_CHUNK_SIZE`.
+        """
+        diagrams: list[NDArray[np.float64]] = []
+        for _, physical_chunk in trajectory.chunks_physical(chunk_size):
+            diagrams.extend(_zeroth_persistence_diagram_periodic(field) for field in physical_chunk)
+
+        return cls(diagrams, trajectory.dt)
+
+    def __len__(self) -> int:
+        """Number of persistence diagrams in the trajectory."""
+        return len(self.diagrams)
+
+    def __iter__(self) -> Iterator[NDArray[np.float64]]:
+        """Iterate over persistence diagrams in trajectory order."""
+        return iter(self.diagrams)
+
+    def _flatten(self) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
+        """Flatten ``self.diagrams`` into a single flat array with an additional
+        offset array for the batched Hera API.
+
+        This is the expected format for the ``diagrams_a`` and ``offsets_a``
+        arguments to the ``_wasserstein_column`` function.
+
+        Returns
+        -------
+        flat_diagrams : NDArray[np.float64], shape (offsets[-1], 2)
+            Contiguous, row-major array that is the row-wise concatenation of
+            ``self.diagrams``.
+        offsets : NDArray[np.int64], shape (len(self.diagrams) + 1,)
+            Starting point of each diagram in the concatenated array; the final
+            entry is equal to ``flat_diagrams.shape[0]``. If
+            ``length_i = diagrams[i].shape[0]``, then
+            ``offsets[i + 1] - offsets[i] = length_i``.
+        """
+        if not self.diagrams:
+            return np.zeros((0, 2), dtype=np.float64), np.zeros(1, dtype=np.int64)
+
+        lengths = np.array([dgm.shape[0] for dgm in self.diagrams], dtype=np.int64)
+        offsets = np.zeros(len(self.diagrams) + 1, dtype=np.int64)
+        offsets[1:] = np.cumsum(lengths)
+
+        if offsets[-1] == 0:
+            return np.zeros((0, 2), dtype=np.float64), offsets
+
+        nonempty = [diagram for diagram in self.diagrams if diagram.shape[0] > 0]
+        flat_diagrams = np.vstack(nonempty).astype(np.float64, copy=False)
+
+        return np.ascontiguousarray(flat_diagrams), offsets
+
+
+def _zeroth_persistence_diagram_periodic(field: NDArray[np.float64]) -> NDArray[np.float64]:
     r"""Compute sublevel-set persistence diagram for a 1D periodic field.
 
     Computes :math:`H_0` sublevel-set persistence on a circle (1D periodic
-    domain). Entries are processed in order of increasing field value; connected
-    components are tracked with union-find to record birth-death pairs when two
-    distinct components merge.
-
-    Each local minimum of the discrete field births a connected component in the
-    sublevel set :math:`\{x : f(x) \le t\}`. When two components merge (at an
-    entry between two distinct minima), the younger component (higher birth
-    value) dies. The resulting diagram is invariant to spatial translations.
+    domain). Each local minimum of the discrete field births a connected
+    component in the sublevel set :math:`\{x : f(x) \le t\}`. When two
+    components merge (at an entry between two distinct minima), the younger
+    component dies. The resulting diagram is invariant to spatial translations
+    of ``field``.
 
     Parameters
     ----------
@@ -37,17 +130,16 @@ def _compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float
     if field.size == 0:
         return np.empty((0, 2), dtype=np.float64)
 
-    ordered = np.argsort(field, kind="stable")
+    ordered = np.argsort(field)
 
     # Union-find data
     parent = list(range(field.size))
-    comp_birth = list(field)
     active = [False] * field.size
     pairs: list[tuple[float, float]] = []
 
     def _find(x: int) -> int:
         while parent[x] != x:
-            parent[x] = parent[parent[x]]  # path halving
+            parent[x] = parent[parent[x]]
             x = parent[x]
         return x
 
@@ -62,157 +154,30 @@ def _compute_persistence_diagram(field: NDArray[np.float64]) -> NDArray[np.float
             neighbor_roots.append(_find(left))
         if active[right]:
             root_right = _find(right)
+            # Only add if the root is different from the left
             if not neighbor_roots or root_right != neighbor_roots[0]:
                 neighbor_roots.append(root_right)
 
         if not neighbor_roots:
-            pass  # new component; birth already in comp_birth[vertex]
+            pass  # new component
         elif len(neighbor_roots) == 1:
             parent[entry] = neighbor_roots[0]
         else:
             root_a, root_b = neighbor_roots
-            # Elder rule: component with lower birth survives
-            if comp_birth[root_a] > comp_birth[root_b]:
+
+            # Component with lower birth survives
+            if field[root_a] > field[root_b]:
                 root_a, root_b = root_b, root_a
-            # root_a is elder, root_b is younger and dies
             death = float(field[entry])
-            if comp_birth[root_b] < death:
-                pairs.append((comp_birth[root_b], death))
-            # Merge: younger and vertex attach to elder
+
+            # Don't take any equal (birth, death) pairs
+            if field[root_b] < death:
+                pairs.append((field[root_b], death))
+
+            # Union: younger and vertex attach to elder
             parent[root_b] = root_a
             parent[entry] = root_a
 
     if not pairs:
         return np.empty((0, 2), dtype=np.float64)
     return np.array(pairs, dtype=np.float64)
-
-
-def _compute_trajectory_diagrams(
-    trajectory: KSTrajectory,
-    chunk_size: int | None = None,
-) -> list[NDArray[np.float64]]:
-    """Compute persistence diagrams for each timestep of a trajectory.
-
-    Converts from Fourier to physical space in chunks to limit peak memory.
-
-    Parameters
-    ----------
-    trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
-        Trajectory in spectral form.
-    chunk_size : int or None, optional
-        Number of timesteps to convert to physical space at once.
-        If ``None``, convert all at once.
-
-    Returns
-    -------
-    list[NDArray[np.float64]]
-        One persistence diagram per timestep. Each diagram has shape
-        ``(n_points, 2)`` with ``(birth, death)`` pairs.
-    """
-    diagrams: list[NDArray[np.float64]] = []
-    if chunk_size is None:
-        physical = trajectory.to_physical()
-        diagrams.extend(_compute_persistence_diagram(field) for field in physical)
-    else:
-        for _start, physical_chunk in trajectory.chunks_physical(chunk_size):
-            diagrams.extend(_compute_persistence_diagram(field) for field in physical_chunk)
-
-    return diagrams
-
-
-def _apply_delay_embedding(
-    wasserstein_matrix: NDArray[np.float64],
-    delay: int,
-) -> NDArray[np.float64]:
-    r"""Apply time-delay embedding to a Wasserstein distance matrix.
-
-    Computes :math:`W^w(i, j) = \sum_{l=0}^{w-1} W(i+l, (j+l) \bmod J)` where
-    :math:`w` is the delay window. This increases the effective dimensionality
-    of the comparison by considering consecutive timesteps rather than single
-    snapshots.
-
-    Parameters
-    ----------
-    wasserstein_matrix : NDArray[np.float64], shape (I, J)
-        Original Wasserstein distance matrix.
-    delay : int
-        Time-delay embedding window size (:math:`w`).
-
-    Returns
-    -------
-    NDArray[np.float64], shape (I - delay + 1, J)
-        Embedded distance matrix.
-
-    Raises
-    ------
-    ValueError
-        If ``delay < 1`` or ``delay`` exceeds the trajectory length.
-    """
-    trajectory_timesteps, rpo_timesteps = wasserstein_matrix.shape
-
-    if delay < 1:
-        raise ValueError(f"delay must be >= 1, got {delay}")
-    if delay > trajectory_timesteps:
-        raise ValueError(f"delay ({delay}) exceeds trajectory length ({trajectory_timesteps})")
-
-    delayed_timesteps = trajectory_timesteps - delay + 1
-    delayed = np.zeros((delayed_timesteps, rpo_timesteps), dtype=np.float64)
-
-    for offset in range(delay):
-        # At offset l: trajectory index is (i + l), RPO index is (j + l) % J
-        col_indices = (np.arange(rpo_timesteps) + offset) % rpo_timesteps
-        delayed += wasserstein_matrix[offset : offset + delayed_timesteps][:, col_indices]
-
-    return delayed
-
-
-@dataclass
-class _RPOPersistence:
-    r"""Precomputed RPO persistence data for PHA detection.
-
-    Holds the source RPO metadata and its precomputed persistence diagrams.
-    This is the PHA equivalent of ``_RPOStateSpace`` in the SSA subpackage.
-
-    Attributes
-    ----------
-    rpo : :class:`~ks_shadowing.core.rpo.RPO`
-        Source RPO containing metadata (index, period, spatial_shift).
-    diagrams : list[NDArray[np.float64]]
-        Persistence diagrams, one per timestep of the RPO period.
-    """
-
-    rpo: RPO
-    diagrams: list[NDArray[np.float64]]
-
-    @classmethod
-    def from_rpo(cls, rpo: RPO, resolution: int) -> Self:
-        """Integrate an RPO and compute persistence diagrams.
-
-        Parameters
-        ----------
-        rpo : :class:`~ks_shadowing.core.rpo.RPO`
-            The RPO to process.
-        resolution : int
-            Spatial resolution for physical-space representation.
-
-        Returns
-        -------
-        Self
-            Instance with precomputed diagrams.
-        """
-        rpo_dt = rpo.period / rpo.time_steps
-        rpo_trajectory = KSTrajectory.from_initial_state(
-            rpo.fourier_coeffs, rpo_dt, rpo.time_steps + 1, resolution
-        )[:-1]
-        diagrams = _compute_trajectory_diagrams(rpo_trajectory)
-        return cls(rpo=rpo, diagrams=diagrams)
-
-    @property
-    def time_steps(self) -> int:
-        """Number of timesteps in one RPO period."""
-        return self.rpo.time_steps
-
-    @property
-    def index(self) -> int:
-        """Index of the source RPO."""
-        return self.rpo.index

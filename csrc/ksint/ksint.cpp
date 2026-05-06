@@ -4,14 +4,14 @@
  */
 
 #include "ksint.hpp"
-#include <cstdio>
-#include <cstdlib>
+#include <stdexcept>
+#include <string>
 
 // ============================================================================
 // Construction / Destruction
 // ============================================================================
 
-KS::KS(int N, double h, double d) : N(N), h(h), d(d) {
+KS::KS(int N, double h, double d) : N(N), d(d), h(h) {
   initializeCoefficients();
 
   initializeFFT(fft_v_);
@@ -75,11 +75,9 @@ void KS::initializeCoefficients() {
 
 ArrayXXd KS::intg(const ArrayXd &a0, size_t nstp, size_t np) {
   if (N - 2 != a0.rows()) {
-    std::fprintf(stderr,
-                 "KS::intg: initial condition has wrong dimension "
-                 "(expected %d, got %ld)\n",
-                 N - 2, a0.rows());
-    std::exit(1);
+    throw std::invalid_argument(
+        "KS::intg: initial condition has wrong dimension (expected " +
+        std::to_string(N - 2) + ", got " + std::to_string(a0.rows()) + ")");
   }
 
   fft_v_.complex_view = realToComplex(a0);
@@ -174,7 +172,9 @@ void KS::freeFFT(FFTWorkspace &ws) {
   new (&ws.nonlinear_view) Map<ArrayXXcd>(nullptr, 0, 0);
 }
 
-void KS::fft(FFTWorkspace &ws) { fftw_execute(ws.forward_plan); }
+void KS::fft(FFTWorkspace &ws) {
+  fftw_execute(ws.forward_plan);
+}
 
 void KS::ifft(FFTWorkspace &ws) {
   fftw_execute(ws.inverse_plan);
@@ -205,9 +205,8 @@ ArrayXXcd KS::realToComplex(const ArrayXXd &v) {
   int cols = v.cols();
 
   if (rows % 2 != 0) {
-    std::fprintf(stderr,
-                 "KS::realToComplex: input must have even number of rows\n");
-    std::exit(1);
+    throw std::invalid_argument(
+        "KS::realToComplex: input must have even number of rows");
   }
 
   ArrayXXcd result = ArrayXXcd::Zero(rows / 2 + 2, cols);

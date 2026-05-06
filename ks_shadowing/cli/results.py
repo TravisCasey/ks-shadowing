@@ -5,6 +5,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+from numpy.typing import NDArray
 
 from ks_shadowing.core.event import ShadowingEvent
 
@@ -68,7 +69,7 @@ class DetectionMetadata:
 def save_results(
     path: Path,
     metadata: DetectionMetadata,
-    initial_state: np.ndarray,
+    initial_state: NDArray[np.complex128],
     events: list[ShadowingEvent],
 ) -> None:
     """Save detection metadata, initial state, and events to an ``.h5`` file.
@@ -76,6 +77,19 @@ def save_results(
     The trajectory is not stored; it can be reproduced from the initial state
     and ``trajectory_steps`` metadata via
     :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_initial_state`.
+
+    Parameters
+    ----------
+    path : Path
+        Destination ``.h5`` path. Parent directories are created if missing.
+    metadata : DetectionMetadata
+        Run metadata serialized to file-level attributes.
+    initial_state : NDArray[np.complex128], shape (17,)
+        Trajectory initial condition in 17-mode complex Fourier form.
+    events : list[ShadowingEvent]
+        Detected events. Variable-length ``shifts`` are concatenated into a
+        single dataset and indexed by per-event ``shifts_end`` offsets in the
+        events table.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -125,12 +139,29 @@ def save_results(
         f.create_dataset("shifts", data=shifts)
 
 
-def load_results(path: Path) -> tuple[DetectionMetadata, np.ndarray, list[ShadowingEvent]]:
+def load_results(
+    path: Path,
+) -> tuple[DetectionMetadata, NDArray[np.complex128], list[ShadowingEvent]]:
     """Load metadata, initial state, and events from an ``.h5`` file.
 
     Returns the initial state rather than the trajectory. Callers that need
     the trajectory can reconstruct it via
     :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_initial_state`.
+
+    Parameters
+    ----------
+    path : Path
+        ``.h5`` file produced by :func:`save_results`.
+
+    Returns
+    -------
+    metadata : DetectionMetadata
+        Run metadata reconstructed from file-level attributes.
+    initial_state : NDArray[np.complex128], shape (17,)
+        Trajectory initial condition.
+    events : list[ShadowingEvent]
+        Detected events with their ``shifts`` arrays sliced from the
+        concatenated dataset.
     """
     with h5py.File(path, "r") as f:
         attrs = f.attrs

@@ -28,7 +28,7 @@ class MatchedEvent:
     union_length: int
 
 
-def find_matched_events(
+def match_events(
     ssa_events: list[ShadowingEvent],
     pha_events: list[ShadowingEvent],
 ) -> list[MatchedEvent]:

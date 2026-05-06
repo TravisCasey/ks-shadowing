@@ -43,8 +43,13 @@ def build_parser() -> ArgumentParser:
     return parser
 
 
-def load_event_durations(path: Path) -> np.ndarray:
-    """Load event durations from an HDF5 results file without reconstructing the trajectory."""
+def _load_event_durations(path: Path) -> np.ndarray:
+    """Load event durations directly from the HDF5 events table.
+
+    Bypasses :func:`~ks_shadowing.cli.results.load_results` because only the
+    event start/end columns are needed; the full trajectory reconstruction is
+    skipped.
+    """
     with h5py.File(path, "r") as f:
         events = f["events"][:]
     starts = events["start_timestep"]
@@ -58,7 +63,7 @@ def main() -> None:
     arguments = parser.parse_args()
 
     print(f"Loading events from {arguments.input}...")
-    durations = load_event_durations(arguments.input)
+    durations = _load_event_durations(arguments.input)
 
     if len(durations) == 0:
         print("No events found in this file.")
