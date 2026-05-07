@@ -102,6 +102,7 @@ def ksint(
     initial_state: NDArray[np.complex128],
     dt: float,
     steps: int,
+    save_interval: int = 1,
 ) -> NDArray[np.complex128]:
     r"""Integrate KS equation in Fourier space using
     `ETDRK4 <https://epubs.siam.org/doi/10.1137/S1064827502410633>`_.
@@ -115,15 +116,20 @@ def ksint(
         Integration timestep in time units.
     steps : int
         Number of integration steps.
+    save_interval : int, optional
+        Save every ``save_interval``-th integrated state. Default 1
+        (every step).
 
     Returns
     -------
-    NDArray[np.complex128], shape (steps + 1, 17)
+    NDArray[np.complex128], shape (steps // save_interval + 1, 17)
         Trajectory in complex Fourier format. Row 0 is the initial
         condition.
     """
     if steps <= 0:
         raise ValueError(f"steps must be positive, got {steps}")
+    if save_interval < 1:
+        raise ValueError(f"save_interval must be positive, got {save_interval}")
 
     initial_state = np.asarray(initial_state, dtype=np.complex128)
     if initial_state.shape != (_COMPLEX_MODES,):
@@ -137,8 +143,9 @@ def ksint(
     lib = _get_lib()
 
     # Eigen stores matrices column-major (Fortran, order = "F"), so each
-    # timestep is one column of a (30, steps + 1) matrix.
-    trajectory = np.empty((_INTERLEAVED_COEFFS, steps + 1), dtype=np.float64, order="F")
+    # saved timestep is one column of a (30, output_rows) matrix.
+    output_rows = steps // save_interval + 1
+    trajectory = np.empty((_INTERLEAVED_COEFFS, output_rows), dtype=np.float64, order="F")
 
     ret = lib.ksf(
         trajectory.ctypes.data_as(POINTER(c_double)),
@@ -146,12 +153,11 @@ def ksint(
         c_double(DOMAIN_SIZE),
         c_double(dt),
         c_size_t(steps),
-        c_size_t(1),
+        c_size_t(save_interval),
     )
     if ret != 0:
         raise RuntimeError("ksf failed")
 
-    # Transpose to (steps + 1, 30) so trajectory[i] gives timestep i. This is a
-    # zero-copy view: the Fortran-ordered columns become C-ordered rows.
-    # Then convert from interleaved to complex format.
+    # Transpose to (output_rows, 30) so trajectory[i] gives saved timestep i.
+    # This is a zero-copy view: the Fortran-order columns become C-order rows.
     return _interleaved_to_complex(trajectory.T)

@@ -38,3 +38,17 @@ def test_ksint_invalid_shape_raises() -> None:
         ksint(np.zeros(16, dtype=np.complex128), dt=0.25, steps=10)
     with pytest.raises(ValueError, match="shape"):
         ksint(np.zeros((17, 2), dtype=np.complex128), dt=0.25, steps=10)
+
+
+def test_ksint_save_interval(sample_initial_state: np.ndarray) -> None:
+    """Integrating with ``save_interval=k`` returns every kth row of the
+    full-resolution integration."""
+    dt = 0.02
+    steps = 46  # multiple of save_interval=23
+    save_interval = 23
+
+    full = ksint(sample_initial_state, dt, steps)
+    sparse = ksint(sample_initial_state, dt, steps, save_interval=save_interval)
+
+    assert sparse.shape == (steps // save_interval + 1, 17)
+    np.testing.assert_allclose(sparse, full[::save_interval], rtol=1e-12, atol=1e-12)

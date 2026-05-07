@@ -67,6 +67,7 @@ class KSTrajectory:
         dt: float,
         num_timesteps: int,
         resolution: int,
+        save_interval: int = 1,
     ) -> Self:
         """Integrate the KS equation from an initial condition.
 
@@ -75,20 +76,27 @@ class KSTrajectory:
         initial_state : NDArray[np.complex128], shape (17,)
             Complex Fourier modes for the initial condition.
         dt : float
-            Integration timestep in time units.
+            Integrator step in time units. Per-row spacing of the returned
+            trajectory is ``dt * save_interval``.
         num_timesteps : int
             Length of the resulting trajectory (including the initial
             condition).
         resolution : int
             Number of physical-space grid points for inverse FFT.
+        save_interval : int, optional
+            Save every ``save_interval``-th integrated state. The integrator
+            still steps at ``dt``; only the saved trajectory is coarsened. The
+            resulting :attr:`dt` is ``dt * save_interval``. Default 1.
 
         Returns
         -------
         Self
-            Trajectory with ``len(result) == num_timesteps``.
+            Trajectory with ``len(result) == num_timesteps`` and
+            ``result.dt == dt * save_interval``.
         """
-        modes = ksint(initial_state, dt, num_timesteps - 1)
-        return cls(modes=modes, dt=dt, resolution=resolution)
+        integration_steps = (num_timesteps - 1) * save_interval
+        modes = ksint(initial_state, dt, integration_steps, save_interval=save_interval)
+        return cls(modes=modes, dt=dt * save_interval, resolution=resolution)
 
     def save(self, path: Path) -> None:
         """Persist this trajectory's modes and ``dt`` to an HDF5 file.
