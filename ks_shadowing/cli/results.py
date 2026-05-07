@@ -46,6 +46,16 @@ class DetectionMetadata:
         Number of physical-space grid points the trajectory was loaded
         at for detection. Required to interpret ``ShadowingEvent.shifts``,
         which are recorded in grid cells.
+    downsample : int
+        Sampling stride used during trajectory integration. The
+        trajectory was integrated at the native ``TRAJECTORY_DT`` and
+        every ``downsample``-th row was retained, yielding an effective
+        timestep of ``downsample * TRAJECTORY_DT``. Per-RPO trajectories
+        used the same stride. Defaults to ``1``.
+    native : bool
+        When ``True``, RPO trajectories were built by reordering all
+        native rows with the stride-downsample permutation rather than
+        slicing every Nth row. Defaults to ``False``.
     threshold_quantile : float or None
         Quantile used for automatic threshold selection. ``None`` when
         ``threshold`` was supplied manually.
@@ -58,6 +68,8 @@ class DetectionMetadata:
     threshold: float
     rpo_file: str
     spatial_resolution: int
+    downsample: int = 1
+    native: bool = False
     threshold_quantile: float | None = None
     delay: int | None = None
 
@@ -111,6 +123,8 @@ def save_results(
         f.attrs["threshold"] = metadata.threshold
         f.attrs["rpo_file"] = metadata.rpo_file
         f.attrs["spatial_resolution"] = metadata.spatial_resolution
+        f.attrs["downsample"] = metadata.downsample
+        f.attrs["native"] = metadata.native
         f.attrs["trajectory_path"] = trajectory_path.name
         if metadata.threshold_quantile is not None:
             f.attrs["threshold_quantile"] = metadata.threshold_quantile
@@ -180,6 +194,8 @@ def load_results(
             threshold=float(attrs["threshold"]),
             rpo_file=str(attrs["rpo_file"]),
             spatial_resolution=int(attrs["spatial_resolution"]),
+            downsample=int(attrs["downsample"]) if "downsample" in attrs else 1,
+            native=bool(attrs["native"]) if "native" in attrs else False,
             threshold_quantile=(
                 float(attrs["threshold_quantile"]) if "threshold_quantile" in attrs else None
             ),

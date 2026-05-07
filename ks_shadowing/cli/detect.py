@@ -50,6 +50,29 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--threshold", type=float, default=None)
     parser.add_argument("--min-duration", type=int, default=DEFAULT_MIN_DURATION)
     parser.add_argument("--delay", type=int, default=DEFAULT_DELAY)
+    parser.add_argument(
+        "--downsample",
+        type=int,
+        default=1,
+        help=(
+            "Sampling stride. The trajectory is integrated at the native "
+            "timestep and stored every Nth row, giving an effective dt of "
+            "N times the native dt. Per-RPO trajectories use the same "
+            "stride. Default 1."
+        ),
+    )
+    parser.add_argument(
+        "--native-rpos",
+        action="store_true",
+        default=False,
+        help=(
+            "When --downsample > 1, build per-RPO trajectories by visiting "
+            "every native RPO timestep through the stride-downsample "
+            "permutation instead of subsampling at the same stride. Trades "
+            "increased per-RPO work for fuller sampling of each orbit. "
+            "Default off."
+        ),
+    )
 
     parser.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument("--n-jobs", type=int, default=DEFAULT_N_JOBS)
@@ -110,11 +133,12 @@ def _resolve_trajectory(arguments: Namespace, output_path: Path) -> tuple[KSTraj
         TRAJECTORY_DT,
         arguments.trajectory_steps + 1,
         arguments.resolution,
+        save_interval=arguments.downsample,
     )
     print(
         f"  Shape: {trajectory.modes.shape} "
         f"({arguments.trajectory_steps * TRAJECTORY_DT:.0f} time units, "
-        f"dt={TRAJECTORY_DT})"
+        f"dt={trajectory.dt:.4f})"
     )
 
     trajectory_path = output_path.parent / "trajectory.h5"
@@ -166,6 +190,8 @@ def main() -> None:
         threshold=threshold,
         rpo_file=str(arguments.rpo_file),
         spatial_resolution=arguments.resolution,
+        downsample=arguments.downsample,
+        native=arguments.native_rpos,
         threshold_quantile=threshold_quantile,
         delay=arguments.delay if method == "pha" else None,
     )
@@ -189,6 +215,8 @@ def _detect_with_threshold(method, trajectory, rpos, arguments):
         "show_progress": arguments.show_progress,
         "n_jobs": arguments.n_jobs,
         "chunk_size": arguments.chunk_size,
+        "downsample": arguments.downsample,
+        "native": arguments.native_rpos,
     }
     if method == "ssa":
         return ssa.detect(trajectory, rpos, threshold=arguments.threshold, **common_kwargs)
@@ -209,6 +237,8 @@ def _detect_with_auto_threshold(method, trajectory, rpos, arguments):
         "show_progress": arguments.show_progress,
         "n_jobs": arguments.n_jobs,
         "chunk_size": arguments.chunk_size,
+        "downsample": arguments.downsample,
+        "native": arguments.native_rpos,
     }
     if method == "ssa":
         return ssa.auto_detect(trajectory, rpos, **common_kwargs)
