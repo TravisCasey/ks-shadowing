@@ -76,3 +76,27 @@ def test_auto_detect_threshold_matches_quantile(
         n_jobs=1,
     )
     assert threshold == pytest.approx(expected_threshold)
+
+
+def test_detect_native_mode(sample_initial_state: np.ndarray, small_rpos: list[RPO]) -> None:
+    """``pha.detect`` runs end-to-end at ``native=True, downsample=2`` and
+    returns events with valid bounds, ``shifts`` shape, and ``shifts`` dtype."""
+    trajectory = KSTrajectory.from_initial_state(
+        sample_initial_state, dt=TRAJECTORY_DT, num_timesteps=100, resolution=16
+    )
+
+    events = pha.detect(
+        trajectory,
+        small_rpos[:1],
+        delay=2,
+        threshold=1e6,
+        downsample=2,
+        native=True,
+        min_duration=1,
+        n_jobs=1,
+    )
+
+    for event in events:
+        assert 0 <= event.start_timestep < event.end_timestep <= len(trajectory)
+        assert event.shifts.shape == (event.end_timestep - event.start_timestep,)
+        assert event.shifts.dtype == np.int32
