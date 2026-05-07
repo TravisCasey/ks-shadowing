@@ -9,14 +9,22 @@ from ks_shadowing.core.trajectory import (
     shift_distances_sq,
 )
 
-TRAJECTORY_DT: float = 0.02
-"""Fixed integration timestep for chaotic trajectories."""
+INTEGRATION_DT: float = 0.02
+"""Native ETDRK4 integration timestep.
+
+The KS equation is always integrated at this step. Trajectories may be
+stored at a coarser sampling step via the ``save_interval`` parameter on
+:func:`~ks_shadowing.core.integrator.ksint` and
+:meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_initial_state`; the
+resulting :attr:`~ks_shadowing.core.trajectory.KSTrajectory.dt` is then
+``INTEGRATION_DT * save_interval``.
+"""
 
 __all__: list[str] = [
     "DEFAULT_CHUNK_SIZE",
     "DOMAIN_SIZE",
+    "INTEGRATION_DT",
     "RPO",
-    "TRAJECTORY_DT",
     "KSTrajectory",
     "ShadowingEvent",
     "ksint",

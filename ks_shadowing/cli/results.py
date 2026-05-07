@@ -48,9 +48,9 @@ class DetectionMetadata:
         which are recorded in grid cells.
     downsample : int
         Sampling stride used during trajectory integration. The
-        trajectory was integrated at the native ``TRAJECTORY_DT`` and
+        trajectory was integrated at the native ``INTEGRATION_DT`` and
         every ``downsample``-th row was retained, yielding an effective
-        timestep of ``downsample * TRAJECTORY_DT``. Per-RPO trajectories
+        timestep of ``downsample * INTEGRATION_DT``. Per-RPO trajectories
         used the same stride. Defaults to ``1``.
     native : bool
         When ``True``, RPO trajectories were built by reordering all

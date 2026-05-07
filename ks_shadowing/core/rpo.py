@@ -29,7 +29,7 @@ class RPO:
 
     All RPOs are for domain size ``L = 22.0``. Each orbit has a native timestep
     ``period / time_steps``, which is approximately equal to the trajectory
-    timestep :data:`~ks_shadowing.core.TRAJECTORY_DT`.
+    timestep :data:`~ks_shadowing.core.INTEGRATION_DT`.
 
     Attributes
     ----------
@@ -57,7 +57,7 @@ class RPO:
     def dt(self) -> float:
         """Native integration timestep ``period / time_steps``.
 
-        Close to :data:`~ks_shadowing.core.TRAJECTORY_DT` but tuned per
+        Close to :data:`~ks_shadowing.core.INTEGRATION_DT` but tuned per
         orbit to maximize relative periodicity.
         """
         return self.period / self.time_steps

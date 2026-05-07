@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from ks_shadowing import ssa
-from ks_shadowing.core import TRAJECTORY_DT
+from ks_shadowing.core import INTEGRATION_DT
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.trajectory import KSTrajectory
 
@@ -14,7 +14,7 @@ def short_trajectory(small_rpos: list[RPO]) -> KSTrajectory:
     """200-timestep trajectory at resolution 16 seeded from the shortest RPO."""
     rpo = small_rpos[0]
     return KSTrajectory.from_initial_state(
-        rpo.modes, dt=TRAJECTORY_DT, num_timesteps=200, resolution=16
+        rpo.modes, dt=INTEGRATION_DT, num_timesteps=200, resolution=16
     )
 
 
@@ -64,7 +64,7 @@ def test_detect_native_mode(sample_initial_state: np.ndarray, small_rpos: list[R
     """``ssa.detect`` runs end-to-end at ``native=True, downsample=2`` and
     returns events with valid bounds, ``shifts`` shape, and ``shifts`` dtype."""
     trajectory = KSTrajectory.from_initial_state(
-        sample_initial_state, dt=TRAJECTORY_DT, num_timesteps=50, resolution=16
+        sample_initial_state, dt=INTEGRATION_DT, num_timesteps=50, resolution=16
     )
 
     events = ssa.detect(

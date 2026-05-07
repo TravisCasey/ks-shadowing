@@ -8,7 +8,7 @@ import numpy as np
 
 from ks_shadowing import load_rpos, pha, ssa
 from ks_shadowing.cli.results import DetectionMetadata, save_results
-from ks_shadowing.core import DEFAULT_CHUNK_SIZE, TRAJECTORY_DT
+from ks_shadowing.core import DEFAULT_CHUNK_SIZE, INTEGRATION_DT
 from ks_shadowing.core.trajectory import KSTrajectory
 
 DEFAULT_INITIAL_AMPLITUDE = 0.1
@@ -130,14 +130,14 @@ def _resolve_trajectory(arguments: Namespace, output_path: Path) -> tuple[KSTraj
     ) * initial_amplitude
     trajectory = KSTrajectory.from_initial_state(
         initial_state,
-        TRAJECTORY_DT,
+        INTEGRATION_DT,
         arguments.trajectory_steps + 1,
         arguments.resolution,
         save_interval=arguments.downsample,
     )
     print(
         f"  Shape: {trajectory.modes.shape} "
-        f"({arguments.trajectory_steps * TRAJECTORY_DT:.0f} time units, "
+        f"({arguments.trajectory_steps * INTEGRATION_DT:.0f} time units, "
         f"dt={trajectory.dt:.4f})"
     )
 

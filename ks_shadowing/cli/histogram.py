@@ -7,7 +7,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ks_shadowing.core import TRAJECTORY_DT
+from ks_shadowing.core import INTEGRATION_DT
 
 DEFAULT_OUTPUT = Path("plots/event_duration_histogram.png")
 DEFAULT_BIN_WIDTH = 10
@@ -77,7 +77,7 @@ def main() -> None:
     bins = np.arange(0, bin_max + bin_width, bin_width)
 
     if arguments.time_units:
-        scale = TRAJECTORY_DT
+        scale = INTEGRATION_DT
         xlabel = "Event Duration (time units)"
         bin_edges = bins * scale
         plot_durations = durations * scale
