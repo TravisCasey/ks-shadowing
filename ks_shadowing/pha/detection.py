@@ -550,12 +550,11 @@ def _attach_shifts(
         rpo_trajectory = KSTrajectory.from_initial_state(
             rpo.modes, rpo.dt, rpo.time_steps, trajectory.resolution
         )
-        drift_rate = rpo.spatial_shift / rpo.time_steps
-        rpo_comoving = rpo_trajectory.to_comoving(drift_rate)
+        rpo_comoving = rpo_trajectory.to_comoving(rpo.drift_rate)
 
         for event in rpo_events:
             events_with_shifts.append(
-                _compute_event_shifts(event, trajectory, drift_rate, rpo_comoving)
+                _compute_event_shifts(event, trajectory, rpo.drift_rate, rpo_comoving)
             )
 
     events_with_shifts.sort(key=lambda event: (event.start_timestep, event.rpo_index))

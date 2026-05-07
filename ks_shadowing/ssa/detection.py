@@ -576,7 +576,8 @@ def _compute_distances_sq(
     rpo : :class:`~ks_shadowing.core.rpo.RPO`
         Source RPO metadata.
     rpo_trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
-        Integrated RPO trajectory over one period.
+        Integrated RPO trajectory; its number of rows is the cycle length used
+        as ``period`` for modular phase indexing.
     chunk_size : int
         Maximum number of trajectory timesteps per chunk.
 
@@ -590,12 +591,9 @@ def _compute_distances_sq(
         Squared :math:`L_2` distances at each ``(timestep, shift)`` within the
         chunk, clamped at zero to absorb numerical noise.
     """
-    period = rpo.time_steps
-    resolution = rpo_trajectory.resolution
-    drift_rate = rpo.spatial_shift / period
-
-    traj_comoving = trajectory.to_comoving(drift_rate)
-    rpo_comoving_modes = rpo_trajectory.to_comoving(drift_rate).modes
+    period = rpo_trajectory.num_timesteps
+    traj_comoving = trajectory.to_comoving(rpo.drift_rate)
+    rpo_comoving_modes = rpo_trajectory.to_comoving(rpo.drift_rate).modes
 
     for chunk_start, chunk_modes in traj_comoving.chunks_fourier(chunk_size):
         chunk_len = chunk_modes.shape[0]
@@ -603,5 +601,5 @@ def _compute_distances_sq(
         for phase in range(period):
             indices = (chunk_start + phase + arange_chunk) % period
             rpo_slice = rpo_comoving_modes[indices]
-            dist_sq = shift_distances_sq(chunk_modes, rpo_slice, resolution)
+            dist_sq = shift_distances_sq(chunk_modes, rpo_slice, rpo_trajectory.resolution)
             yield phase, chunk_start, np.maximum(dist_sq, 0.0)

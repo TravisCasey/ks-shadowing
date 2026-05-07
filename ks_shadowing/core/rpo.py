@@ -62,6 +62,19 @@ class RPO:
         """
         return self.period / self.time_steps
 
+    @property
+    def drift_rate(self) -> float:
+        """Spatial drift per unit time, ``spatial_shift / period``.
+
+        Returns
+        -------
+        float
+            Drift rate in domain-units per time-unit. Independent of any
+            sampling rate at which a trajectory representing the orbit
+            is stored.
+        """
+        return self.spatial_shift / self.period
+
 
 def load_rpos(path: Path) -> list[RPO]:
     """Load all RPOs from a .npz file.

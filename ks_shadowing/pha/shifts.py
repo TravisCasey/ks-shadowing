@@ -35,7 +35,8 @@ def _compute_event_shifts(
     trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
         Full trajectory in spectral form.
     drift_rate : float
-        Spatial drift per timestep, ``rpo.spatial_shift / rpo.time_steps``.
+        Spatial drift per unit time, in domain-units per time-unit; the
+        canonical source is :attr:`~ks_shadowing.core.rpo.RPO.drift_rate`.
     rpo_comoving : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
         The RPO integrated for one period and transformed to its co-moving
         frame. Shared across all events against the same RPO.
@@ -50,7 +51,9 @@ def _compute_event_shifts(
     duration = event.end_timestep - event.start_timestep
 
     traj_slice = trajectory[event.start_timestep : event.end_timestep]
-    traj_comoving = traj_slice.to_comoving(drift_rate, start_timestep=event.start_timestep)
+    traj_comoving = traj_slice.to_comoving(
+        drift_rate, start_time=event.start_timestep * trajectory.dt
+    )
 
     phase_indices = (event.start_phase + np.arange(duration)) % period
     rpo_slice_modes = rpo_comoving.modes[phase_indices]

@@ -48,13 +48,15 @@ def test_to_comoving_round_trip(random_trajectory: KSTrajectory) -> None:
     np.testing.assert_allclose(recovered.modes, random_trajectory.modes, atol=1e-6)
 
 
-def test_to_comoving_start_timestep_offset(random_trajectory: KSTrajectory) -> None:
-    """``to_comoving(d, start_timestep=k)`` on ``traj[k:]`` matches rows
-    ``[k:]`` of ``to_comoving(d, start_timestep=0)`` on the full trajectory."""
+def test_to_comoving_start_time_offset(random_trajectory: KSTrajectory) -> None:
+    """``to_comoving(d, start_time=t)`` on ``traj[k:]`` (where ``t`` is the
+    time at row ``k``) matches rows ``[k:]`` of ``to_comoving(d, start_time=0)``
+    on the full trajectory."""
     drift = 0.27
     offset = 5
-    full = random_trajectory.to_comoving(drift_rate=drift, start_timestep=0)
-    sliced = random_trajectory[offset:].to_comoving(drift_rate=drift, start_timestep=offset)
+    offset_time = offset * random_trajectory.dt
+    full = random_trajectory.to_comoving(drift_rate=drift, start_time=0.0)
+    sliced = random_trajectory[offset:].to_comoving(drift_rate=drift, start_time=offset_time)
     np.testing.assert_allclose(sliced.modes, full.modes[offset:], atol=1e-12)
 
 

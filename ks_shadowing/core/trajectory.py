@@ -158,21 +158,21 @@ class KSTrajectory:
         """
         return self.resolution * fft.irfft(self.modes, self.resolution, axis=-1)
 
-    def to_comoving(self, drift_rate: float, start_timestep: int = 0) -> Self:
-        r"""Transform to co-moving frame by phase-shifting Fourier modes.
+    def to_comoving(self, drift_rate: float, start_time: float = 0.0) -> Self:
+        r"""Transform to co-moving frame given drift per unit time.
 
-        Multiplies mode ``k`` at timestep ``t`` by
+        Multiplies mode ``k`` at row ``r`` (``0 <= r < num_timesteps``) by
         :math:`\exp(2 \pi i \cdot k \cdot \text{drift\_rate}
-        \cdot (\text{start\_timestep} + t) / L)` where :math:`L` is the
-        domain size.
+        \cdot (\text{start\_time} + r \cdot \text{self.dt}) / L)` where
+        :math:`L` is the domain size.
 
         Parameters
         ----------
         drift_rate : float
-            Spatial drift per timestep in domain units. Callers compute
-            ``rpo.spatial_shift / rpo.time_steps``.
-        start_timestep : int, optional
-            Absolute timestep offset for the first row. Default 0.
+            Spatial drift per unit time, in domain-units per time-unit.
+            Callers usually pass :attr:`~ks_shadowing.core.rpo.RPO.drift_rate`.
+        start_time : float, optional
+            Absolute time at row 0. Default 0.0.
 
         Returns
         -------
@@ -181,13 +181,13 @@ class KSTrajectory:
             and ``resolution``.
         """
         wavenumbers = np.arange(_COMPLEX_MODES)  # (17,)
-        timesteps = np.arange(start_timestep, start_timestep + self.num_timesteps)  # (T,)
+        times = start_time + np.arange(self.num_timesteps) * self.dt  # (T,)
         phase = (
             2j
             * np.pi
             * wavenumbers[np.newaxis, :]
             * drift_rate
-            * timesteps[:, np.newaxis]
+            * times[:, np.newaxis]
             / DOMAIN_SIZE
         )
         comoving_modes = self.modes * np.exp(phase)
