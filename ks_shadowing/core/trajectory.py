@@ -112,26 +112,23 @@ class KSTrajectory:
     ) -> Self:
         """Build an RPO trajectory at sampling step ``downsample * rpo.dt``.
 
-        Integrates ``rpo`` for one period at its native ``rpo.dt``, producing
-        ``rpo.time_steps`` rows of integrated state, then derives the output
-        from those rows in one of two ways:
+        Integrates ``rpo`` for one period at its native ``rpo.dt`` and
+        produces the output in one of two variants:
 
-        * ``native=False`` (default): the output is the slice
-          ``integrated[::downsample]``, i.e. every ``downsample``-th row.
-        * ``native=True``: the output reorders the integrated rows so that
-          output row ``k`` is integrated row ``(k * downsample) mod
-          rpo.time_steps``. The output has length
-          ``rpo.time_steps // gcd(downsample, rpo.time_steps)``, the cycle
-          length of that permutation.
+        * ``native=False`` (default): keeps every ``downsample``-th row of
+          the integration. Output length
+          ``ceil(rpo.time_steps / downsample)``.
 
-        In both cases the output ``dt`` is ``rpo.dt * downsample``: rows are
-        spaced by ``downsample`` integration steps in the slicing variant,
-        and by exactly the same physical interval (modulo the orbit's
-        spatial-shift symmetry) in the reordering variant.
+        * ``native=True``: visits every native phase by stepping through
+          the stride-``downsample`` permutation, applying the relative-
+          periodicity spatial-shift roll at each period wrap so the result
+          is a valid forward KSE evolution at the coarser ``dt`` from
+          ``rpo.modes``. Output length
+          ``rpo.time_steps // gcd(downsample, rpo.time_steps)``.
 
-        With defaults ``(downsample=1, native=False)`` this reduces to one
-        full period at ``dt = rpo.dt``: ``rpo.time_steps`` rows of
-        integrated state.
+        Both variants have ``dt = rpo.dt * downsample``. Defaults
+        ``(downsample=1, native=False)`` give one full native period
+        (``rpo.time_steps`` rows at ``dt = rpo.dt``).
 
         Parameters
         ----------
@@ -149,9 +146,7 @@ class KSTrajectory:
         Returns
         -------
         Self
-            Trajectory with ``dt = rpo.dt * downsample``. Number of rows is
-            ``ceil(rpo.time_steps / downsample)`` when ``native=False`` and
-            ``rpo.time_steps // gcd(downsample, rpo.time_steps)`` otherwise.
+            Trajectory with ``dt = rpo.dt * downsample``.
         """
         integrated = ksint(rpo.modes, rpo.dt, rpo.time_steps - 1)
 
@@ -161,7 +156,23 @@ class KSTrajectory:
 
         cycle_length = rpo.time_steps // math.gcd(downsample, rpo.time_steps)
         indices = (np.arange(cycle_length) * downsample) % rpo.time_steps
-        modes = integrated[indices]
+        # period_wraps[r] counts how many full RPO periods the cumulative
+        # native-row index r * downsample has passed. Multiplying mode k by
+        # exp(-2pi*i*k*s/L) rolls the real-space signal by +s; rolling each
+        # row by +period_wraps[r] * spatial_shift closes the relative-
+        # periodicity gap so the stored sequence is a valid forward KSE
+        # evolution at dt_traj from integrated[0].
+        period_wraps = (np.arange(cycle_length) * downsample) // rpo.time_steps
+        wavenumbers = np.arange(_COMPLEX_MODES)
+        shift_phase = np.exp(
+            -2j
+            * np.pi
+            * wavenumbers[np.newaxis, :]
+            * period_wraps[:, np.newaxis]
+            * rpo.spatial_shift
+            / DOMAIN_SIZE
+        )
+        modes = integrated[indices] * shift_phase
         return cls(modes=modes, dt=rpo.dt * downsample, resolution=resolution)
 
     def save(self, path: Path) -> None:

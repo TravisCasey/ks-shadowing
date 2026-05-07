@@ -113,8 +113,9 @@ def test_trajectory_roundtrip_preserves_modes_and_dt(
 
 def test_from_rpo_reorders_when_native(rpo_data_path: Path) -> None:
     """``from_rpo(native=True, downsample=k)`` produces a trajectory whose
-    row ``j`` is integrated row ``(j * k) mod rpo.time_steps``, with length
-    equal to the cycle length of that permutation and ``dt = rpo.dt * k``."""
+    comoving frame at row j matches the native trajectory's comoving frame
+    at native phase ``(j * k) mod rpo.time_steps``, with length equal to
+    the cycle length of that permutation and ``dt = rpo.dt * k``."""
     rpo = load_rpos(rpo_data_path)[0]
     downsample = 23
 
@@ -127,8 +128,13 @@ def test_from_rpo_reorders_when_native(rpo_data_path: Path) -> None:
     assert reordered.num_timesteps == cycle_length
 
     expected_indices = (np.arange(cycle_length) * downsample) % rpo.time_steps
+    native_comoving = native_only.to_comoving(rpo.drift_rate)
+    reordered_comoving = reordered.to_comoving(rpo.drift_rate)
     np.testing.assert_allclose(
-        reordered.modes, native_only.modes[expected_indices], rtol=1e-12, atol=1e-12
+        reordered_comoving.modes,
+        native_comoving.modes[expected_indices],
+        rtol=1e-12,
+        atol=1e-12,
     )
 
 
