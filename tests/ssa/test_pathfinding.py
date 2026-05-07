@@ -2,7 +2,11 @@
 
 import numpy as np
 
-from ks_shadowing.ssa.pathfinding import _extract_shadowing_events
+from ks_shadowing.ssa.pathfinding import (
+    _CLOSE_PASS_DTYPE,
+    _extract_shadowing_events,
+    _find_connected_components,
+)
 
 
 def _gen(*phase_distances: np.ndarray):
@@ -136,3 +140,30 @@ def test_min_duration_filter() -> None:
         min_duration=2,
     )
     assert len(events) == 1
+
+
+def test_diagonal_neighbors_form_one_component() -> None:
+    """Close passes at ``(timestep=0, rpo_phase=0, shift=0)`` and
+    ``(1, 1, 0)`` are adjacent (each coordinate differs by at most 1) and
+    group into one component."""
+    close_passes = np.array(
+        [(0, 0, 0, 0.1), (1, 1, 0, 0.1)],
+        dtype=_CLOSE_PASS_DTYPE,
+    )
+
+    components = _find_connected_components(close_passes, period=10, resolution=8)
+    assert len(components) == 1
+    assert len(components[0]) == 2
+
+
+def test_phase_jump_of_two_separates_components() -> None:
+    """Close passes at ``(timestep=0, rpo_phase=0, shift=0)`` and
+    ``(1, 2, 0)`` differ by 2 in ``rpo_phase`` and form two separate
+    components."""
+    close_passes = np.array(
+        [(0, 0, 0, 0.1), (1, 2, 0, 0.1)],
+        dtype=_CLOSE_PASS_DTYPE,
+    )
+
+    components = _find_connected_components(close_passes, period=10, resolution=8)
+    assert len(components) == 2
