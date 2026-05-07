@@ -1,11 +1,13 @@
 """Tests for KSTrajectory and shift_distances_sq."""
 
+import math
 from pathlib import Path
 
 import numpy as np
 import pytest
 from scipy import fft
 
+from ks_shadowing.core.rpo import load_rpos
 from ks_shadowing.core.trajectory import KSTrajectory, shift_distances_sq
 
 
@@ -107,3 +109,37 @@ def test_trajectory_roundtrip_preserves_modes_and_dt(
     np.testing.assert_array_equal(loaded.modes, random_trajectory.modes)
     assert loaded.dt == random_trajectory.dt
     assert loaded.resolution == 128
+
+
+def test_from_rpo_reorders_when_native(rpo_data_path: Path) -> None:
+    """``from_rpo(native=True, downsample=k)`` produces a trajectory whose
+    row ``j`` is integrated row ``(j * k) mod rpo.time_steps``, with length
+    equal to the cycle length of that permutation and ``dt = rpo.dt * k``."""
+    rpo = load_rpos(rpo_data_path)[0]
+    downsample = 23
+
+    native_only = KSTrajectory.from_rpo(rpo, resolution=64, downsample=1, native=False)
+    reordered = KSTrajectory.from_rpo(rpo, resolution=64, downsample=downsample, native=True)
+
+    assert reordered.dt == pytest.approx(rpo.dt * downsample)
+
+    cycle_length = rpo.time_steps // math.gcd(downsample, rpo.time_steps)
+    assert reordered.num_timesteps == cycle_length
+
+    expected_indices = (np.arange(cycle_length) * downsample) % rpo.time_steps
+    np.testing.assert_allclose(
+        reordered.modes, native_only.modes[expected_indices], rtol=1e-12, atol=1e-12
+    )
+
+
+def test_from_rpo_slices_when_not_native(rpo_data_path: Path) -> None:
+    """``from_rpo(native=False, downsample=k)`` returns every kth row of the
+    one-period native integration, with ``dt = rpo.dt * k``."""
+    rpo = load_rpos(rpo_data_path)[0]
+    downsample = 23
+
+    native_only = KSTrajectory.from_rpo(rpo, resolution=64, downsample=1, native=False)
+    paper = KSTrajectory.from_rpo(rpo, resolution=64, downsample=downsample, native=False)
+
+    assert paper.dt == pytest.approx(rpo.dt * downsample)
+    np.testing.assert_allclose(paper.modes, native_only.modes[::downsample], rtol=1e-12, atol=1e-12)
