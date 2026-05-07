@@ -50,6 +50,9 @@ def detect(  # noqa: PLR0913
     rpos: Sequence[RPO],
     delay: int,
     threshold: float,
+    *,
+    downsample: int = 1,
+    native: bool = False,
     min_duration: int = 1,
     show_progress: bool = False,
     n_jobs: int = 1,
@@ -79,6 +82,15 @@ def detect(  # noqa: PLR0913
         as a close pass. Typically set by quantile with
         :func:`~ks_shadowing.pha.detection.compute_min_distances`. This flow
         is automated via :func:`~ks_shadowing.pha.detection.auto_detect`.
+    downsample : int, optional
+        Sampling stride used to build per-RPO trajectories via
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        Default 1.
+    native : bool, optional
+        If ``True``, build per-RPO trajectories by reordering native rows
+        with the stride-``downsample`` permutation; if ``False``, by
+        slicing every ``downsample``-th native row. Default ``False``.
+        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     min_duration : int, optional
         Minimum event duration in timesteps. Default is 1.
     show_progress : bool, optional
@@ -97,7 +109,9 @@ def detect(  # noqa: PLR0913
         Events sorted by ``(start_timestep, rpo_index)``.
     """
     trajectory_diagrams = _KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size)
-    rpo_diagram_pairs = _compute_rpo_diagram_pairs(rpos, trajectory.resolution, chunk_size)
+    rpo_diagram_pairs = _compute_rpo_diagram_pairs(
+        rpos, trajectory.resolution, chunk_size, downsample, native
+    )
     n_workers = _resolve_n_jobs(n_jobs)
 
     events = _detect_from_diagrams(
@@ -109,13 +123,16 @@ def detect(  # noqa: PLR0913
         show_progress,
         n_workers,
     )
-    return _attach_shifts(events, trajectory, rpos)
+    return _attach_shifts(events, trajectory, rpos, downsample, native)
 
 
 def compute_min_distances(  # noqa: PLR0913
     trajectory: KSTrajectory,
     rpos: Sequence[RPO],
     delay: int,
+    *,
+    downsample: int = 1,
+    native: bool = False,
     show_progress: bool = False,
     n_jobs: int = 1,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
@@ -139,6 +156,15 @@ def compute_min_distances(  # noqa: PLR0913
     delay : int
         Time-delay embedding window size. Comparison with SSA is useful to tune
         this parameter.
+    downsample : int, optional
+        Sampling stride used to build per-RPO trajectories via
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        Default 1.
+    native : bool, optional
+        If ``True``, build per-RPO trajectories by reordering native rows
+        with the stride-``downsample`` permutation; if ``False``, by
+        slicing every ``downsample``-th native row. Default ``False``.
+        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     show_progress : bool, optional
         Whether to display ``tqdm`` progress bars. Default is ``False``.
     n_jobs : int, optional
@@ -155,7 +181,9 @@ def compute_min_distances(  # noqa: PLR0913
         Minimum Wasserstein distance at each trajectory timestep.
     """
     trajectory_diagrams = _KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size)
-    rpo_diagram_pairs = _compute_rpo_diagram_pairs(rpos, trajectory.resolution, chunk_size)
+    rpo_diagram_pairs = _compute_rpo_diagram_pairs(
+        rpos, trajectory.resolution, chunk_size, downsample, native
+    )
     n_workers = _resolve_n_jobs(n_jobs)
 
     return _min_distances_from_diagrams(
@@ -168,6 +196,9 @@ def auto_detect(  # noqa: PLR0913
     rpos: Sequence[RPO],
     delay: int,
     threshold_quantile: float = 0.4,
+    *,
+    downsample: int = 1,
+    native: bool = False,
     min_duration: int = 1,
     show_progress: bool = False,
     n_jobs: int = 1,
@@ -195,6 +226,15 @@ def auto_detect(  # noqa: PLR0913
     threshold_quantile : float, optional
         Quantile of per-timestep minimum distances used as the detection
         threshold. Default is 0.4.
+    downsample : int, optional
+        Sampling stride used to build per-RPO trajectories via
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        Default 1.
+    native : bool, optional
+        If ``True``, build per-RPO trajectories by reordering native rows
+        with the stride-``downsample`` permutation; if ``False``, by
+        slicing every ``downsample``-th native row. Default ``False``.
+        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     min_duration : int, optional
         Minimum event duration in timesteps. Default is 1.
     show_progress : bool, optional
@@ -215,7 +255,9 @@ def auto_detect(  # noqa: PLR0913
         The automatically selected threshold.
     """
     trajectory_diagrams = _KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size)
-    rpo_diagram_pairs = _compute_rpo_diagram_pairs(rpos, trajectory.resolution, chunk_size)
+    rpo_diagram_pairs = _compute_rpo_diagram_pairs(
+        rpos, trajectory.resolution, chunk_size, downsample, native
+    )
     n_workers = _resolve_n_jobs(n_jobs)
 
     min_distances = _min_distances_from_diagrams(
@@ -233,7 +275,7 @@ def auto_detect(  # noqa: PLR0913
         show_progress,
         n_workers,
     )
-    events = _attach_shifts(events, trajectory, rpos)
+    events = _attach_shifts(events, trajectory, rpos, downsample, native)
     return events, threshold
 
 
@@ -241,17 +283,17 @@ def _compute_rpo_diagram_pairs(
     rpos: Sequence[RPO],
     resolution: int,
     chunk_size: int,
+    downsample: int,
+    native: bool,
 ) -> list[tuple[RPO, _KSPersistenceTrajectory]]:
-    """Integrate each RPO and compute persistence diagrams of each phase.
+    """Build per-RPO trajectories and their per-phase persistence diagrams.
 
     Returned pairs are sorted by RPO period descending so that the
     longest-running RPOs are dispatched first.
     """
     diagram_pairs: list[tuple[RPO, _KSPersistenceTrajectory]] = []
     for rpo in rpos:
-        rpo_trajectory = KSTrajectory.from_initial_state(
-            rpo.modes, rpo.dt, rpo.time_steps, resolution
-        )
+        rpo_trajectory = KSTrajectory.from_rpo(rpo, resolution, downsample, native)
         phase_diagrams = _KSPersistenceTrajectory.from_trajectory(rpo_trajectory, chunk_size)
         diagram_pairs.append((rpo, phase_diagrams))
 
@@ -528,13 +570,16 @@ def _attach_shifts(
     events: list[ShadowingEvent],
     trajectory: KSTrajectory,
     rpos: Sequence[RPO],
+    downsample: int,
+    native: bool,
 ) -> list[ShadowingEvent]:
     """Reconstruct spatial shifts for each event and sort the result.
 
     PHA quotients out spatial shifts during detection, leaving events with
     zero-filled ``shifts`` arrays. For each RPO shadowed by at least one event,
-    integrates the RPO once and transforms to its co-moving frame, then passes
-    this co-moving trajectory to each event's shift reconstruction in
+    builds an RPO trajectory at the requested sampling and transforms it to
+    its co-moving frame, then passes this co-moving trajectory to each event's
+    shift reconstruction in
     :func:`~ks_shadowing.pha.shifts._compute_event_shifts`. Sorts the result
     by ``(start_timestep, rpo_index)``.
     """
@@ -547,9 +592,7 @@ def _attach_shifts(
     events_with_shifts: list[ShadowingEvent] = []
     for rpo_index, rpo_events in events_by_rpo.items():
         rpo = rpo_by_index[rpo_index]
-        rpo_trajectory = KSTrajectory.from_initial_state(
-            rpo.modes, rpo.dt, rpo.time_steps, trajectory.resolution
-        )
+        rpo_trajectory = KSTrajectory.from_rpo(rpo, trajectory.resolution, downsample, native)
         rpo_comoving = rpo_trajectory.to_comoving(rpo.drift_rate)
 
         for event in rpo_events:

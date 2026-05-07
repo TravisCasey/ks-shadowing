@@ -43,6 +43,9 @@ def detect(  # noqa: PLR0913
     trajectory: KSTrajectory,
     rpos: Sequence[RPO],
     threshold: float,
+    *,
+    downsample: int = 1,
+    native: bool = False,
     min_duration: int = 1,
     show_progress: bool = False,
     n_jobs: int = 1,
@@ -68,6 +71,15 @@ def detect(  # noqa: PLR0913
         Maximum :math:`L_2` distance for a grid entry to count as a close pass.
         Typically set by quantile with :func:`compute_min_distances`. This
         flow is automated via :func:`auto_detect`.
+    downsample : int, optional
+        Sampling stride used to build per-RPO trajectories via
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        Default 1.
+    native : bool, optional
+        If ``True``, build per-RPO trajectories by reordering native rows
+        with the stride-``downsample`` permutation; if ``False``, by
+        slicing every ``downsample``-th native row. Default ``False``.
+        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     min_duration : int, optional
         Minimum event duration in timesteps. Default is 1.
     show_progress : bool, optional
@@ -86,7 +98,9 @@ def detect(  # noqa: PLR0913
     list[ShadowingEvent]
         Events sorted by ``(start_timestep, rpo_index)``.
     """
-    rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(rpos, trajectory.resolution)
+    rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
+        rpos, trajectory.resolution, downsample, native
+    )
     n_workers = _resolve_n_jobs(n_jobs)
 
     return _detect_from_pairs(
@@ -100,9 +114,12 @@ def detect(  # noqa: PLR0913
     )
 
 
-def compute_min_distances(
+def compute_min_distances(  # noqa: PLR0913
     trajectory: KSTrajectory,
     rpos: Sequence[RPO],
+    *,
+    downsample: int = 1,
+    native: bool = False,
     show_progress: bool = False,
     n_jobs: int = 1,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
@@ -120,6 +137,15 @@ def compute_min_distances(
         Trajectory whose minimum distances are computed.
     rpos : Sequence[:class:`~ks_shadowing.core.rpo.RPO`]
         Relative periodic orbits to compare against.
+    downsample : int, optional
+        Sampling stride used to build per-RPO trajectories via
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        Default 1.
+    native : bool, optional
+        If ``True``, build per-RPO trajectories by reordering native rows
+        with the stride-``downsample`` permutation; if ``False``, by
+        slicing every ``downsample``-th native row. Default ``False``.
+        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     show_progress : bool, optional
         Whether to display a ``tqdm`` progress bar over RPOs. Default is
         ``False``.
@@ -136,7 +162,9 @@ def compute_min_distances(
     NDArray[np.float64], shape (num_timesteps,)
         Minimum :math:`L_2` distance to any RPO at each timestep.
     """
-    rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(rpos, trajectory.resolution)
+    rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
+        rpos, trajectory.resolution, downsample, native
+    )
     n_workers = _resolve_n_jobs(n_jobs)
 
     return _min_distances_from_pairs(
@@ -148,6 +176,9 @@ def auto_detect(  # noqa: PLR0913
     trajectory: KSTrajectory,
     rpos: Sequence[RPO],
     threshold_quantile: float = 0.4,
+    *,
+    downsample: int = 1,
+    native: bool = False,
     min_duration: int = 1,
     show_progress: bool = False,
     n_jobs: int = 1,
@@ -170,6 +201,15 @@ def auto_detect(  # noqa: PLR0913
     threshold_quantile : float, optional
         Quantile of per-timestep minimum distances used as the detection
         threshold. Default is 0.4.
+    downsample : int, optional
+        Sampling stride used to build per-RPO trajectories via
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        Default 1.
+    native : bool, optional
+        If ``True``, build per-RPO trajectories by reordering native rows
+        with the stride-``downsample`` permutation; if ``False``, by
+        slicing every ``downsample``-th native row. Default ``False``.
+        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     min_duration : int, optional
         Minimum event duration in timesteps. Default is 1.
     show_progress : bool, optional
@@ -190,7 +230,9 @@ def auto_detect(  # noqa: PLR0913
     threshold : float
         The automatically selected threshold.
     """
-    rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(rpos, trajectory.resolution)
+    rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
+        rpos, trajectory.resolution, downsample, native
+    )
     n_workers = _resolve_n_jobs(n_jobs)
 
     min_distances = _min_distances_from_pairs(
@@ -213,17 +255,17 @@ def auto_detect(  # noqa: PLR0913
 def _compute_rpo_trajectory_pairs(
     rpos: Sequence[RPO],
     resolution: int,
+    downsample: int,
+    native: bool,
 ) -> list[tuple[RPO, KSTrajectory]]:
-    """Integrate each RPO to a spectral trajectory over one period.
+    """Build an RPO trajectory for each RPO at the requested sampling.
 
-    Returned pairs are sorted by RPO period descending so that the
+    Returned pairs are sorted by RPO ``time_steps`` descending so that the
     longest-running RPOs are dispatched first.
     """
     pairs: list[tuple[RPO, KSTrajectory]] = []
     for rpo in rpos:
-        rpo_trajectory = KSTrajectory.from_initial_state(
-            rpo.modes, rpo.dt, rpo.time_steps, resolution
-        )
+        rpo_trajectory = KSTrajectory.from_rpo(rpo, resolution, downsample, native)
         pairs.append((rpo, rpo_trajectory))
 
     pairs.sort(key=lambda pair: pair[0].time_steps, reverse=True)
@@ -267,7 +309,7 @@ def _detect_from_pairs(  # noqa: PLR0913
                     _extract_shadowing_events(
                         _compute_distances_sq(trajectory, rpo, rpo_trajectory, chunk_size),
                         rpo.index,
-                        rpo.time_steps,
+                        rpo_trajectory.num_timesteps,
                         trajectory.resolution,
                         threshold,
                         min_duration,
@@ -503,7 +545,7 @@ def _detect_single_rpo(inputs: _DetectWorkerInputs) -> tuple[int, list[Shadowing
         events = _extract_shadowing_events(
             _compute_distances_sq(trajectory, inputs.rpo, inputs.rpo_trajectory, inputs.chunk_size),
             inputs.rpo.index,
-            inputs.rpo.time_steps,
+            inputs.rpo_trajectory.num_timesteps,
             inputs.resolution,
             inputs.threshold,
             inputs.min_duration,
