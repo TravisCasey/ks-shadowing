@@ -14,7 +14,8 @@ from ks_shadowing.core.trajectory import KSTrajectory
 DEFAULT_INITIAL_AMPLITUDE = 0.1
 DEFAULT_THRESHOLD_QUANTILE = 0.4
 DEFAULT_MIN_DURATION = 600
-DEFAULT_DELAY = 4
+DEFAULT_DELAY = 1
+DEFAULT_DERIVATIVES = 1
 DEFAULT_N_JOBS = -1
 DEFAULT_RPO_FILE = Path("data/rpos_selected.npz")
 DEFAULT_OUTPUT_BY_METHOD = {
@@ -49,7 +50,28 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--threshold-quantile", type=float, default=DEFAULT_THRESHOLD_QUANTILE)
     parser.add_argument("--threshold", type=float, default=None)
     parser.add_argument("--min-duration", type=int, default=DEFAULT_MIN_DURATION)
-    parser.add_argument("--delay", type=int, default=DEFAULT_DELAY)
+    parser.add_argument(
+        "--delay",
+        type=int,
+        default=DEFAULT_DELAY,
+        help=(
+            "PHA time-delay embedding window. 1 (default) means no temporal "
+            "embedding; the per-RPO Wasserstein matrix is used directly. "
+            "Higher values average over `delay` consecutive timesteps. "
+            "Ignored for SSA."
+        ),
+    )
+    parser.add_argument(
+        "--derivatives",
+        type=int,
+        default=DEFAULT_DERIVATIVES,
+        help=(
+            "Number of spatial-derivative orders included in PHA persistence "
+            "diagrams. 1 (default) means only the field itself; n > 1 "
+            "computes diagrams of orders 0..n-1 and averages their "
+            "Wasserstein distances. Ignored for SSA."
+        ),
+    )
     parser.add_argument(
         "--downsample",
         type=int,
@@ -193,7 +215,8 @@ def main() -> None:
         downsample=arguments.downsample,
         native=arguments.native_rpos,
         threshold_quantile=threshold_quantile,
-        delay=arguments.delay if method == "pha" else None,
+        delay=arguments.delay if method == "pha" else 1,
+        derivatives=arguments.derivatives if method == "pha" else 1,
     )
 
     print(f"Saving results to {output_path}...")
@@ -223,8 +246,9 @@ def _detect_with_threshold(method, trajectory, rpos, arguments):
     return pha.detect(
         trajectory,
         rpos,
-        delay=arguments.delay,
         threshold=arguments.threshold,
+        delay=arguments.delay,
+        derivatives=arguments.derivatives,
         **common_kwargs,
     )
 
@@ -242,7 +266,13 @@ def _detect_with_auto_threshold(method, trajectory, rpos, arguments):
     }
     if method == "ssa":
         return ssa.auto_detect(trajectory, rpos, **common_kwargs)
-    return pha.auto_detect(trajectory, rpos, delay=arguments.delay, **common_kwargs)
+    return pha.auto_detect(
+        trajectory,
+        rpos,
+        delay=arguments.delay,
+        derivatives=arguments.derivatives,
+        **common_kwargs,
+    )
 
 
 if __name__ == "__main__":

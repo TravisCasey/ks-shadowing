@@ -100,3 +100,19 @@ def test_detect_native_mode(sample_initial_state: np.ndarray, small_rpos: list[R
         assert 0 <= event.start_timestep < event.end_timestep <= len(trajectory)
         assert event.shifts.shape == (event.end_timestep - event.start_timestep,)
         assert event.shifts.dtype == np.int32
+
+
+def test_derivatives_affects_min_distances(
+    short_trajectory: KSTrajectory, small_rpos: list[RPO]
+) -> None:
+    """``compute_min_distances`` at ``derivatives=2`` differs from
+    ``derivatives=1`` on a generic trajectory, confirming the derivatives
+    kwarg is wired through the pipeline."""
+    base = pha.compute_min_distances(short_trajectory, small_rpos, n_jobs=1)
+    enriched = pha.compute_min_distances(short_trajectory, small_rpos, derivatives=2, n_jobs=1)
+    assert base.shape == enriched.shape
+    # Different derivative orders produce different Wasserstein scores
+    # generically; equality would mean the kwarg is being ignored.
+    finite_mask = np.isfinite(base) & np.isfinite(enriched)
+    assert finite_mask.any()
+    assert not np.allclose(base[finite_mask], enriched[finite_mask])

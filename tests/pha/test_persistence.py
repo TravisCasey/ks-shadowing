@@ -32,11 +32,11 @@ def test_zeroth_diagram_pair_count_scales() -> None:
 
 
 def test_apply_delay_embedding_explicit() -> None:
-    """``_apply_delay_embedding(matrix, delay=2)`` sums entries along
+    """``_apply_delay_embedding(matrix, delay=2)`` averages entries along
     diagonals ``(t + l, (j + l) mod J)`` for ``l in range(delay)``."""
     matrix = np.arange(12, dtype=np.float64).reshape(4, 3)
     expected = np.array(
-        [[4.0, 6.0, 5.0], [10.0, 12.0, 11.0], [16.0, 18.0, 17.0]],
+        [[2.0, 3.0, 2.5], [5.0, 6.0, 5.5], [8.0, 9.0, 8.5]],
         dtype=np.float64,
     )
     np.testing.assert_allclose(_apply_delay_embedding(matrix, delay=2), expected)
@@ -65,3 +65,41 @@ def test_chunked_diagrams_match_unchunked(rng: np.random.Generator) -> None:
     assert len(default.diagrams) == len(chunked.diagrams)
     for a, b in zip(default.diagrams, chunked.diagrams, strict=True):
         np.testing.assert_array_equal(a, b)
+
+
+def test_from_trajectory_order_zero_matches_no_order(
+    rng: np.random.Generator,
+) -> None:
+    """``from_trajectory(..., order=0)`` matches the default (no-order) call
+    bit-for-bit."""
+    modes = np.zeros((20, 17), dtype=np.complex128)
+    modes[:, 1:16] = (rng.standard_normal((20, 15)) + 1j * rng.standard_normal((20, 15))) * 0.1
+    trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=32)
+
+    default = _KSPersistenceTrajectory.from_trajectory(trajectory)
+    explicit = _KSPersistenceTrajectory.from_trajectory(trajectory, order=0)
+
+    assert len(default.diagrams) == len(explicit.diagrams)
+    for a, b in zip(default.diagrams, explicit.diagrams, strict=True):
+        np.testing.assert_array_equal(a, b)
+
+
+def test_from_trajectory_higher_order_differs(rng: np.random.Generator) -> None:
+    """``from_trajectory(..., order=1)`` produces diagrams of the derivative
+    field, which differ from the order-0 diagrams on a generic trajectory."""
+    modes = np.zeros((10, 17), dtype=np.complex128)
+    modes[:, 1:16] = (rng.standard_normal((10, 15)) + 1j * rng.standard_normal((10, 15))) * 0.1
+    trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=32)
+
+    order0 = _KSPersistenceTrajectory.from_trajectory(trajectory, order=0)
+    order1 = _KSPersistenceTrajectory.from_trajectory(trajectory, order=1)
+
+    assert len(order0.diagrams) == len(order1.diagrams)
+    # At least one diagram must differ; the derivative field is generically
+    # distinct from the field itself.
+    differed = False
+    for a, b in zip(order0.diagrams, order1.diagrams, strict=True):
+        if a.shape != b.shape or not np.allclose(a, b):
+            differed = True
+            break
+    assert differed

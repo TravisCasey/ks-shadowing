@@ -8,7 +8,7 @@ import numpy as np
 
 from ks_shadowing.cli.plotting import _align_rpo_to_window
 from ks_shadowing.cli.results import load_results
-from ks_shadowing.core import DOMAIN_SIZE, INTEGRATION_DT
+from ks_shadowing.core import DOMAIN_SIZE
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.rpo import load_rpos
 
@@ -57,16 +57,15 @@ def _plot_event(  # noqa: PLR0913
     event: ShadowingEvent,
     plot_start_timestep: int,
     resolution: int,
+    dt: float,
     cmap: str,
 ) -> plt.Figure:
     """Create a two-panel trajectory/RPO comparison figure."""
     plot_end_timestep = plot_start_timestep + trajectory_physical.shape[0]
     duration_timesteps = event.end_timestep - event.start_timestep
 
-    trajectory_time = np.arange(plot_start_timestep, plot_end_timestep) * INTEGRATION_DT
-    relative_time = (
-        np.arange(plot_start_timestep, plot_end_timestep) - event.start_timestep
-    ) * INTEGRATION_DT
+    trajectory_time = np.arange(plot_start_timestep, plot_end_timestep) * dt
+    relative_time = (np.arange(plot_start_timestep, plot_end_timestep) - event.start_timestep) * dt
     space_axis = np.linspace(0, DOMAIN_SIZE, resolution, endpoint=False)
 
     vmin = min(trajectory_physical.min(), aligned_rpo.min())
@@ -86,8 +85,8 @@ def _plot_event(  # noqa: PLR0913
     axes[0].set_xlabel("Time")
     axes[0].set_ylabel("Space")
     axes[0].set_title("Chaotic Trajectory")
-    event_start_time = event.start_timestep * INTEGRATION_DT
-    event_end_time = event.end_timestep * INTEGRATION_DT
+    event_start_time = event.start_timestep * dt
+    event_end_time = event.end_timestep * dt
     axes[0].axvline(event_start_time, color="black", linestyle="--", linewidth=1.5)
     axes[0].axvline(event_end_time, color="black", linestyle="--", linewidth=1.5)
     figure.colorbar(image_top, ax=axes[0], label="u(x,t)")
@@ -105,12 +104,10 @@ def _plot_event(  # noqa: PLR0913
     axes[1].set_ylabel("Space")
     axes[1].set_title(f"RPO {event.rpo_index} (aligned)")
     axes[1].axvline(0, color="black", linestyle="--", linewidth=1.5)
-    axes[1].axvline(
-        duration_timesteps * INTEGRATION_DT, color="black", linestyle="--", linewidth=1.5
-    )
+    axes[1].axvline(duration_timesteps * dt, color="black", linestyle="--", linewidth=1.5)
     figure.colorbar(image_bottom, ax=axes[1], label="u(x,t)")
 
-    duration_time = duration_timesteps * INTEGRATION_DT
+    duration_time = duration_timesteps * dt
     figure.suptitle(
         f"Shadowing Event: RPO {event.rpo_index}, duration={duration_timesteps} steps "
         f"({duration_time:.1f} time units), mean distance={event.mean_distance:.3f}",
@@ -139,7 +136,7 @@ def main() -> None:
     print(f"  Detector type: {detector_type}")
     print(
         f"  Trajectory: {len(trajectory)} timesteps "
-        f"({len(trajectory) * INTEGRATION_DT:.0f} time units)"
+        f"({len(trajectory) * trajectory.dt:.0f} time units)"
     )
     print(f"  Events: {len(events)}")
 
@@ -176,6 +173,7 @@ def main() -> None:
         plot_start_timestep,
         plot_end_timestep,
         resolution,
+        downsample=metadata.downsample,
     )
 
     figure = _plot_event(
@@ -184,6 +182,7 @@ def main() -> None:
         selected_event,
         plot_start_timestep,
         resolution,
+        trajectory.dt,
         arguments.cmap,
     )
 

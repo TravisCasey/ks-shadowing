@@ -9,22 +9,26 @@ from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.trajectory import KSTrajectory
 
 
-def _align_rpo_to_window(
+def _align_rpo_to_window(  # noqa: PLR0913
     rpo: RPO,
     event: ShadowingEvent,
     window_start: int,
     window_end: int,
     resolution: int,
+    downsample: int = 1,
 ) -> NDArray[np.float64]:
     r"""Reconstruct the RPO in the lab frame, spatially aligned to the trajectory.
 
-    For each timestep in the plot window, computes the RPO phase and applies the
-    spatial shift that best aligns it with the trajectory. The shift combines two
-    contributions: the RPO's spatial drift (its velocity in grid cells per timestep)
-    and the co-moving frame deviation recorded in ``event.shifts``.
+    For each chaotic-trajectory timestep in the plot window, computes the
+    matching RPO native phase and applies the spatial shift that best aligns
+    it with the trajectory. The shift combines two contributions: the RPO's
+    cumulative spatial drift (one ``spatial_shift`` per full RPO native
+    period traversed) and the co-moving frame deviation recorded in
+    ``event.shifts``.
 
-    The RPO field is doubled along the spatial axis so that wraparound extraction
-    (slicing across the periodic boundary) can be done with simple indexing.
+    The RPO field is doubled along the spatial axis so that wraparound
+    extraction (slicing across the periodic boundary) can be done with simple
+    indexing.
 
     Parameters
     ----------
@@ -38,6 +42,10 @@ def _align_rpo_to_window(
         Last trajectory timestep of the plot window (exclusive).
     resolution : int
         Number of spatial grid points.
+    downsample : int, optional
+        Sampling stride used to build the per-RPO trajectory during
+        detection. Each chaotic-trajectory timestep advances the RPO by
+        ``downsample`` native phases. Default 1.
 
     Returns
     -------
@@ -48,20 +56,28 @@ def _align_rpo_to_window(
     rpo_trajectory = KSTrajectory.from_initial_state(rpo.modes, rpo.dt, rpo.time_steps, resolution)
     rpo_physical = rpo_trajectory.to_physical()
 
-    period = rpo_physical.shape[0]
-    # Double the spatial axis for wraparound extraction
     rpo_doubled = np.tile(rpo_physical, (1, 2))
-
-    # RPO spatial velocity in grid cells per timestep
-    drift_per_step = (rpo.spatial_shift / DOMAIN_SIZE) * resolution / period
+    drift_per_native_step = rpo.spatial_shift * resolution / DOMAIN_SIZE / rpo.time_steps
     mean_shift = int(np.round(np.mean(event.shifts)))
 
+    # Number of native RPO phases since event.start_timestep. event.start_phase
+    # is an index into the per-RPO trajectory used during detection; the
+    # corresponding native phase is event.start_phase * downsample (mod
+    # rpo.time_steps), and each chaotic-trajectory timestep advances the RPO by
+    # downsample more native phases.
     timesteps = np.arange(window_start, window_end)
-    phases = (event.start_phase + timesteps - event.start_timestep) % period
+    unrolled = (event.start_phase + timesteps - event.start_timestep) * downsample
+    native_phases = unrolled % rpo.time_steps
 
-    # Lab-frame shift: undo co-moving transform and apply event deviation.
-    lab_shift = mean_shift - np.round(drift_per_step * (timesteps - phases)).astype(np.int64)
+    # Lab-frame shift to align the RPO at native_phase with the trajectory at
+    # chaotic row i: undo the comoving correction (drift_per_native_step pixels
+    # of drift per native step) accumulated from native phase 0 to chaotic
+    # native time downsample*i, and apply the event's mean comoving deviation.
+    drift_pixels = np.round(
+        drift_per_native_step * (downsample * timesteps - native_phases)
+    ).astype(np.int64)
+    lab_shift = mean_shift - drift_pixels
     extraction_offsets = lab_shift % resolution
 
     spatial_indices = extraction_offsets[:, np.newaxis] + np.arange(resolution)
-    return rpo_doubled[phases[:, np.newaxis], spatial_indices]
+    return rpo_doubled[native_phases[:, np.newaxis], spatial_indices]

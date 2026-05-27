@@ -24,18 +24,12 @@ _EVENT_DTYPE = np.dtype(
 
 @dataclass(frozen=True, slots=True)
 class DetectionMetadata:
-    """Metadata describing a detection run.
-
-    Trajectory data lives in a sibling file (see
-    :meth:`~ks_shadowing.core.trajectory.KSTrajectory.save`) referenced
-    by the ``trajectory_path`` HDF5 attribute, which stores just the
-    filename; this dataclass holds only fields specific to the
-    detection run itself.
+    """Run metadata serialized alongside detection events.
 
     Attributes
     ----------
     detector_type : str
-        Detection method used: ``"SSA"`` or ``"PHA"``.
+        Either ``"ssa"`` or ``"pha"``.
     min_duration : int
         Minimum event duration in timesteps.
     threshold : float
@@ -59,8 +53,12 @@ class DetectionMetadata:
     threshold_quantile : float or None
         Quantile used for automatic threshold selection. ``None`` when
         ``threshold`` was supplied manually.
-    delay : int or None
-        Time-delay embedding window size. ``None`` for SSA detection.
+    delay : int
+        Time-delay embedding window size for PHA. ``1`` (default) means
+        no temporal embedding. Recorded as ``1`` for SSA results.
+    derivatives : int
+        Number of spatial-derivative orders used for PHA. ``1`` (default)
+        means only the field itself. Recorded as ``1`` for SSA results.
     """
 
     detector_type: str
@@ -71,7 +69,8 @@ class DetectionMetadata:
     downsample: int = 1
     native: bool = False
     threshold_quantile: float | None = None
-    delay: int | None = None
+    delay: int = 1
+    derivatives: int = 1
 
 
 def save_results(
@@ -125,11 +124,11 @@ def save_results(
         f.attrs["spatial_resolution"] = metadata.spatial_resolution
         f.attrs["downsample"] = metadata.downsample
         f.attrs["native"] = metadata.native
+        f.attrs["delay"] = metadata.delay
+        f.attrs["derivatives"] = metadata.derivatives
         f.attrs["trajectory_path"] = trajectory_path.name
         if metadata.threshold_quantile is not None:
             f.attrs["threshold_quantile"] = metadata.threshold_quantile
-        if metadata.delay is not None:
-            f.attrs["delay"] = metadata.delay
 
         shifts_list = [event.shifts for event in events]
         shifts_ends = (
@@ -199,7 +198,8 @@ def load_results(
             threshold_quantile=(
                 float(attrs["threshold_quantile"]) if "threshold_quantile" in attrs else None
             ),
-            delay=int(attrs["delay"]) if "delay" in attrs else None,
+            delay=int(attrs["delay"]) if "delay" in attrs else 1,
+            derivatives=int(attrs["derivatives"]) if "derivatives" in attrs else 1,
         )
         trajectory_filename = str(attrs["trajectory_path"])
         event_records = f["events"][:]

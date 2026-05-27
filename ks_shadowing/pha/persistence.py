@@ -7,7 +7,7 @@ from typing import Self
 import numpy as np
 from numpy.typing import NDArray
 
-from ks_shadowing.core import DEFAULT_CHUNK_SIZE
+from ks_shadowing.core import DEFAULT_CHUNK_SIZE, DOMAIN_SIZE
 from ks_shadowing.core.trajectory import KSTrajectory
 
 
@@ -41,7 +41,10 @@ class _KSPersistenceTrajectory:
 
     @classmethod
     def from_trajectory(
-        cls, trajectory: KSTrajectory, chunk_size: int = DEFAULT_CHUNK_SIZE
+        cls,
+        trajectory: KSTrajectory,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        order: int = 0,
     ) -> Self:
         """Compute the persistence diagrams of each point of ``trajectory``.
 
@@ -57,12 +60,27 @@ class _KSPersistenceTrajectory:
             Largest number of physical space timesteps of ``trajectory``
             manifested at once; controls memory usage. Default value is
             :data:`~ks_shadowing.core.DEFAULT_CHUNK_SIZE`.
+        order : int, optional
+            Spatial-derivative order applied in Fourier space before the
+            inverse FFT. Then, computes the zeroth persistence diagram of the
+            resulting derivative field.
         """
+        if order == 0:
+            source = trajectory
+        else:
+            wavenumbers = 2.0 * np.pi * np.arange(trajectory.modes.shape[1]) / DOMAIN_SIZE
+            multiplier = (1j * wavenumbers) ** order
+            source = KSTrajectory(
+                modes=trajectory.modes * multiplier[np.newaxis, :],
+                dt=trajectory.dt,
+                resolution=trajectory.resolution,
+            )
+
         diagrams: list[NDArray[np.float64]] = []
-        for _, physical_chunk in trajectory.chunks_physical(chunk_size):
+        for _, physical_chunk in source.chunks_physical(chunk_size):
             diagrams.extend(_zeroth_persistence_diagram_periodic(field) for field in physical_chunk)
 
-        return cls(diagrams, trajectory.dt)
+        return cls(diagrams, source.dt)
 
     def __len__(self) -> int:
         """Number of persistence diagrams in the trajectory."""

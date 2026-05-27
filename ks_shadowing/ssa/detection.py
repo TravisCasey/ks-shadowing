@@ -20,8 +20,8 @@ parallelizing detection across RPOs.
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from multiprocessing.shared_memory import SharedMemory
-from typing import NamedTuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -423,7 +423,8 @@ def _min_distances_from_pairs(
     return min_distances
 
 
-class _DetectWorkerInputs(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class _DetectWorkerInputs:
     """Inputs to :func:`_detect_single_rpo` for one RPO.
 
     Attributes
@@ -461,7 +462,8 @@ class _DetectWorkerInputs(NamedTuple):
     chunk_size: int
 
 
-class _MinDistanceWorkerInputs(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class _MinDistanceWorkerInputs:
     """Inputs to :func:`_min_distances_single_rpo` for one RPO.
 
     Attributes

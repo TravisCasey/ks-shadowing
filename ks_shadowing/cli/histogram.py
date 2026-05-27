@@ -43,18 +43,22 @@ def build_parser() -> ArgumentParser:
     return parser
 
 
-def _load_event_durations(path: Path) -> np.ndarray:
-    """Load event durations directly from the HDF5 events table.
+def _load_event_durations_and_dt(path: Path) -> tuple[np.ndarray, float]:
+    """Load event durations and the trajectory's per-row dt.
 
     Bypasses :func:`~ks_shadowing.cli.results.load_results` because only the
-    event start/end columns are needed; the full trajectory reconstruction is
-    skipped.
+    event start/end columns and the result file's ``downsample`` attr are
+    needed; the full trajectory reconstruction is skipped. The returned ``dt``
+    is ``INTEGRATION_DT * downsample``, matching the saved trajectory's
+    per-row spacing.
     """
     with h5py.File(path, "r") as f:
         events = f["events"][:]
+        downsample = int(f.attrs["downsample"]) if "downsample" in f.attrs else 1
     starts = events["start_timestep"]
     ends = events["end_timestep"]
-    return (ends - starts).astype(np.int64)
+    durations = (ends - starts).astype(np.int64)
+    return durations, INTEGRATION_DT * downsample
 
 
 def main() -> None:
@@ -63,7 +67,7 @@ def main() -> None:
     arguments = parser.parse_args()
 
     print(f"Loading events from {arguments.input}...")
-    durations = _load_event_durations(arguments.input)
+    durations, dt = _load_event_durations_and_dt(arguments.input)
 
     if len(durations) == 0:
         print("No events found in this file.")
@@ -77,12 +81,10 @@ def main() -> None:
     bins = np.arange(0, bin_max + bin_width, bin_width)
 
     if arguments.time_units:
-        scale = INTEGRATION_DT
         xlabel = "Event Duration (time units)"
-        bin_edges = bins * scale
-        plot_durations = durations * scale
+        bin_edges = bins * dt
+        plot_durations = durations * dt
     else:
-        scale = 1
         xlabel = "Event Duration (timesteps)"
         bin_edges = bins.astype(float)
         plot_durations = durations.astype(float)
