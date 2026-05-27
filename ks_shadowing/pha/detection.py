@@ -12,13 +12,13 @@ The continuous spatial symmetry along the periodic domain is quotiented out by
 the persistence representation, so the detection grid has no shift dimension.
 Optimal shifts are reconstructed post-hoc in :mod:`~ks_shadowing.pha.shifts`.
 
-Two orthogonal embedding stages thicken the comparison. ``derivatives`` enriches
-snapshots spatially: persistence diagrams of the derivatives of order
-``0..derivatives - 1`` are computed and the per-order Wasserstein distances are
-averaged into the ``(timestep, phase)`` score.  ``delay`` controls temporal
-aggregation: ``delay`` consecutive Wasserstein distances along the diagonal of
-the per-RPO matrix are averaged. Both default to ``1`` (no embedding) and
-compose freely;
+Two orthogonal embedding stages thicken the comparison. ``derivatives``
+enriches snapshots spatially: persistence diagrams of the spatial-derivative
+fields of orders ``0..derivatives - 1`` (where order 0 is the field itself)
+are computed and the per-order Wasserstein distances are averaged into the
+``(timestep, phase)`` score. ``delay`` controls temporal aggregation: ``delay``
+consecutive Wasserstein distances along the diagonal of the per-RPO matrix are
+averaged. Both default to ``1`` (no embedding) and compose freely.
 
 Wasserstein distances are computed via the
 `Hera <https://github.com/anigmetov/hera>`_ C++ library through custom batched
@@ -73,7 +73,7 @@ def detect(  # noqa: PLR0913
     Wasserstein distance matrix, applies a time-delay embedding of window
     ``delay``, and extracts shadowing events. Spatial shifts for closest
     physical-space shadowing are reconstructed post-hoc with
-    :func:`~ks_shadowing.pha.shifts._compute_event_shifts`.
+    ``_compute_event_shifts``.
 
     Parameters
     ----------
@@ -122,9 +122,17 @@ def detect(  # noqa: PLR0913
     -------
     list[ShadowingEvent]
         Events sorted by ``(start_timestep, rpo_index)``.
+
+    Raises
+    ------
+    ValueError
+        If ``delay`` or ``derivatives`` is less than 1.
     """
+    if delay < 1:
+        raise ValueError(f"delay must be at least 1, got {delay}")
     if derivatives < 1:
         raise ValueError(f"derivatives must be at least 1, got {derivatives}")
+
     trajectory_diagrams_per_order = [
         _KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
         for order in range(derivatives)
@@ -207,9 +215,17 @@ def compute_min_distances(  # noqa: PLR0913
     -------
     NDArray[np.float64], shape (num_timesteps,)
         Minimum Wasserstein distance at each trajectory timestep.
+
+    Raises
+    ------
+    ValueError
+        If ``delay`` or ``derivatives`` is less than 1.
     """
+    if delay < 1:
+        raise ValueError(f"delay must be at least 1, got {delay}")
     if derivatives < 1:
         raise ValueError(f"derivatives must be at least 1, got {derivatives}")
+
     trajectory_diagrams_per_order = [
         _KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
         for order in range(derivatives)
@@ -294,9 +310,17 @@ def auto_detect(  # noqa: PLR0913
         Detected events sorted by ``(start_timestep, rpo_index)``.
     threshold : float
         The automatically selected threshold.
+
+    Raises
+    ------
+    ValueError
+        If ``delay`` or ``derivatives`` is less than 1.
     """
+    if delay < 1:
+        raise ValueError(f"delay must be at least 1, got {delay}")
     if derivatives < 1:
         raise ValueError(f"derivatives must be at least 1, got {derivatives}")
+
     trajectory_diagrams_per_order = [
         _KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
         for order in range(derivatives)
@@ -420,7 +444,7 @@ def _stream_distance_matrices(
         Trajectory persistence diagrams, one sequence per derivative order.
     rpo_diagram_pairs : list[tuple[RPO, list[_KSPersistenceTrajectory]]]
         ``(rpo, per_order_phase_diagrams)`` pairs from
-        :func:`_compute_rpo_diagram_pairs`.
+        ``_compute_rpo_diagram_pairs``.
     delay : int
         Time-delay embedding window size.
     show_progress : bool
@@ -537,7 +561,7 @@ def _stream_distance_matrices(
 
 @dataclass(frozen=True, slots=True)
 class _WassersteinColumnInputs:
-    """Inputs to :func:`_compute_wasserstein_column` for one RPO phase.
+    """Inputs to ``_compute_wasserstein_column`` for one RPO phase.
 
     Attributes
     ----------
@@ -572,10 +596,9 @@ def _compute_wasserstein_column(
     Opens the per-order :class:`~multiprocessing.shared_memory.SharedMemory`
     blocks holding flattened trajectory persistence diagrams, computes one
     Wasserstein column per order via
-    :func:`~ks_shadowing.pha.wasserstein._wasserstein_column`, and returns
-    the mean across orders. Performing the reduction on the worker keeps
-    cross-process bandwidth linear in ``num_timesteps``, not
-    ``num_timesteps * len(diagrams_shm_names)``.
+    ``_wasserstein_column``, and returns the mean across orders. Performing the
+    reduction on the worker keeps cross-process bandwidth linear in
+    ``num_timesteps``, not ``num_timesteps * len(diagrams_shm_names)``.
     """
     derivatives = len(inputs.diagrams_shm_names)
     column = np.zeros(inputs.num_timesteps, dtype=np.float64)
@@ -665,9 +688,8 @@ def _attach_shifts(
     zero-filled ``shifts`` arrays. For each RPO shadowed by at least one event,
     builds an RPO trajectory at the requested sampling and transforms it to
     its co-moving frame, then passes this co-moving trajectory to each event's
-    shift reconstruction in
-    :func:`~ks_shadowing.pha.shifts._compute_event_shifts`. Sorts the result
-    by ``(start_timestep, rpo_index)``.
+    shift reconstruction in ``_compute_event_shifts``. Sorts the result by
+    ``(start_timestep, rpo_index)``.
     """
     rpo_by_index = {rpo.index: rpo for rpo in rpos}
 

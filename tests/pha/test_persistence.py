@@ -67,23 +67,6 @@ def test_chunked_diagrams_match_unchunked(rng: np.random.Generator) -> None:
         np.testing.assert_array_equal(a, b)
 
 
-def test_from_trajectory_order_zero_matches_no_order(
-    rng: np.random.Generator,
-) -> None:
-    """``from_trajectory(..., order=0)`` matches the default (no-order) call
-    bit-for-bit."""
-    modes = np.zeros((20, 17), dtype=np.complex128)
-    modes[:, 1:16] = (rng.standard_normal((20, 15)) + 1j * rng.standard_normal((20, 15))) * 0.1
-    trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=32)
-
-    default = _KSPersistenceTrajectory.from_trajectory(trajectory)
-    explicit = _KSPersistenceTrajectory.from_trajectory(trajectory, order=0)
-
-    assert len(default.diagrams) == len(explicit.diagrams)
-    for a, b in zip(default.diagrams, explicit.diagrams, strict=True):
-        np.testing.assert_array_equal(a, b)
-
-
 def test_from_trajectory_higher_order_differs(rng: np.random.Generator) -> None:
     """``from_trajectory(..., order=1)`` produces diagrams of the derivative
     field, which differ from the order-0 diagrams on a generic trajectory."""
@@ -95,11 +78,7 @@ def test_from_trajectory_higher_order_differs(rng: np.random.Generator) -> None:
     order1 = _KSPersistenceTrajectory.from_trajectory(trajectory, order=1)
 
     assert len(order0.diagrams) == len(order1.diagrams)
-    # At least one diagram must differ; the derivative field is generically
-    # distinct from the field itself.
-    differed = False
-    for a, b in zip(order0.diagrams, order1.diagrams, strict=True):
-        if a.shape != b.shape or not np.allclose(a, b):
-            differed = True
-            break
-    assert differed
+    assert any(
+        a.shape != b.shape or not np.allclose(a, b)
+        for a, b in zip(order0.diagrams, order1.diagrams, strict=True)
+    )

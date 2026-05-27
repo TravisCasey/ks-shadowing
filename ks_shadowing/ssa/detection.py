@@ -358,7 +358,7 @@ def _min_distances_from_pairs(
 ) -> NDArray[np.float64]:
     """Compute per-timestep minimum :math:`L_2` distances across all RPOs.
 
-    Mirrors :func:`_detect_from_pairs`'s parallel/sequential dispatch: a
+    Mirrors ``_detect_from_pairs``'s parallel/sequential dispatch: a
     forkserver-backed pool when ``n_workers > 1``, otherwise an in-process
     loop. Each worker (or sequential iteration) returns a per-timestep
     minimum distance array for its RPO, which is reduced elementwise into
@@ -425,7 +425,7 @@ def _min_distances_from_pairs(
 
 @dataclass(frozen=True, slots=True)
 class _DetectWorkerInputs:
-    """Inputs to :func:`_detect_single_rpo` for one RPO.
+    """Inputs to ``_detect_single_rpo`` for one RPO.
 
     Attributes
     ----------
@@ -464,7 +464,7 @@ class _DetectWorkerInputs:
 
 @dataclass(frozen=True, slots=True)
 class _MinDistanceWorkerInputs:
-    """Inputs to :func:`_min_distances_single_rpo` for one RPO.
+    """Inputs to ``_min_distances_single_rpo`` for one RPO.
 
     Attributes
     ----------
@@ -526,7 +526,7 @@ def _detect_single_rpo(inputs: _DetectWorkerInputs) -> tuple[int, list[Shadowing
 
     Parameters
     ----------
-    inputs : :class:`_DetectWorkerInputs`
+    inputs : ``_DetectWorkerInputs``
         Shared-memory handle, trajectory metadata, RPO, and detection
         parameters.
 
@@ -567,7 +567,7 @@ def _min_distances_single_rpo(
 
     Parameters
     ----------
-    inputs : :class:`_MinDistanceWorkerInputs`
+    inputs : ``_MinDistanceWorkerInputs``
         Shared-memory handle, trajectory metadata, and RPO.
 
     Returns

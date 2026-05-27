@@ -29,7 +29,7 @@ class DetectionMetadata:
     Attributes
     ----------
     detector_type : str
-        Either ``"ssa"`` or ``"pha"``.
+        Either ``"SSA"`` or ``"PHA"``.
     min_duration : int
         Minimum event duration in timesteps.
     threshold : float

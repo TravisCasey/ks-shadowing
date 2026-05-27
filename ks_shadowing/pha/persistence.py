@@ -46,7 +46,7 @@ class _KSPersistenceTrajectory:
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         order: int = 0,
     ) -> Self:
-        """Compute the persistence diagrams of each point of ``trajectory``.
+        r"""Compute the persistence diagrams of each point of ``trajectory``.
 
         This effectively passes ``trajectory`` to the space of persistence
         diagrams for the Persistent Homology Approach (PHA) for shadowing
@@ -62,8 +62,10 @@ class _KSPersistenceTrajectory:
             :data:`~ks_shadowing.core.DEFAULT_CHUNK_SIZE`.
         order : int, optional
             Spatial-derivative order applied in Fourier space before the
-            inverse FFT. Then, computes the zeroth persistence diagram of the
-            resulting derivative field.
+            inverse FFT. The zeroth persistence diagram is then computed on
+            the resulting field. ``0`` (default) leaves the field unchanged;
+            higher orders compute :math:`\partial^{n} u / \partial x^{n}`
+            first. Must be non-negative.
         """
         if order == 0:
             source = trajectory
@@ -71,7 +73,7 @@ class _KSPersistenceTrajectory:
             wavenumbers = 2.0 * np.pi * np.arange(trajectory.modes.shape[1]) / DOMAIN_SIZE
             multiplier = (1j * wavenumbers) ** order
             source = KSTrajectory(
-                modes=trajectory.modes * multiplier[np.newaxis, :],
+                modes=trajectory.modes * multiplier,
                 dt=trajectory.dt,
                 resolution=trajectory.resolution,
             )

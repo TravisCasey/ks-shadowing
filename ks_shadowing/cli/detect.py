@@ -57,7 +57,7 @@ def build_parser() -> ArgumentParser:
         help=(
             "PHA time-delay embedding window. 1 (default) means no temporal "
             "embedding; the per-RPO Wasserstein matrix is used directly. "
-            "Higher values average over `delay` consecutive timesteps. "
+            "Higher values average over delay consecutive timesteps. "
             "Ignored for SSA."
         ),
     )
