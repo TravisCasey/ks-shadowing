@@ -6,7 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ks_shadowing.cli.results import load_results
+from ks_shadowing.core.results import load_results
 from ks_shadowing.core.matching import MatchedEvent, match_events
 from ks_shadowing.core.trajectory import KSTrajectory
 

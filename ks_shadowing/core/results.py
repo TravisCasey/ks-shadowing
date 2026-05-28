@@ -37,28 +37,28 @@ class DetectionMetadata:
     rpo_file : str
         Path to the RPO data file used for detection.
     spatial_resolution : int
-        Number of physical-space grid points the trajectory was loaded
-        at for detection. Required to interpret ``ShadowingEvent.shifts``,
-        which are recorded in grid cells.
+        Number of physical-space grid points the trajectory was loaded at for
+        detection. Required to interpret ``ShadowingEvent.shifts``, which are
+        recorded in grid cells.
     downsample : int
-        Sampling stride used during trajectory integration. The
-        trajectory was integrated at the native ``INTEGRATION_DT`` and
-        every ``downsample``-th row was retained, yielding an effective
-        timestep of ``downsample * INTEGRATION_DT``. Per-RPO trajectories
-        used the same stride. Defaults to ``1``.
+        Sampling stride used during trajectory integration. The trajectory was
+        integrated at the native ``INTEGRATION_DT`` and every ``downsample``-th
+        row was retained, yielding an effective timestep of
+        ``downsample * INTEGRATION_DT``. Per-RPO trajectories used the same
+        stride. Defaults to ``1``.
     native : bool
-        When ``True``, RPO trajectories were built by reordering all
-        native rows with the stride-downsample permutation rather than
-        slicing every Nth row. Defaults to ``False``.
+        When ``True``, RPO trajectories were built by reordering all native rows
+        with the stride-downsample permutation rather than slicing every Nth
+        row. Defaults to ``False``.
     threshold_quantile : float or None
         Quantile used for automatic threshold selection. ``None`` when
         ``threshold`` was supplied manually.
     delay : int
-        Time-delay embedding window size for PHA. ``1`` (default) means
-        no temporal embedding. Recorded as ``1`` for SSA results.
+        Time-delay embedding window size for PHA. ``1`` (default) means no
+        temporal embedding. Recorded as ``1`` for SSA results.
     derivatives : int
-        Number of spatial-derivative orders used for PHA. ``1`` (default)
-        means only the field itself. Recorded as ``1`` for SSA results.
+        Number of spatial-derivative orders used for PHA. ``1`` (default) means
+        only the field itself. Recorded as ``1`` for SSA results.
     """
 
     detector_type: str
@@ -83,25 +83,24 @@ def save_results(
     """Save detection metadata and events to an ``.h5`` file.
 
     The trajectory itself is stored separately via
-    :meth:`~ks_shadowing.core.trajectory.KSTrajectory.save` and must
-    be a sibling of ``path`` (same parent directory). Only its
-    filename is recorded in ``attrs["trajectory_path"]``; on load the
-    trajectory is read from ``path.parent / attrs["trajectory_path"]``.
+    :meth:`~ks_shadowing.core.trajectory.KSTrajectory.save` and must be a
+    sibling of ``path`` (same parent directory). Only its filename is recorded
+    in ``attrs["trajectory_path"]``; on load the trajectory is read from
+    ``path.parent / attrs["trajectory_path"]``.
 
     Parameters
     ----------
     path : Path
-        Destination ``.h5`` path. Parent directories are created if
-        missing.
+        Destination ``.h5`` path. Parent directories are created if missing.
     metadata : DetectionMetadata
         Run metadata serialized to file-level attributes.
     events : list[ShadowingEvent]
-        Detected events. Variable-length ``shifts`` are concatenated
-        into a single dataset and indexed by per-event ``shifts_end``
-        offsets in the events table.
+        Detected events. Variable-length ``shifts`` are concatenated into a
+        single dataset and indexed by per-event ``shifts_end`` offsets in the
+        events table.
     trajectory_path : Path
-        Path to the trajectory file. Must live in the same directory
-        as ``path``.
+        Path to the trajectory file. Must live in the same directory as
+        ``path``.
 
     Raises
     ------
@@ -163,16 +162,15 @@ def load_results(
 ) -> tuple[DetectionMetadata, KSTrajectory, list[ShadowingEvent]]:
     """Load metadata, trajectory, and events for a result file.
 
-    The trajectory is loaded from
-    ``path.parent / attrs["trajectory_path"]`` (the attribute stores
-    just the filename; see :func:`save_results`) via
+    The trajectory is loaded from ``path.parent / attrs["trajectory_path"]``
+    (the attribute stores just the filename; see :func:`save_results`) via
     :meth:`~ks_shadowing.core.trajectory.KSTrajectory.load`, using
     ``metadata.spatial_resolution`` for the grid.
 
     Parameters
     ----------
     path : Path
-        ``.h5`` file produced by :func:`save_results`.
+        HDF5 file produced by :func:`save_results`.
 
     Returns
     -------

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from ks_shadowing.cli.plotting import _align_rpo_to_window
-from ks_shadowing.cli.results import load_results
+from ks_shadowing.core.results import load_results
 from ks_shadowing.core import DOMAIN_SIZE
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.rpo import load_rpos

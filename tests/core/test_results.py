@@ -1,11 +1,11 @@
-"""Round-trip tests for the CLI results module."""
+"""Round-trip tests for the results module."""
 
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from ks_shadowing.cli.results import DetectionMetadata, load_results, save_results
+from ks_shadowing.core.results import DetectionMetadata, load_results, save_results
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.trajectory import KSTrajectory
 

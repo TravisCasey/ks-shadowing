@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
 
-from ks_shadowing.cli.results import load_results
+from ks_shadowing.core.results import load_results
 from ks_shadowing.core.event import ShadowingEvent
 
 DEFAULT_OUTPUT = Path("plots/coverage_vs_delay.png")

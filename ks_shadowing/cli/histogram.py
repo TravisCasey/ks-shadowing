@@ -46,7 +46,7 @@ def build_parser() -> ArgumentParser:
 def _load_event_durations_and_dt(path: Path) -> tuple[np.ndarray, float]:
     """Load event durations and the trajectory's per-row dt.
 
-    Bypasses :func:`~ks_shadowing.cli.results.load_results` because only the
+    Bypasses :func:`~ks_shadowing.core.results.load_results` because only the
     event start/end columns and the result file's ``downsample`` attr are
     needed; the full trajectory reconstruction is skipped. The returned ``dt``
     is ``INTEGRATION_DT * downsample``, matching the saved trajectory's

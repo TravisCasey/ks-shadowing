@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from ks_shadowing import load_rpos, pha, ssa
-from ks_shadowing.cli.results import DetectionMetadata, save_results
+from ks_shadowing.core.results import DetectionMetadata, save_results
 from ks_shadowing.core import DEFAULT_CHUNK_SIZE, INTEGRATION_DT
 from ks_shadowing.core.trajectory import KSTrajectory
 
