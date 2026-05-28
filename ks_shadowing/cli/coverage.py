@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
 
-from ks_shadowing.core.results import load_results
 from ks_shadowing.core.event import ShadowingEvent
+from ks_shadowing.core.results import load_results
 
 DEFAULT_OUTPUT = Path("plots/coverage_vs_delay.png")
 DEFAULT_DPI = 150
