@@ -1,0 +1,97 @@
+"""
+Shadowing event: trajectory vs. RPO
+====================================
+
+A two-panel comparison of one shadowing event: the chaotic trajectory window on
+top, the RPO field spatially aligned to it on the bottom. The panels share a
+color scale and matching time axes (the RPO panel is labeled relative to the
+event start). Black dashed lines mark the event boundaries. When the trajectory
+shadows the RPO, the two panels show the same field evolving in time.
+"""
+
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+from ks_shadowing import (
+    DOMAIN_SIZE,
+    align_rpo_to_window,
+    load_results,
+    load_rpos,
+    select_event_by_rank,
+)
+
+try:
+    REPO_ROOT = Path(__file__).resolve().parent.parent
+except NameError:
+    REPO_ROOT = Path.cwd().parent
+RESULT_PATH = REPO_ROOT / "examples" / "data" / "ssa.h5"
+RPO_PATH = REPO_ROOT / "data" / "rpos_selected.npz"
+CONTEXT_FRACTION = 1.8
+
+# %%
+# Load the fixture and pick the best event.
+metadata, trajectory, events = load_results(RESULT_PATH)
+event = select_event_by_rank(events)
+rpo = load_rpos(RPO_PATH)[event.rpo_index]
+
+duration = event.end_timestep - event.start_timestep
+context = int(duration * CONTEXT_FRACTION)
+plot_start = max(0, event.start_timestep - context)
+plot_end = min(len(trajectory), event.end_timestep + context)
+
+# %%
+# Build the trajectory and aligned-RPO panels.
+trajectory_slice = trajectory[plot_start:plot_end]
+trajectory_physical = trajectory_slice.to_physical()
+aligned_rpo = align_rpo_to_window(rpo, event, plot_start, plot_end, trajectory)
+
+dt = trajectory.dt
+times = np.arange(plot_start, plot_end) * dt
+relative_times = (np.arange(plot_start, plot_end) - event.start_timestep) * dt
+space = np.linspace(0, DOMAIN_SIZE, trajectory.resolution, endpoint=False)
+vmin = float(min(trajectory_physical.min(), aligned_rpo.min()))
+vmax = float(max(trajectory_physical.max(), aligned_rpo.max()))
+
+# %%
+# Render.
+figure, axes = plt.subplots(2, 1, figsize=(12, 7))
+
+top = axes[0].pcolormesh(
+    times,
+    space,
+    trajectory_physical.T,
+    shading="auto",
+    cmap="RdBu_r",
+    vmin=vmin,
+    vmax=vmax,
+)
+axes[0].set_xlabel("Time")
+axes[0].set_title("Chaotic trajectory")
+axes[0].axvline(event.start_timestep * dt, color="black", linestyle="--", linewidth=1.5)
+axes[0].axvline(event.end_timestep * dt, color="black", linestyle="--", linewidth=1.5)
+figure.colorbar(top, ax=axes[0], label="u(x, t)")
+
+bottom = axes[1].pcolormesh(
+    relative_times,
+    space,
+    aligned_rpo.T,
+    shading="auto",
+    cmap="RdBu_r",
+    vmin=vmin,
+    vmax=vmax,
+)
+axes[1].set_xlabel("Time relative to event start")
+axes[1].set_title(f"RPO {event.rpo_index} (aligned)")
+axes[1].axvline(0, color="black", linestyle="--", linewidth=1.5)
+axes[1].axvline(duration * dt, color="black", linestyle="--", linewidth=1.5)
+figure.colorbar(bottom, ax=axes[1], label="u(x, t)")
+
+figure.suptitle(
+    f"Shadowing event: RPO {event.rpo_index}, "
+    f"duration={duration} timesteps ({duration * dt:.1f} time units), "
+    f"mean distance={event.mean_distance:.3f}",
+)
+plt.tight_layout()
+plt.show()
