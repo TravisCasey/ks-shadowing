@@ -172,7 +172,7 @@ def align_rpo_to_window(
         np.clip(window_rows - event.start_timestep, 0, len(event.shifts) - 1)
     ]
 
-    extraction = window_shifts - drift_offset - wraps * spatial_shift_pixels
+    extraction = window_shifts - drift_offset + wraps * spatial_shift_pixels
     extraction_offsets = np.round(extraction).astype(np.int64) % resolution
 
     window_len = window_end - window_start
