@@ -25,6 +25,8 @@ ks_shadowing/pha/*.so
 
 # Sphinx
 docs/_build/
+docs/auto_examples/
+docs/sg_execution_times.rst
 
 # Output directories
 results/

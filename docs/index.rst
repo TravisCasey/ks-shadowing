@@ -1,6 +1,12 @@
 ks_shadowing
 ============
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Examples gallery
+
+   auto_examples/index
+
 core.integrator
 ---------------
 
@@ -29,6 +35,18 @@ core.matching
 -------------
 
 .. automodule:: ks_shadowing.core.matching
+   :members:
+
+core.results
+------------
+
+.. automodule:: ks_shadowing.core.results
+   :members:
+
+plotting
+--------
+
+.. automodule:: ks_shadowing.plotting
    :members:
 
 ssa.detection
