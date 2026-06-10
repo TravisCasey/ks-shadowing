@@ -20,8 +20,8 @@ try:
     REPO_ROOT = Path(__file__).resolve().parent.parent
 except NameError:
     REPO_ROOT = Path.cwd().parent
-SSA_PATH = REPO_ROOT / "examples" / "data" / "ssa.h5"
-PHA_PATH = REPO_ROOT / "examples" / "data" / "pha_d13_o1.h5"
+SSA_PATH = REPO_ROOT / "examples" / "data" / "ssa_r2048.h5"
+PHA_PATH = REPO_ROOT / "examples" / "data" / "pha_r2048_d13_o1.h5"
 BIN_WIDTH_TIMESTEPS = 2
 
 # %%

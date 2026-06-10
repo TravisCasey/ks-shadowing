@@ -27,8 +27,8 @@ try:
 except NameError:
     REPO_ROOT = Path.cwd().parent
 DATA_DIR = REPO_ROOT / "examples" / "data"
-SSA_PATH = DATA_DIR / "ssa.h5"
-PHA_PATTERN = re.compile(r"^pha_d(\d+)_o(\d+)\.h5$")
+SSA_PATH = DATA_DIR / "ssa_r2048.h5"
+PHA_PATTERN = re.compile(r"^pha_r2048_d(\d+)_o(\d+)\.h5$")
 STYLES = {
     1: ("tab:blue", "o"),
     2: ("tab:orange", "s"),
@@ -43,7 +43,7 @@ ssa_mask = events_to_union_mask(ssa_events, ssa_trajectory.num_timesteps)
 # %%
 # For every PHA fixture, compute F_agree / F_ssa_only / F_pha_only and group by derivatives.
 by_derivatives: dict[int, list[tuple[int, float, float, float]]] = defaultdict(list)
-for pha_path in sorted(DATA_DIR.glob("pha_d*_o*.h5")):
+for pha_path in sorted(DATA_DIR.glob("pha_r2048_d*_o*.h5")):
     match = PHA_PATTERN.match(pha_path.name)
     if match is None:
         continue

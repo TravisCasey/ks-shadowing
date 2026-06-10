@@ -40,6 +40,9 @@ class DetectionMetadata:
         Number of physical-space grid points the trajectory was loaded at for
         detection. Required to interpret ``ShadowingEvent.shifts``, which are
         recorded in grid cells.
+    elapsed_seconds : float
+        Wall-clock seconds spent inside the detect/auto_detect call that
+        produced this result.
     downsample : int
         Sampling stride used during trajectory integration. The trajectory was
         integrated at the native ``INTEGRATION_DT`` and every ``downsample``-th
@@ -66,6 +69,7 @@ class DetectionMetadata:
     threshold: float
     rpo_file: str
     spatial_resolution: int
+    elapsed_seconds: float
     downsample: int = 1
     native: bool = False
     threshold_quantile: float | None = None
@@ -121,6 +125,7 @@ def save_results(
         f.attrs["threshold"] = metadata.threshold
         f.attrs["rpo_file"] = metadata.rpo_file
         f.attrs["spatial_resolution"] = metadata.spatial_resolution
+        f.attrs["elapsed_seconds"] = metadata.elapsed_seconds
         f.attrs["downsample"] = metadata.downsample
         f.attrs["native"] = metadata.native
         f.attrs["delay"] = metadata.delay
@@ -191,6 +196,7 @@ def load_results(
             threshold=float(attrs["threshold"]),
             rpo_file=str(attrs["rpo_file"]),
             spatial_resolution=int(attrs["spatial_resolution"]),
+            elapsed_seconds=float(attrs["elapsed_seconds"]),
             downsample=int(attrs["downsample"]) if "downsample" in attrs else 1,
             native=bool(attrs["native"]) if "native" in attrs else False,
             threshold_quantile=(

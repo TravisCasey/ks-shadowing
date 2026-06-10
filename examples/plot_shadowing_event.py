@@ -26,7 +26,7 @@ try:
     REPO_ROOT = Path(__file__).resolve().parent.parent
 except NameError:
     REPO_ROOT = Path.cwd().parent
-RESULT_PATH = REPO_ROOT / "examples" / "data" / "ssa.h5"
+RESULT_PATH = REPO_ROOT / "examples" / "data" / "ssa_r2048.h5"
 RPO_PATH = REPO_ROOT / "data" / "rpos_selected.npz"
 CONTEXT_FRACTION = 1.8
 

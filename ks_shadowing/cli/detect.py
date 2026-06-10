@@ -212,6 +212,7 @@ def main() -> None:
         threshold=threshold,
         rpo_file=str(arguments.rpo_file),
         spatial_resolution=arguments.resolution,
+        elapsed_seconds=elapsed_seconds,
         downsample=arguments.downsample,
         native=arguments.native_rpos,
         threshold_quantile=threshold_quantile,
