@@ -49,14 +49,9 @@ uv run ks-detect --method pha --trajectory-steps 20000 --resolution 32 --delay 4
 
 # Manual threshold instead of quantile-based auto-detection
 uv run ks-detect --method ssa --trajectory-steps 50000 --resolution 64 --threshold 1.0
-
-# Plot a saved result
-uv run ks-visualize --input results/shadowing_results_ssa.h5
 ```
 
-Other CLIs: `ks-match`, `ks-histogram`, `ks-coverage`. The plotting commands are
-slated to migrate to a Sphinx-Gallery `examples/` tree; only `ks-detect` will
-remain a CLI long-term.
+See the sphinx-gallery examples directory for plotting and analysis of detected shadowing.
 
 ## Development
 
