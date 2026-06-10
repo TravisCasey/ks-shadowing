@@ -1,5 +1,6 @@
 """Serialization helpers for CLI detection result files."""
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -78,11 +79,11 @@ class DetectionMetadata:
 
 
 def save_results(
-    path: Path,
+    path: str | os.PathLike[str],
     metadata: DetectionMetadata,
     events: list[ShadowingEvent],
     *,
-    trajectory_path: Path,
+    trajectory_path: str | os.PathLike[str],
 ) -> None:
     """Save detection metadata and events to an ``.h5`` file.
 
@@ -94,7 +95,7 @@ def save_results(
 
     Parameters
     ----------
-    path : Path
+    path : str or os.PathLike
         Destination ``.h5`` path. Parent directories are created if missing.
     metadata : DetectionMetadata
         Run metadata serialized to file-level attributes.
@@ -102,7 +103,7 @@ def save_results(
         Detected events. Variable-length ``shifts`` are concatenated into a
         single dataset and indexed by per-event ``shifts_end`` offsets in the
         events table.
-    trajectory_path : Path
+    trajectory_path : str or os.PathLike
         Path to the trajectory file. Must live in the same directory as
         ``path``.
 
@@ -111,6 +112,8 @@ def save_results(
     ValueError
         If ``trajectory_path`` is not a sibling of ``path``.
     """
+    path = Path(path)
+    trajectory_path = Path(trajectory_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if trajectory_path.parent.resolve() != path.parent.resolve():
@@ -163,7 +166,7 @@ def save_results(
 
 
 def load_results(
-    path: Path,
+    path: str | os.PathLike[str],
 ) -> tuple[DetectionMetadata, KSTrajectory, list[ShadowingEvent]]:
     """Load metadata, trajectory, and events for a result file.
 
@@ -174,7 +177,7 @@ def load_results(
 
     Parameters
     ----------
-    path : Path
+    path : str or os.PathLike
         HDF5 file produced by :func:`save_results`.
 
     Returns
@@ -188,6 +191,7 @@ def load_results(
         Detected events with their ``shifts`` arrays sliced from the
         concatenated dataset.
     """
+    path = Path(path)
     with h5py.File(path, "r") as f:
         attrs = f.attrs
         metadata = DetectionMetadata(

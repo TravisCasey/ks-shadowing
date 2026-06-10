@@ -12,8 +12,8 @@ is periodic under a certain spatial shift. RPO collections are stored in
 Use :func:`load_rpos` to load every RPO from a file in a single call.
 """
 
+import os
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
@@ -76,12 +76,12 @@ class RPO:
         return self.spatial_shift / self.period
 
 
-def load_rpos(path: Path) -> list[RPO]:
+def load_rpos(path: str | os.PathLike[str]) -> list[RPO]:
     """Load all RPOs from a .npz file.
 
     Parameters
     ----------
-    path : Path
+    path : str or os.PathLike
         Path to the .npz file containing RPO data.
 
     Returns

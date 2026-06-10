@@ -9,6 +9,7 @@ using 17-mode FFT cross-correlation.
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -175,7 +176,7 @@ class KSTrajectory:
         modes = integrated[indices] * shift_phase
         return cls(modes=modes, dt=rpo.dt * downsample, resolution=resolution)
 
-    def save(self, path: Path) -> None:
+    def save(self, path: str | os.PathLike[str]) -> None:
         """Persist this trajectory's modes and ``dt`` to an HDF5 file.
 
         Resolution is not stored: it is an inverse-FFT grid parameter
@@ -183,22 +184,23 @@ class KSTrajectory:
 
         Parameters
         ----------
-        path : Path
+        path : str or os.PathLike
             Destination ``.h5`` path. Parent directories are created if
             missing.
         """
+        path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with h5py.File(path, "w") as f:
             f.create_dataset("modes", data=self.modes)
             f.attrs["dt"] = self.dt
 
     @classmethod
-    def load(cls, path: Path, resolution: int) -> Self:
+    def load(cls, path: str | os.PathLike[str], resolution: int) -> Self:
         """Load a trajectory from a file written by :meth:`save`.
 
         Parameters
         ----------
-        path : Path
+        path : str or os.PathLike
             Source ``.h5`` file.
         resolution : int
             Number of physical-space grid points to associate with the
