@@ -30,9 +30,9 @@ DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
 PHA_PATTERN = re.compile(r"^pha_r2048_d(\d+)_o(\d+)\.h5$")
 STYLES = {
-    1: ("tab:blue", "o"),
-    2: ("tab:orange", "s"),
-    3: ("tab:green", "^"),
+    1: ("blue", "o"),
+    2: ("orange", "s"),
+    3: ("green", "^"),
 }
 
 # %%
