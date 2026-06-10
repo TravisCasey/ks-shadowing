@@ -9,13 +9,10 @@ resolution; PHA computes Wasserstein distances between persistence diagrams,
 whose cost is dominated by trajectory length rather than grid size, so its
 curves stay nearly flat and stack by ``derivatives``.
 
-Every fixture outside the prime resolution 2048 uses PHA ``delay = 8``. At
-2048 the full delay sweep (1..17) is available and is overlaid as a vertical
-cluster; the PHA curve passes through the per-resolution mean. The cluster's
-small vertical extent shows that ``delay`` has little effect on runtime. A
-linear time axis shows SSA's growth with
-resolution directly, at the cost of compressing the much faster PHA curves
-toward the bottom.
+Every fixture outside resolution 2048 uses PHA ``delay = 8``. At 2048 a delay
+sweep is available and is overlaid as a vertical cluster; the PHA curve passes
+through the per-resolution mean. The cluster's small vertical extent shows that
+``delay`` has little effect on runtime.
 """
 
 import re
@@ -34,11 +31,12 @@ except NameError:
 DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATTERN = re.compile(r"^ssa_r(\d+)\.h5$")
 PHA_PATTERN = re.compile(r"^pha_r(\d+)_d(\d+)_o(\d+)\.h5$")
-# derivatives -> (color, marker), matching plot_coverage_vs_delay.py.
+
+# derivatives -> (color, marker)
 PHA_STYLES = {
-    1: ("tab:blue", "o"),
-    2: ("tab:orange", "s"),
-    3: ("tab:green", "^"),
+    1: ("blue", "o"),
+    2: ("orange", "s"),
+    3: ("green", "^"),
 }
 SSA_COLOR = "black"
 SECONDS_PER_MINUTE = 60.0
@@ -55,8 +53,7 @@ for path in DATA_DIR.glob("ssa_r*.h5"):
 
 # %%
 # PHA: runtimes grouped by derivatives, then resolution, then delay. Only the
-# 2048 resolution carries more than one delay; the dicts are therefore ragged,
-# which rules out a single dense array.
+# 2048 resolution carries more than one delay.
 pha_runtimes: dict[int, dict[int, dict[int, float]]] = defaultdict(lambda: defaultdict(dict))
 for path in DATA_DIR.glob("pha_r*_d*_o*.h5"):
     match = PHA_PATTERN.match(path.name)
@@ -83,7 +80,9 @@ for derivatives in sorted(pha_runtimes):
         np.array([np.mean(list(by_resolution[r].values())) for r in resolutions])
         / SECONDS_PER_MINUTE
     )
-    ax.plot(resolutions, means, color=color, marker=marker, label=f"PHA derivatives={derivatives}")
+    ax.plot(
+        resolutions, means, color=color, marker=marker, label=f"PHA, {derivatives - 1} derivatives"
+    )
     # At resolutions with a delay sweep, scatter each delay to show the spread.
     for r in resolutions:
         delays = by_resolution[r]
@@ -96,7 +95,7 @@ cluster_top = max(pha_runtimes[3][2048].values()) / SECONDS_PER_MINUTE
 ax.annotate(
     "resolution 2048: delays 1-17",
     xy=(2048, cluster_top),
-    xytext=(1180, cluster_top * 1.45),
+    xytext=(1180, cluster_top * 1.25),
     fontsize="small",
     ha="center",
     arrowprops={"arrowstyle": "->", "color": "0.4"},

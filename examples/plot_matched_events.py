@@ -2,13 +2,12 @@
 Matched events: SSA vs. PHA
 ============================
 
-Each detection method produces a list of shadowing events keyed by RPO
-index, start timestep, and end timestep. Pairing SSA and PHA events with
-the same RPO and overlapping windows yields a scatter of (SSA length,
-PHA length) colored by the intersection-over-union of their windows.
-Points near the diagonal mark events the two methods agree on in
-duration; high IoU (yellow) means the windows themselves overlap
-heavily, low IoU (purple) means they barely intersect.
+Each detection method produces a list of shadowing events keyed by RPO index,
+start timestep, and end timestep. Pairing SSA and PHA events with the same RPO
+and overlapping windows yields a scatter of (SSA length, PHA length) colored by
+the intersection-over-union fraction of their windows. Points near the diagonal
+mark events the two methods agree on in duration; high IoU (yellow) means the
+windows themselves overlap heavily, low IoU (purple) means they barely intersect.
 """
 
 from pathlib import Path
@@ -27,7 +26,7 @@ try:
 except NameError:
     REPO_ROOT = Path.cwd().parent
 SSA_PATH = REPO_ROOT / "examples" / "data" / "ssa_r2048.h5"
-PHA_PATH = REPO_ROOT / "examples" / "data" / "pha_r2048_d10_o2.h5"
+PHA_PATH = REPO_ROOT / "examples" / "data" / "pha_r2048_d8_o2.h5"
 
 # %%
 # Load both result files and verify they share a trajectory.
@@ -41,15 +40,18 @@ pha_lengths = np.array([m.pha_event.end_timestep - m.pha_event.start_timestep fo
 iou = np.array([m.intersection_length / m.union_length for m in matches])
 
 # %%
-# Render.
-figure, ax = plt.subplots(figsize=(8, 6))
+# Render. Note that we ignore events with duration below some threshold,
+# explaining the gap on the lower-left side of the plot.
+figure, ax = plt.subplots(figsize=(10, 7.5))
 scatter = ax.scatter(ssa_lengths, pha_lengths, c=iou, cmap="viridis", vmin=0, vmax=1)
 figure.colorbar(scatter, ax=ax, label="Overlap (IoU)")
 ax.set_xlabel("SSA event length (timesteps)")
 ax.set_ylabel("PHA event length (timesteps)")
 ax.set_title(
     f"{len(matches)} matched pairs "
-    f"(PHA delay={pha_metadata.delay}, derivatives={pha_metadata.derivatives})"
+    f"(PHA delay={pha_metadata.delay}, {pha_metadata.derivatives - 1} derivative)"
 )
+ax.set_xlim(left=0)
+ax.set_ylim(bottom=0)
 plt.tight_layout()
 plt.show()

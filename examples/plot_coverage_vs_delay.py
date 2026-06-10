@@ -61,7 +61,7 @@ for pha_path in sorted(DATA_DIR.glob("pha_r2048_d*_o*.h5")):
 
 # %%
 # Render.
-figure, (ax_agree, ax_disagree) = plt.subplots(1, 2, figsize=(11, 4.5))
+figure, (ax_agree, ax_disagree) = plt.subplots(1, 2, figsize=(13, 5))
 
 for derivatives in sorted(by_derivatives):
     rows = sorted(by_derivatives[derivatives])
@@ -71,7 +71,7 @@ for derivatives in sorted(by_derivatives):
     f_pha_only = np.array([r[3] for r in rows])
 
     color, marker = STYLES[derivatives]
-    label = f"derivatives={derivatives}"
+    label = f"{derivatives - 1} derivatives"
     ax_agree.plot(delays, f_agree, marker=marker, color=color, label=label)
     ax_disagree.plot(
         delays,
@@ -93,7 +93,7 @@ for derivatives in sorted(by_derivatives):
 ax_agree.set_xlabel("PHA delay")
 ax_agree.set_ylabel(r"$F_{\mathrm{agree}}$")
 ax_agree.set_title("Agreement")
-ax_agree.legend()
+ax_agree.legend(loc="upper right")
 
 ax_disagree.set_xlabel("PHA delay")
 ax_disagree.set_ylabel(r"$F_{\mathrm{disagree}}$")

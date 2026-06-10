@@ -19,7 +19,7 @@ from ks_shadowing.plotting import (
     select_event_by_rank,
 )
 
-FIXTURE_SSA = Path(__file__).resolve().parent.parent / "examples/data/ssa.h5"
+FIXTURE_SSA = Path(__file__).resolve().parent.parent / "examples/data/ssa_r2048.h5"
 RPO_FILE = Path(__file__).resolve().parent.parent / "data/rpos_selected.npz"
 
 

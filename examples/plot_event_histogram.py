@@ -21,7 +21,7 @@ try:
 except NameError:
     REPO_ROOT = Path.cwd().parent
 SSA_PATH = REPO_ROOT / "examples" / "data" / "ssa_r2048.h5"
-PHA_PATH = REPO_ROOT / "examples" / "data" / "pha_r2048_d13_o1.h5"
+PHA_PATH = REPO_ROOT / "examples" / "data" / "pha_r2048_d8_o2.h5"
 BIN_WIDTH_TIMESTEPS = 2
 
 # %%
@@ -45,20 +45,22 @@ pha_counts, _ = np.histogram(pha_durations, bins=bins)
 # %%
 # Render.
 figure, ax = plt.subplots(figsize=(10, 5))
-ax.plot(bin_centers, ssa_counts, color="tab:blue", label=f"SSA ({len(ssa_events)} events)")
+ax.plot(bin_centers, ssa_counts, color="blue", label=f"SSA ({len(ssa_events)} events)")
 ax.plot(
     bin_centers,
     pha_counts,
-    color="tab:orange",
+    color="orange",
     label=(
-        f"PHA delay={pha_metadata.delay}, derivatives={pha_metadata.derivatives} "
+        f"PHA delay={pha_metadata.delay}, {pha_metadata.derivatives - 1} derivatives "
         f"({len(pha_events)} events)"
     ),
 )
 ax.set_xlim(bins[0], bins[-1])
 ax.set_xlabel("Event duration (time units)")
 ax.set_ylabel("Number of events")
-ax.set_title(f"Shadowing event durations, bin = {bin_width:.2f} time units")
+ax.set_title("Shadowing event duration")
+ax.set_xlim(left=0)
+ax.set_ylim(bottom=0)
 ax.legend()
 plt.tight_layout()
 plt.show()

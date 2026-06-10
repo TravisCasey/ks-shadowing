@@ -29,6 +29,7 @@ def _make_metadata(spatial_resolution: int = 32) -> DetectionMetadata:
         threshold=1.0,
         rpo_file="data/rpos_selected.npz",
         spatial_resolution=spatial_resolution,
+        elapsed_seconds=0,
     )
 
 
@@ -55,6 +56,7 @@ def test_result_roundtrip_returns_trajectory(
     assert loaded_metadata.threshold == 1.0
     assert loaded_metadata.min_duration == 4
     assert loaded_metadata.spatial_resolution == 128
+    assert loaded_metadata.elapsed_seconds == 0
     assert len(loaded_events) == 1
     np.testing.assert_array_equal(loaded_events[0].shifts, events[0].shifts)
 

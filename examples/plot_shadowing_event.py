@@ -3,10 +3,9 @@ Shadowing event: trajectory vs. RPO
 ====================================
 
 A two-panel comparison of one shadowing event: the chaotic trajectory window on
-top, the RPO field spatially aligned to it on the bottom. The panels share a
-color scale and matching time axes (the RPO panel is labeled relative to the
-event start). Black dashed lines mark the event boundaries. When the trajectory
-shadows the RPO, the two panels show the same field evolving in time.
+top, the RPO field spatially aligned to it on the bottom. Black dashed lines
+mark the event boundaries. When the trajectory shadows the RPO, the two panels
+show the same field evolving in time.
 """
 
 from pathlib import Path
@@ -88,10 +87,5 @@ axes[1].axvline(0, color="black", linestyle="--", linewidth=1.5)
 axes[1].axvline(duration * dt, color="black", linestyle="--", linewidth=1.5)
 figure.colorbar(bottom, ax=axes[1], label="u(x, t)")
 
-figure.suptitle(
-    f"Shadowing event: RPO {event.rpo_index}, "
-    f"duration={duration} timesteps ({duration * dt:.1f} time units), "
-    f"mean distance={event.mean_distance:.3f}",
-)
 plt.tight_layout()
 plt.show()
