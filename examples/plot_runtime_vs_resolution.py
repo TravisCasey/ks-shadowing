@@ -21,6 +21,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
 
 from ks_shadowing import load_results
 
@@ -32,12 +33,6 @@ DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATTERN = re.compile(r"^ssa_r(\d+)\.h5$")
 PHA_PATTERN = re.compile(r"^pha_r(\d+)_d(\d+)_o(\d+)\.h5$")
 
-# derivatives -> (color, marker)
-PHA_STYLES = {
-    1: ("blue", "o"),
-    2: ("orange", "s"),
-    3: ("green", "^"),
-}
 SSA_COLOR = "black"
 SECONDS_PER_MINUTE = 60.0
 
@@ -73,7 +68,8 @@ ax.plot(ssa_resolutions, ssa_minutes, color=SSA_COLOR, marker="o", label="SSA")
 
 for derivatives in sorted(pha_runtimes):
     by_resolution = pha_runtimes[derivatives]
-    color, marker = PHA_STYLES[derivatives]
+    color = f"C{derivatives - 1}"
+    marker = Line2D.filled_markers[(derivatives - 1) % len(Line2D.filled_markers)]
     resolutions = np.array(sorted(by_resolution))
     # Curve through the per-resolution mean over available delays.
     means = (

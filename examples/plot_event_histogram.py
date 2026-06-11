@@ -27,11 +27,6 @@ DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
 PHA_PATHS = [DATA_DIR / f"pha_r2048_d8_o{derivatives}.h5" for derivatives in (1, 2, 3)]
 BIN_WIDTH_TIMESTEPS = 2
-PHA_COLORS = {
-    1: "blue",
-    2: "orange",
-    3: "green",
-}
 
 # %%
 # Load all result files and convert event lengths to durations in time units.
@@ -63,7 +58,7 @@ for pha_metadata, pha_durations in pha_runs:
     ax.plot(
         bin_centers,
         pha_counts,
-        color=PHA_COLORS[pha_metadata.derivatives],
+        color=f"C{pha_metadata.derivatives - 1}",
         label=(
             f"PHA delay={pha_metadata.delay}, {pha_metadata.derivatives - 1} derivatives "
             f"({len(pha_durations)} events)"

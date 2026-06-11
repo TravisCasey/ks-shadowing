@@ -15,6 +15,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
 
 from ks_shadowing import (
     assert_same_trajectory,
@@ -29,11 +30,6 @@ except NameError:
 DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
 PHA_PATTERN = re.compile(r"^pha_r2048_d(\d+)_o(\d+)\.h5$")
-STYLES = {
-    1: ("blue", "o"),
-    2: ("orange", "s"),
-    3: ("green", "^"),
-}
 
 # %%
 # Build the SSA coverage mask once.
@@ -70,7 +66,8 @@ for derivatives in sorted(by_derivatives):
     f_ssa_only = np.array([r[2] for r in rows])
     f_pha_only = np.array([r[3] for r in rows])
 
-    color, marker = STYLES[derivatives]
+    color = f"C{derivatives - 1}"
+    marker = Line2D.filled_markers[(derivatives - 1) % len(Line2D.filled_markers)]
     label = f"{derivatives - 1} derivatives"
     ax_agree.plot(delays, f_agree, marker=marker, color=color, label=label)
     ax_disagree.plot(
