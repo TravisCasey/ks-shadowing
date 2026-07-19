@@ -7,12 +7,16 @@ trajectory is loaded at, with one curve for SSA and one per PHA ``derivatives``
 setting. SSA evaluates L2 distances in physical space, so its cost grows with
 resolution; PHA computes Wasserstein distances between persistence diagrams,
 whose cost is dominated by trajectory length rather than grid size, so its
-curves stay nearly flat and stack by ``derivatives``.
+curves stay nearly flat and stack by ``derivatives``. Cost grows superlinearly
+in ``derivatives``: the per-order increment is roughly constant up to 3
+derivatives and then accelerates.
 
-Every fixture outside resolution 2048 uses PHA ``delay = 8``. At 2048 a delay
-sweep is available and is overlaid as a vertical cluster; the PHA curve passes
-through the per-resolution mean. The cluster's small vertical extent shows that
-``delay`` has little effect on runtime.
+Fixtures outside resolution 2048 use PHA ``delay = 8``, and the 0-2 derivative
+settings carry a full ``delay`` sweep at 2048, overlaid as a vertical cluster
+whose small vertical extent shows that ``delay`` has little effect on runtime.
+The PHA curve passes through the per-resolution mean. The 3-5 derivative
+settings were run only at resolution 2048 and ``delay = 1``, so they appear as
+single markers rather than curves.
 """
 
 import re
@@ -47,8 +51,8 @@ for path in DATA_DIR.glob("ssa_r*.h5"):
     ssa_runtimes[int(match.group(1))] = metadata.elapsed_seconds
 
 # %%
-# PHA: runtimes grouped by derivatives, then resolution, then delay. Only the
-# 2048 resolution carries more than one delay.
+# PHA: runtimes grouped by derivatives, then resolution, then delay. Only
+# resolution 2048 at the 0-2 derivative settings carries more than one delay.
 pha_runtimes: dict[int, dict[int, dict[int, float]]] = defaultdict(lambda: defaultdict(dict))
 for path in DATA_DIR.glob("pha_r*_d*_o*.h5"):
     match = PHA_PATTERN.match(path.name)
@@ -89,7 +93,7 @@ for derivatives in sorted(pha_runtimes):
 
 cluster_top = max(pha_runtimes[3][2048].values()) / SECONDS_PER_MINUTE
 ax.annotate(
-    "resolution 2048: delays 1-17",
+    "resolution 2048: delays 1-17 (0-2 derivatives)",
     xy=(2048, cluster_top),
     xytext=(1180, cluster_top * 1.25),
     fontsize="small",
