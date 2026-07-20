@@ -2,6 +2,9 @@
 
 import numpy as np
 
+from ks_shadowing import pha
+from ks_shadowing.core import INTEGRATION_DT
+from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.pha.persistence import KSPersistenceTrajectory
 from ks_shadowing.pha.wasserstein import _wasserstein_column, wasserstein_matrix
@@ -71,3 +74,44 @@ def test_wasserstein_matrix_is_transpose_symmetric(rng: np.random.Generator) -> 
 
     self_matrix = wasserstein_matrix(diagrams, diagrams)
     np.testing.assert_allclose(np.diag(self_matrix), 0.0, atol=1e-6)
+
+
+def test_order_average_before_min_matches_compute_min_distances(
+    small_rpos: list[RPO],
+    sample_initial_state: np.ndarray,
+) -> None:
+    """Averaging per-order Wasserstein matrices before the minimum over phases
+    and RPOs reproduces ``compute_min_distances`` at the same ``derivatives``."""
+    derivatives = 2
+    downsample = 20
+    trajectory = KSTrajectory.from_initial_state(
+        sample_initial_state, dt=INTEGRATION_DT, num_timesteps=60, resolution=16
+    )
+
+    trajectory_diagrams = [
+        KSPersistenceTrajectory.from_trajectory(trajectory, order=order)
+        for order in range(derivatives)
+    ]
+
+    reduced = np.full(trajectory.num_timesteps, np.inf)
+    for rpo in small_rpos:
+        rpo_trajectory = KSTrajectory.from_rpo(rpo, 16, downsample=downsample)
+        stacked = np.stack(
+            [
+                wasserstein_matrix(
+                    trajectory_diagrams[order],
+                    KSPersistenceTrajectory.from_trajectory(rpo_trajectory, order=order),
+                )
+                for order in range(derivatives)
+            ]
+        )
+        np.minimum(reduced, stacked.mean(axis=0).min(axis=1), out=reduced)
+
+    expected = pha.compute_min_distances(
+        trajectory,
+        small_rpos,
+        derivatives=derivatives,
+        downsample=downsample,
+        n_jobs=1,
+    )
+    np.testing.assert_allclose(reduced, expected, rtol=1e-6, atol=1e-6)
