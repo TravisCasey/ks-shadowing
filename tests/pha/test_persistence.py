@@ -6,7 +6,7 @@ import pytest
 from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.pha.detection import _apply_delay_embedding
 from ks_shadowing.pha.persistence import (
-    _KSPersistenceTrajectory,
+    KSPersistenceTrajectory,
     _zeroth_persistence_diagram_periodic,
 )
 
@@ -53,14 +53,14 @@ def test_apply_delay_embedding_invalid_delay_raises() -> None:
 
 
 def test_chunked_diagrams_match_unchunked(rng: np.random.Generator) -> None:
-    """``_KSPersistenceTrajectory.from_trajectory`` produces identical diagrams
+    """``KSPersistenceTrajectory.from_trajectory`` produces identical diagrams
     regardless of ``chunk_size``."""
     modes = np.zeros((50, 17), dtype=np.complex128)
     modes[:, 1:16] = (rng.standard_normal((50, 15)) + 1j * rng.standard_normal((50, 15))) * 0.1
     trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=32)
 
-    default = _KSPersistenceTrajectory.from_trajectory(trajectory)
-    chunked = _KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size=10)
+    default = KSPersistenceTrajectory.from_trajectory(trajectory)
+    chunked = KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size=10)
 
     assert len(default.diagrams) == len(chunked.diagrams)
     for a, b in zip(default.diagrams, chunked.diagrams, strict=True):
@@ -74,8 +74,8 @@ def test_from_trajectory_higher_order_differs(rng: np.random.Generator) -> None:
     modes[:, 1:16] = (rng.standard_normal((10, 15)) + 1j * rng.standard_normal((10, 15))) * 0.1
     trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=32)
 
-    order0 = _KSPersistenceTrajectory.from_trajectory(trajectory, order=0)
-    order1 = _KSPersistenceTrajectory.from_trajectory(trajectory, order=1)
+    order0 = KSPersistenceTrajectory.from_trajectory(trajectory, order=0)
+    order1 = KSPersistenceTrajectory.from_trajectory(trajectory, order=1)
 
     assert len(order0.diagrams) == len(order1.diagrams)
     assert any(

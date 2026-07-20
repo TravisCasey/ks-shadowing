@@ -41,9 +41,8 @@ def _wasserstein_column(
     """Compute Wasserstein distances from pre-flattened trajectory diagrams to
     one RPO diagram.
 
-    See :meth:`~ks_shadowing.pha.persistence._KSPersistenceTrajectory._flatten`
-    to format a trajectory of persistence diagrams into the expected
-    ``diagrams_a``, ``offsets_a`` form.
+    See ``KSPersistenceTrajectory._flatten`` to format a trajectory of
+    persistence diagrams into the expected ``diagrams_a``, ``offsets_a`` form.
 
     If any of the three input arrays are not contiguous and row-major, a copy
     is made to pass to the batched C API.

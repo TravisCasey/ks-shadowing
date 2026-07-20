@@ -12,7 +12,7 @@ from ks_shadowing.core.trajectory import KSTrajectory
 
 
 @dataclass(frozen=True, slots=True)
-class _KSPersistenceTrajectory:
+class KSPersistenceTrajectory:
     """A Kuramoto-Sivashinsky trajectory in the space of persistence diagrams.
 
     Each element of ``diagrams`` is a ``(num_pairs, 2)`` array containing birth
@@ -22,7 +22,7 @@ class _KSPersistenceTrajectory:
     not included.
 
     Prefer
-    :meth:`~ks_shadowing.pha.persistence._KSPersistenceTrajectory.from_trajectory`
+    :meth:`~ks_shadowing.pha.persistence.KSPersistenceTrajectory.from_trajectory`
     for computation of the diagrams of a
     :class:`~ks_shadowing.core.trajectory.KSTrajectory`.
 

@@ -3,13 +3,13 @@
 import numpy as np
 
 from ks_shadowing.core.trajectory import KSTrajectory
-from ks_shadowing.pha.persistence import _KSPersistenceTrajectory
+from ks_shadowing.pha.persistence import KSPersistenceTrajectory
 from ks_shadowing.pha.wasserstein import _wasserstein_column
 
 
 def _flatten(diagrams: list) -> tuple:
-    """Flatten ``diagrams`` via ``_KSPersistenceTrajectory._flatten``."""
-    return _KSPersistenceTrajectory(diagrams=diagrams, dt=0.02)._flatten()
+    """Flatten ``diagrams`` via ``KSPersistenceTrajectory._flatten``."""
+    return KSPersistenceTrajectory(diagrams=diagrams, dt=0.02)._flatten()
 
 
 def test_flatten_offsets_for_variable_size_diagrams() -> None:
@@ -35,7 +35,7 @@ def test_wasserstein_column_self_zero(rng: np.random.Generator) -> None:
     modes = np.zeros((4, 17), dtype=np.complex128)
     modes[:, 1:16] = (rng.standard_normal((4, 15)) + 1j * rng.standard_normal((4, 15))) * 0.1
     trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=32)
-    diagrams = _KSPersistenceTrajectory.from_trajectory(trajectory)
+    diagrams = KSPersistenceTrajectory.from_trajectory(trajectory)
     flat, offsets = diagrams._flatten()
 
     column = _wasserstein_column(flat, offsets, diagrams.diagrams[0])

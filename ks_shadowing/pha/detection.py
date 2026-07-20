@@ -47,7 +47,7 @@ from ks_shadowing.core.parallel import (
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.pha.pathfinding import _extract_shadowing_events
-from ks_shadowing.pha.persistence import _KSPersistenceTrajectory
+from ks_shadowing.pha.persistence import KSPersistenceTrajectory
 from ks_shadowing.pha.shifts import _compute_event_shifts
 from ks_shadowing.pha.wasserstein import _wasserstein_column
 
@@ -134,7 +134,7 @@ def detect(  # noqa: PLR0913
         raise ValueError(f"derivatives must be at least 1, got {derivatives}")
 
     trajectory_diagrams_per_order = [
-        _KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
+        KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
         for order in range(derivatives)
     ]
     rpo_diagram_pairs = _compute_rpo_diagram_pairs(
@@ -227,7 +227,7 @@ def compute_min_distances(  # noqa: PLR0913
         raise ValueError(f"derivatives must be at least 1, got {derivatives}")
 
     trajectory_diagrams_per_order = [
-        _KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
+        KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
         for order in range(derivatives)
     ]
     rpo_diagram_pairs = _compute_rpo_diagram_pairs(
@@ -322,7 +322,7 @@ def auto_detect(  # noqa: PLR0913
         raise ValueError(f"derivatives must be at least 1, got {derivatives}")
 
     trajectory_diagrams_per_order = [
-        _KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
+        KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
         for order in range(derivatives)
     ]
     rpo_diagram_pairs = _compute_rpo_diagram_pairs(
@@ -356,18 +356,18 @@ def _compute_rpo_diagram_pairs(  # noqa: PLR0913
     downsample: int,
     native: bool,
     derivatives: int,
-) -> list[tuple[RPO, list[_KSPersistenceTrajectory]]]:
+) -> list[tuple[RPO, list[KSPersistenceTrajectory]]]:
     """Build per-RPO trajectories and their per-order persistence diagrams.
 
     Each pair carries ``derivatives`` diagram sequences, one per derivative
     order ``0..derivatives - 1``. Returned pairs are sorted by RPO period
     descending so that the longest-running RPOs are dispatched first.
     """
-    diagram_pairs: list[tuple[RPO, list[_KSPersistenceTrajectory]]] = []
+    diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]] = []
     for rpo in rpos:
         rpo_trajectory = KSTrajectory.from_rpo(rpo, resolution, downsample, native)
         per_order = [
-            _KSPersistenceTrajectory.from_trajectory(rpo_trajectory, chunk_size, order=order)
+            KSPersistenceTrajectory.from_trajectory(rpo_trajectory, chunk_size, order=order)
             for order in range(derivatives)
         ]
         diagram_pairs.append((rpo, per_order))
@@ -377,8 +377,8 @@ def _compute_rpo_diagram_pairs(  # noqa: PLR0913
 
 
 def _detect_from_diagrams(  # noqa: PLR0913
-    trajectory_diagrams_per_order: list[_KSPersistenceTrajectory],
-    rpo_diagram_pairs: list[tuple[RPO, list[_KSPersistenceTrajectory]]],
+    trajectory_diagrams_per_order: list[KSPersistenceTrajectory],
+    rpo_diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]],
     delay: int,
     threshold: float,
     min_duration: int,
@@ -397,8 +397,8 @@ def _detect_from_diagrams(  # noqa: PLR0913
 
 
 def _min_distances_from_diagrams(
-    trajectory_diagrams_per_order: list[_KSPersistenceTrajectory],
-    rpo_diagram_pairs: list[tuple[RPO, list[_KSPersistenceTrajectory]]],
+    trajectory_diagrams_per_order: list[KSPersistenceTrajectory],
+    rpo_diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]],
     delay: int,
     show_progress: bool,
     n_workers: int,
@@ -425,8 +425,8 @@ def _min_distances_from_diagrams(
 
 
 def _stream_distance_matrices(
-    trajectory_diagrams_per_order: list[_KSPersistenceTrajectory],
-    rpo_diagram_pairs: list[tuple[RPO, list[_KSPersistenceTrajectory]]],
+    trajectory_diagrams_per_order: list[KSPersistenceTrajectory],
+    rpo_diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]],
     delay: int,
     show_progress: bool,
     n_workers: int,
@@ -440,9 +440,9 @@ def _stream_distance_matrices(
 
     Parameters
     ----------
-    trajectory_diagrams_per_order : list[_KSPersistenceTrajectory]
+    trajectory_diagrams_per_order : list[KSPersistenceTrajectory]
         Trajectory persistence diagrams, one sequence per derivative order.
-    rpo_diagram_pairs : list[tuple[RPO, list[_KSPersistenceTrajectory]]]
+    rpo_diagram_pairs : list[tuple[RPO, list[KSPersistenceTrajectory]]]
         ``(rpo, per_order_phase_diagrams)`` pairs from
         ``_compute_rpo_diagram_pairs``.
     delay : int

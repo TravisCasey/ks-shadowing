@@ -60,3 +60,9 @@ pha.detection
 
 .. automodule:: ks_shadowing.pha.detection
    :members:
+
+pha.persistence
+---------------
+
+.. automodule:: ks_shadowing.pha.persistence
+   :members:
