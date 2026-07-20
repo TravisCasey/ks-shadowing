@@ -4,7 +4,7 @@ import numpy as np
 
 from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.pha.persistence import KSPersistenceTrajectory
-from ks_shadowing.pha.wasserstein import _wasserstein_column
+from ks_shadowing.pha.wasserstein import _wasserstein_column, wasserstein_matrix
 
 
 def _flatten(diagrams: list) -> tuple:
@@ -53,3 +53,21 @@ def test_wasserstein_column_empty_inputs() -> None:
     flat_mix, offsets_mix = _flatten([np.zeros((0, 2)), np.array([[0.0, 1.0]], dtype=np.float64)])
     column = _wasserstein_column(flat_mix, offsets_mix, np.zeros((0, 2), dtype=np.float64))
     assert column.shape == (2,)
+
+
+def test_wasserstein_matrix_is_transpose_symmetric(rng: np.random.Generator) -> None:
+    """``wasserstein_matrix(a, b)`` equals ``wasserstein_matrix(b, a)``
+    transposed, and comparing a set against itself gives a zero diagonal."""
+    modes = np.zeros((7, 17), dtype=np.complex128)
+    modes[:, 1:16] = (rng.standard_normal((7, 15)) + 1j * rng.standard_normal((7, 15))) * 0.1
+    trajectory = KSTrajectory(modes=modes, dt=0.02, resolution=32)
+    diagrams = KSPersistenceTrajectory.from_trajectory(trajectory)
+    first = KSPersistenceTrajectory(diagrams=diagrams.diagrams[:3], dt=diagrams.dt)
+    second = KSPersistenceTrajectory(diagrams=diagrams.diagrams[3:], dt=diagrams.dt)
+
+    matrix = wasserstein_matrix(first, second)
+    assert matrix.shape == (3, 4)
+    np.testing.assert_allclose(matrix, wasserstein_matrix(second, first).T, rtol=1e-6, atol=1e-6)
+
+    self_matrix = wasserstein_matrix(diagrams, diagrams)
+    np.testing.assert_allclose(np.diag(self_matrix), 0.0, atol=1e-6)

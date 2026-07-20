@@ -66,3 +66,9 @@ pha.persistence
 
 .. automodule:: ks_shadowing.pha.persistence
    :members:
+
+pha.wasserstein
+---------------
+
+.. automodule:: ks_shadowing.pha.wasserstein
+   :members:

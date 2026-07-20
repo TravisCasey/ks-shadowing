@@ -8,6 +8,8 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
+from ks_shadowing.pha.persistence import KSPersistenceTrajectory
+
 _lib: CDLL | None = None
 
 
@@ -94,3 +96,43 @@ def _wasserstein_column(
         raise RuntimeError("wasserstein_column_c failed")
 
     return out
+
+
+def wasserstein_matrix(
+    diagrams_a: KSPersistenceTrajectory,
+    diagrams_b: KSPersistenceTrajectory,
+    delta: float = 0.01,
+) -> NDArray[np.float64]:
+    """Compute Wasserstein distances between every pair of persistence diagrams.
+
+    Entry ``(i, j)`` is the distance between diagram ``i`` of ``diagrams_a`` and
+    diagram ``j`` of ``diagrams_b``. The result holds
+    ``len(diagrams_a) * len(diagrams_b)`` float64 entries.
+
+    Detection never materializes this matrix; it streams one column at a time
+    and reduces as it goes, so
+    :func:`~ks_shadowing.pha.detection.compute_min_distances` is the right entry
+    point for threshold selection. This function is for analyses that need the
+    distances themselves.
+
+    Parameters
+    ----------
+    diagrams_a : :class:`~ks_shadowing.pha.persistence.KSPersistenceTrajectory`
+        Diagrams indexing the rows of the result.
+    diagrams_b : :class:`~ks_shadowing.pha.persistence.KSPersistenceTrajectory`
+        Diagrams indexing the columns of the result.
+    delta : float, optional
+        Relative error tolerance. Default is 0.01 (1%).
+
+    Returns
+    -------
+    NDArray[np.float64], shape (len(diagrams_a), len(diagrams_b))
+        Wasserstein distance between each pair of diagrams.
+    """
+    flat_diagrams, offsets = diagrams_a._flatten()
+
+    matrix = np.empty((len(diagrams_a), len(diagrams_b)), dtype=np.float64)
+    for index, diagram in enumerate(diagrams_b):
+        matrix[:, index] = _wasserstein_column(flat_diagrams, offsets, diagram, delta)
+
+    return matrix
