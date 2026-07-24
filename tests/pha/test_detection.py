@@ -32,7 +32,7 @@ def test_detect_deterministic_and_sorted(
         threshold=threshold,
         min_duration=10,
         n_jobs=1,
-    )
+    ).events
     events_b = pha.detect(
         short_trajectory,
         small_rpos,
@@ -40,7 +40,7 @@ def test_detect_deterministic_and_sorted(
         threshold=threshold,
         min_duration=10,
         n_jobs=1,
-    )
+    ).events
 
     assert len(events_a) == len(events_b)
     for left, right in zip(events_a, events_b, strict=True):
@@ -67,14 +67,14 @@ def test_auto_detect_threshold_matches_quantile(
     finite = min_distances[np.isfinite(min_distances)]
     expected_threshold = float(np.quantile(finite, quantile))
 
-    _, threshold = pha.auto_detect(
+    threshold = pha.auto_detect(
         short_trajectory,
         small_rpos,
         delay=delay,
         threshold_quantile=quantile,
         min_duration=10,
         n_jobs=1,
-    )
+    ).threshold
     assert threshold == pytest.approx(expected_threshold)
 
 
@@ -94,7 +94,7 @@ def test_detect_native_mode(sample_initial_state: np.ndarray, small_rpos: list[R
         native=True,
         min_duration=1,
         n_jobs=1,
-    )
+    ).events
 
     for event in events:
         assert 0 <= event.start_timestep < event.end_timestep <= len(trajectory)

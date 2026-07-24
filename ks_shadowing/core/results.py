@@ -6,6 +6,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+from numpy.typing import NDArray
 
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.trajectory import KSTrajectory
@@ -76,6 +77,27 @@ class DetectionMetadata:
     threshold_quantile: float | None = None
     delay: int = 1
     max_derivative_order: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class DetectionResult:
+    """Return value of the SSA and PHA ``detect`` and ``auto_detect`` functions.
+
+    Attributes
+    ----------
+    events : list[ShadowingEvent]
+        Detected events sorted by ``(start_timestep, rpo_index)``.
+    threshold : float
+        Distance threshold used for detection: the value passed to ``detect``,
+        or the quantile-selected value chosen by ``auto_detect``.
+    order_scales : NDArray[np.float64] or None
+        Per-derivative-order scale factors applied during PHA detection.
+        ``None`` unless PHA detection ran with per-order rescaling enabled.
+    """
+
+    events: list[ShadowingEvent]
+    threshold: float
+    order_scales: NDArray[np.float64] | None = None
 
 
 def save_results(

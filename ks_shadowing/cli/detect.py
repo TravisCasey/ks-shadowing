@@ -193,11 +193,14 @@ def main() -> None:
     start_time = time.perf_counter()
 
     if arguments.threshold is not None:
-        events = _detect_with_threshold(method, trajectory, rpos, arguments)
+        result = _detect_with_threshold(method, trajectory, rpos, arguments)
+        events = result.events
         threshold = arguments.threshold
         threshold_quantile = None
     else:
-        events, threshold = _detect_with_auto_threshold(method, trajectory, rpos, arguments)
+        result = _detect_with_auto_threshold(method, trajectory, rpos, arguments)
+        events = result.events
+        threshold = result.threshold
         threshold_quantile = arguments.threshold_quantile
     elapsed_seconds = time.perf_counter() - start_time
 

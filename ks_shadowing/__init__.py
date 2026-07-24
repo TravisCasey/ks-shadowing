@@ -4,7 +4,12 @@ from ks_shadowing import pha, ssa
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.integrator import DOMAIN_SIZE
 from ks_shadowing.core.matching import MatchedEvent, match_events
-from ks_shadowing.core.results import DetectionMetadata, load_results, save_results
+from ks_shadowing.core.results import (
+    DetectionMetadata,
+    DetectionResult,
+    load_results,
+    save_results,
+)
 from ks_shadowing.core.rpo import RPO, load_rpos
 from ks_shadowing.core.trajectory import KSTrajectory, shift_distances_sq
 from ks_shadowing.plotting import (
@@ -24,6 +29,7 @@ __all__: list[str] = [
     "INTEGRATION_DT",
     "RPO",
     "DetectionMetadata",
+    "DetectionResult",
     "KSTrajectory",
     "MatchedEvent",
     "ShadowingEvent",

@@ -34,6 +34,7 @@ from ks_shadowing.core.parallel import (
     _resolve_n_jobs,
     _shared_memory_view,
 )
+from ks_shadowing.core.results import DetectionResult
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.trajectory import KSTrajectory, shift_distances_sq
 from ks_shadowing.ssa.pathfinding import _extract_shadowing_events
@@ -50,7 +51,7 @@ def detect(  # noqa: PLR0913
     show_progress: bool = False,
     n_jobs: int = 1,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
-) -> list[ShadowingEvent]:
+) -> DetectionResult:
     """Detect shadowing events between ``trajectory`` and ``rpos``.
 
     Transforms the trajectory and each RPO to the RPO's co-moving frame, then
@@ -95,15 +96,16 @@ def detect(  # noqa: PLR0913
 
     Returns
     -------
-    list[ShadowingEvent]
-        Events sorted by ``(start_timestep, rpo_index)``.
+    DetectionResult
+        ``events`` sorted by ``(start_timestep, rpo_index)`` and ``threshold``
+        echoing the input ``threshold``.
     """
     rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
         rpos, trajectory.resolution, downsample, native
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
-    return _detect_from_pairs(
+    events = _detect_from_pairs(
         trajectory,
         rpo_trajectory_pairs,
         threshold,
@@ -112,6 +114,7 @@ def detect(  # noqa: PLR0913
         n_workers,
         chunk_size,
     )
+    return DetectionResult(events=events, threshold=threshold)
 
 
 def compute_min_distances(  # noqa: PLR0913
@@ -183,7 +186,7 @@ def auto_detect(  # noqa: PLR0913
     show_progress: bool = False,
     n_jobs: int = 1,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
-) -> tuple[list[ShadowingEvent], float]:
+) -> DetectionResult:
     """Detect shadowing events with a threshold chosen automatically from the
     distribution of per-timestep minimum :math:`L_2` distances.
 
@@ -225,10 +228,9 @@ def auto_detect(  # noqa: PLR0913
 
     Returns
     -------
-    events : list[ShadowingEvent]
-        Detected events sorted by ``(start_timestep, rpo_index)``.
-    threshold : float
-        The automatically selected threshold.
+    DetectionResult
+        ``events`` sorted by ``(start_timestep, rpo_index)`` and ``threshold``
+        set to the automatically selected quantile value.
     """
     rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
         rpos, trajectory.resolution, downsample, native
@@ -249,7 +251,7 @@ def auto_detect(  # noqa: PLR0913
         n_workers,
         chunk_size,
     )
-    return events, threshold
+    return DetectionResult(events=events, threshold=threshold)
 
 
 def _compute_rpo_trajectory_pairs(
