@@ -6,6 +6,7 @@ from ks_shadowing import pha
 from ks_shadowing.core import INTEGRATION_DT
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.trajectory import KSTrajectory
+from ks_shadowing.pha.detection import _compute_order_scales
 from ks_shadowing.pha.persistence import KSPersistenceTrajectory
 from ks_shadowing.pha.wasserstein import _wasserstein_column, wasserstein_matrix
 
@@ -113,6 +114,60 @@ def test_order_average_before_min_matches_compute_min_distances(
         small_rpos,
         max_derivative_order=max_derivative_order,
         downsample=downsample,
+        n_jobs=1,
+    )
+    np.testing.assert_allclose(reduced, expected, rtol=1e-6, atol=1e-6)
+
+
+def test_rescaled_min_distances_match_manual_scale_division(
+    small_rpos: list[RPO],
+    sample_initial_state: np.ndarray,
+) -> None:
+    """Dividing each order's Wasserstein matrix by the prepass scales before the
+    order mean and phase/RPO minimum reproduces ``compute_min_distances`` with
+    ``rescale_orders=True``."""
+    max_derivative_order = 1
+    downsample = 20
+    trajectory = KSTrajectory.from_initial_state(
+        sample_initial_state, dt=INTEGRATION_DT, num_timesteps=60, resolution=16
+    )
+
+    trajectory_diagrams = [
+        KSPersistenceTrajectory.from_trajectory(trajectory, order=order)
+        for order in range(max_derivative_order + 1)
+    ]
+    rpo_diagram_pairs = [
+        (
+            rpo,
+            [
+                KSPersistenceTrajectory.from_trajectory(
+                    KSTrajectory.from_rpo(rpo, 16, downsample=downsample), order=order
+                )
+                for order in range(max_derivative_order + 1)
+            ],
+        )
+        for rpo in small_rpos
+    ]
+
+    scales = _compute_order_scales(trajectory_diagrams, rpo_diagram_pairs)
+
+    reduced = np.full(trajectory.num_timesteps, np.inf)
+    for _, phase_diagrams_per_order in rpo_diagram_pairs:
+        stacked = np.stack(
+            [
+                wasserstein_matrix(trajectory_diagrams[order], phase_diagrams_per_order[order])
+                / scales[order]
+                for order in range(max_derivative_order + 1)
+            ]
+        )
+        np.minimum(reduced, stacked.mean(axis=0).min(axis=1), out=reduced)
+
+    expected = pha.compute_min_distances(
+        trajectory,
+        small_rpos,
+        max_derivative_order=max_derivative_order,
+        downsample=downsample,
+        rescale_orders=True,
         n_jobs=1,
     )
     np.testing.assert_allclose(reduced, expected, rtol=1e-6, atol=1e-6)

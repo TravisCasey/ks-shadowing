@@ -22,7 +22,11 @@ def _make_event() -> ShadowingEvent:
     )
 
 
-def _make_metadata(spatial_resolution: int = 32) -> DetectionMetadata:
+def _make_metadata(
+    spatial_resolution: int = 32,
+    rescale_orders: bool = False,
+    order_scales: tuple[float, ...] | None = None,
+) -> DetectionMetadata:
     return DetectionMetadata(
         detector_type="SSA",
         min_duration=4,
@@ -30,6 +34,8 @@ def _make_metadata(spatial_resolution: int = 32) -> DetectionMetadata:
         rpo_file="data/rpos_selected.npz",
         spatial_resolution=spatial_resolution,
         elapsed_seconds=0,
+        rescale_orders=rescale_orders,
+        order_scales=order_scales,
     )
 
 
@@ -59,6 +65,21 @@ def test_result_roundtrip_returns_trajectory(
     assert loaded_metadata.elapsed_seconds == 0
     assert len(loaded_events) == 1
     np.testing.assert_array_equal(loaded_events[0].shifts, events[0].shifts)
+    assert loaded_metadata.rescale_orders is False
+    assert loaded_metadata.order_scales is None
+
+    rescaled_result_path = tmp_path / "result_rescaled.h5"
+    rescaled_metadata = _make_metadata(
+        spatial_resolution=128, rescale_orders=True, order_scales=(0.05, 0.31)
+    )
+    save_results(rescaled_result_path, rescaled_metadata, events, trajectory_path=trajectory_path)
+    loaded_rescaled_metadata, _, _ = load_results(rescaled_result_path)
+
+    assert loaded_rescaled_metadata.rescale_orders is True
+    loaded_scales = loaded_rescaled_metadata.order_scales
+    assert loaded_scales is not None
+    assert loaded_scales == (0.05, 0.31)
+    assert all(isinstance(scale, float) for scale in loaded_scales)
 
 
 def test_save_results_rejects_non_sibling_trajectory(

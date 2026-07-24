@@ -64,6 +64,13 @@ class DetectionMetadata:
     max_derivative_order : int
         Highest spatial-derivative order used for PHA. ``0`` (default) means
         only the field itself. Recorded as ``0`` for SSA results.
+    rescale_orders : bool
+        When ``True``, PHA divided each derivative order's Wasserstein distances
+        by a per-order median scale before averaging across orders. Defaults to
+        ``False``.
+    order_scales : tuple[float, ...] or None
+        The per-order median scales applied when ``rescale_orders`` was ``True``;
+        ``None`` otherwise. Absence of the attribute in the file encodes ``None``.
     """
 
     detector_type: str
@@ -77,6 +84,8 @@ class DetectionMetadata:
     threshold_quantile: float | None = None
     delay: int = 1
     max_derivative_order: int = 0
+    rescale_orders: bool = False
+    order_scales: tuple[float, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,9 +164,12 @@ def save_results(
         f.attrs["native"] = metadata.native
         f.attrs["delay"] = metadata.delay
         f.attrs["max_derivative_order"] = metadata.max_derivative_order
+        f.attrs["rescale_orders"] = metadata.rescale_orders
         f.attrs["trajectory_path"] = trajectory_path.name
         if metadata.threshold_quantile is not None:
             f.attrs["threshold_quantile"] = metadata.threshold_quantile
+        if metadata.order_scales is not None:
+            f.attrs["order_scales"] = np.asarray(metadata.order_scales, dtype=np.float64)
 
         shifts_list = [event.shifts for event in events]
         shifts_ends = (
@@ -223,14 +235,16 @@ def load_results(
             rpo_file=str(attrs["rpo_file"]),
             spatial_resolution=int(attrs["spatial_resolution"]),
             elapsed_seconds=float(attrs["elapsed_seconds"]),
-            downsample=int(attrs["downsample"]) if "downsample" in attrs else 1,
-            native=bool(attrs["native"]) if "native" in attrs else False,
+            downsample=int(attrs["downsample"]),
+            native=bool(attrs["native"]),
             threshold_quantile=(
                 float(attrs["threshold_quantile"]) if "threshold_quantile" in attrs else None
             ),
-            delay=int(attrs["delay"]) if "delay" in attrs else 1,
-            max_derivative_order=(
-                int(attrs["max_derivative_order"]) if "max_derivative_order" in attrs else 0
+            delay=int(attrs["delay"]),
+            max_derivative_order=int(attrs["max_derivative_order"]),
+            rescale_orders=bool(attrs["rescale_orders"]),
+            order_scales=(
+                tuple(float(x) for x in attrs["order_scales"]) if "order_scales" in attrs else None
             ),
         )
         trajectory_filename = str(attrs["trajectory_path"])
