@@ -40,8 +40,9 @@ pha_lengths = np.array([m.pha_event.end_timestep - m.pha_event.start_timestep fo
 iou = np.array([m.intersection_length / m.union_length for m in matches])
 
 # %%
-# Render. Note that we ignore events with duration below some threshold,
-# explaining the gap on the lower-left side of the plot.
+# Render. Both detectors discard events shorter than their ``min_duration``
+# (here ``pha_metadata.min_duration`` timesteps), which is why the lower-left
+# corner of the plot is empty.
 figure, ax = plt.subplots(figsize=(10, 7.5))
 scatter = ax.scatter(ssa_lengths, pha_lengths, c=iou, cmap="viridis", vmin=0, vmax=1)
 figure.colorbar(scatter, ax=ax, label="Overlap (IoU)")

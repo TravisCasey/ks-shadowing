@@ -25,8 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 
-from ks_shadowing import load_results
-from ks_shadowing.core.trajectory import KSTrajectory
+from ks_shadowing import KSTrajectory, load_results
 from ks_shadowing.pha import KSPersistenceTrajectory
 
 try:

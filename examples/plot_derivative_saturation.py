@@ -6,16 +6,16 @@ Running PHA with ``derivatives = k`` averages the persistence-diagram
 Wasserstein distances over spatial-derivative orders ``0..k-1`` before reducing
 over phases. The ``pha_r2048_d1_o{1..6}`` files are that sweep from one to six
 orders, and scoring them against the SSA mask shows directly what each added
-order buys us. Short version: not much past 2 or 3 orders, and eventually a
-some harm.
+order buys us. Short version: not much past 2 or 3 orders, and eventually some
+harm.
 
 Precision (left, black) is the line to trust. A fixed quantile (typically 0.4)
-of all timesteps are considered shadowing some RPO; however, due to longest
-pathfining and minimum event duration, less than that fraction of timesteps is
-covered by events. However, precision, the number of timesteps correctly
-(against SSA) predicted as shadowing normalized by the PHA coverage, accounts
-for this coverage disparity. It falls monotonically with every added order, and
-indicates extra orders falsely detecting where SSA sees nothing.
+of all timesteps is flagged as shadowing some RPO, but longest-path selection
+and the minimum event duration mean fewer than that fraction end up covered by
+events. Precision -- of the timesteps PHA flags, the fraction SSA also flags --
+normalizes against PHA's own coverage, so it is unaffected by that disparity. It
+falls monotonically with every added order: the extra orders detect shadowing
+where SSA sees nothing.
 
 Recall, and therefore F1 score, are less clear as it is normalized by the fixed
 SSA coverage instead. An increase in coverage, which does occur in the first
@@ -23,12 +23,13 @@ few orders, inflates this measure.
 
 The right panel is the more telling consequence. Restricted to the timesteps
 every run agrees are shadowing, attribution to the correct RPO peaks at
-``k = 3`` and erodes afterward. This is the detection-level shadow of high-order
-redundancy: at high ``k`` the added orders increasingly measure the same thing,
-so they reinforce one another rather than contributing independent evidence.
-Extra orders begin to indicate shadowing against the wrong orbit. The companion
-:ref:`sphx_glr_auto_examples_plot_derivative_mechanism.py` shows that scale
-inflation and redundancy directly.
+``k = 3`` and erodes afterward. This is the detection-level signature of
+high-order redundancy: at high ``k`` the added orders increasingly measure the
+same thing, so they reinforce one another rather than contributing independent
+evidence. Extra orders begin to indicate shadowing against the wrong orbit. The
+companion :ref:`mechanism example
+<sphx_glr_auto_examples_plot_derivative_mechanism.py>` shows that scale inflation
+and redundancy directly.
 """
 
 from pathlib import Path
@@ -73,17 +74,12 @@ for path in PHA_PATHS:
 
 # %%
 # Agreement of each PHA union mask with the SSA mask (SSA as reference).
-def _agreement(pha_mask: NDArray[np.bool_]) -> tuple[float, float, float, float, float]:
+def _agreement(pha_mask: NDArray[np.bool_]) -> tuple[float, float, float]:
     intersection = float((pha_mask & ssa_mask).sum())
     precision = intersection / pha_mask.sum()
     recall = intersection / ssa_mask.sum()
     f1 = 2 * precision * recall / (precision + recall)
-    iou = intersection / (pha_mask | ssa_mask).sum()
-    observed = (pha_mask == ssa_mask).mean()
-    p, q = pha_mask.mean(), ssa_mask.mean()
-    expected = p * q + (1 - p) * (1 - q)
-    kappa = (observed - expected) / (1 - expected)
-    return precision, recall, f1, kappa, iou
+    return precision, recall, f1
 
 
 # %%
@@ -101,7 +97,7 @@ def _attribution(rpo: NDArray[np.bool_]) -> float:
 
 
 agreement = np.array([_agreement(pha_mask) for pha_mask in pha_masks])
-precision, recall, f1, kappa, iou = agreement.T
+precision, recall, f1 = agreement.T
 attribution = np.array([_attribution(rpo) for rpo in pha_rpo_masks])
 
 # %%
@@ -121,7 +117,7 @@ ax_agreement.legend(fontsize="small")
 
 ax_attribution.plot(counts, attribution, color="black", marker="o")
 ax_attribution.set_xlabel("Derivatives")
-ax_attribution.set_ylabel("Per-RPO attribution vs SSA")
+ax_attribution.set_ylabel("Per-RPO attribution vs. SSA")
 ax_attribution.set_title("Correct-RPO attribution peaks at 3, then declines")
 ax_attribution.set_xticks(counts)
 

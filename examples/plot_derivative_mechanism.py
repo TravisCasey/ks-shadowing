@@ -3,7 +3,7 @@ Two ingredients behind the derivative saturation
 ================================================
 
 A small, illustrative probe of *why* the derivative sweep in the companion
-:ref:`sphx_glr_auto_examples_plot_derivative_saturation.py` stops paying off.
+:ref:`saturation example <sphx_glr_auto_examples_plot_derivative_saturation.py>` stops paying off.
 The full-scale statistics live there; here we look at two mechanisms on two
 disjoint trajectory windows, computed live from the public API at resolution 256
 (persistence-diagram cardinality is resolution-independent). Only the two
@@ -14,7 +14,7 @@ Left panel: scale. Differentiating a field multiplies Fourier mode ``q`` by
 ``(i q)^order``, so each added order inflates the Wasserstein magnitude it
 produces. Across these windows the per-order scale grows roughly fivefold from
 order 0 to order 5. PHA averages the per-order matrices with *equal* weight, so
-order 5 alone accounts for about 44% of that unweighted mean of scales; a
+order 5 alone accounts for about 45% of that unweighted mean of scales; a
 high-order run is effectively dominated by its largest order. That is a
 statement about the averaging step, not a literal detection vote but it is
 exactly the kind of scale imbalance that would let extra orders stop helping.
@@ -33,8 +33,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ks_shadowing import load_results, load_rpos
-from ks_shadowing.core.trajectory import KSTrajectory
+from ks_shadowing import KSTrajectory, load_results, load_rpos
 from ks_shadowing.pha import KSPersistenceTrajectory, wasserstein_matrix
 
 try:
@@ -97,7 +96,7 @@ for start in WINDOW_STARTS:
 scales = np.array([np.median(samples) for samples in scale_samples])
 relative = scales / scales[0]
 vote_share = scales / scales.sum()  # order's share of the unweighted mean of scales
-isolated = np.array([np.concatenate(columns) for columns in isolated_columns])  # (6, 450)
+isolated = np.array([np.concatenate(columns) for columns in isolated_columns])  # (6, 300)
 ranked = np.argsort(np.argsort(isolated, axis=1), axis=1)
 spearman = np.corrcoef(ranked)  # (6, 6)
 

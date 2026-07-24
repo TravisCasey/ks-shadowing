@@ -1,6 +1,6 @@
 """
-Coverage agreement vs PHA delay
-===============================
+Coverage agreement vs. PHA delay
+================================
 
 At each trajectory timestep, each detection method reports a binary shadowing
 flag (union across RPOs). ``F_agree`` is the fraction of timesteps where SSA and
