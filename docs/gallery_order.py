@@ -12,6 +12,7 @@ EXAMPLE_ORDER = [
     "plot_coverage_vs_delay.py",
     "plot_derivative_spectrum.py",
     "plot_derivative_saturation.py",
+    "plot_derivative_mechanism.py",
     "plot_runtime_vs_resolution.py",
     "plot_diagram_cost.py",
 ]
