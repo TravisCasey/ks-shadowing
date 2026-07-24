@@ -2,12 +2,12 @@ r"""
 Derivative embedding saturates against the SSA reference
 ========================================================
 
-Running PHA with ``derivatives = k`` averages the persistence-diagram
-Wasserstein distances over spatial-derivative orders ``0..k-1`` before reducing
-over phases. The ``pha_r2048_d1_o{1..6}`` files are that sweep from one to six
-orders, and scoring them against the SSA mask shows directly what each added
-order buys us. Short version: not much past 2 or 3 orders, and eventually some
-harm.
+Running PHA with ``max_derivative_order = k`` averages the persistence-diagram
+Wasserstein distances over spatial-derivative orders ``0..k`` before reducing
+over phases. The ``pha_r2048_d1_o{0..5}`` files are that sweep,
+``max_derivative_order`` 0 through 5, and scoring them against the SSA mask
+shows directly what each added order buys us. Short version: not much past max
+order 2, and eventually some harm.
 
 Precision (left, black) is the line to trust. A fixed quantile (typically 0.4)
 of all timesteps is flagged as shadowing some RPO, but longest-path selection
@@ -23,7 +23,7 @@ few orders, inflates this measure.
 
 The right panel is the more telling consequence. Restricted to the timesteps
 every run agrees are shadowing, attribution to the correct RPO peaks at
-``k = 3`` and erodes afterward. This is the detection-level signature of
+``k = 2`` and erodes afterward. This is the detection-level signature of
 high-order redundancy: at high ``k`` the added orders increasingly measure the
 same thing, so they reinforce one another rather than contributing independent
 evidence. Extra orders begin to indicate shadowing against the wrong orbit. The
@@ -46,8 +46,8 @@ except NameError:
     REPO_ROOT = Path.cwd().parent
 DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
-PHA_PATHS = [DATA_DIR / f"pha_r2048_d1_o{k}.h5" for k in range(1, 7)]
-DERIVATIVE_COUNTS = range(1, 7)
+PHA_PATHS = [DATA_DIR / f"pha_r2048_d1_o{k}.h5" for k in range(6)]
+MAX_ORDERS = range(6)
 
 # %%
 # SSA reference: union mask plus per-RPO masks over the full trajectory.
@@ -102,24 +102,24 @@ attribution = np.array([_attribution(rpo) for rpo in pha_rpo_masks])
 
 # %%
 # Render: the effect (left) and its consequence (right).
-counts = list(DERIVATIVE_COUNTS)
+orders = list(MAX_ORDERS)
 figure, (ax_agreement, ax_attribution) = plt.subplots(1, 2, figsize=(13, 5))
 
-ax_agreement.plot(counts, precision, color="black", marker="o", label="Precision")
-ax_agreement.plot(counts, f1, color="0.45", marker="s", label="F1")
-ax_agreement.plot(counts, recall, color="0.7", marker="^", linestyle="--", label="Recall")
-ax_agreement.set_xlabel("Derivatives")
+ax_agreement.plot(orders, precision, color="black", marker="o", label="Precision")
+ax_agreement.plot(orders, f1, color="0.45", marker="s", label="F1")
+ax_agreement.plot(orders, recall, color="0.7", marker="^", linestyle="--", label="Recall")
+ax_agreement.set_xlabel("Max derivative order")
 ax_agreement.set_ylabel("Agreement with SSA mask")
 ax_agreement.set_title("Precision falls as orders are added")
-ax_agreement.set_xticks(counts)
+ax_agreement.set_xticks(orders)
 ax_agreement.set_ylim(bottom=0)
 ax_agreement.legend(fontsize="small")
 
-ax_attribution.plot(counts, attribution, color="black", marker="o")
-ax_attribution.set_xlabel("Derivatives")
+ax_attribution.plot(orders, attribution, color="black", marker="o")
+ax_attribution.set_xlabel("Max derivative order")
 ax_attribution.set_ylabel("Per-RPO attribution vs. SSA")
-ax_attribution.set_title("Correct-RPO attribution peaks at 3, then declines")
-ax_attribution.set_xticks(counts)
+ax_attribution.set_title("Correct-RPO attribution peaks at 2, then declines")
+ax_attribution.set_xticks(orders)
 
 plt.tight_layout()
 plt.show()

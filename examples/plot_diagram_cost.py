@@ -34,7 +34,7 @@ except NameError:
     REPO_ROOT = Path.cwd().parent
 DATA_DIR = REPO_ROOT / "examples" / "data"
 TRAJECTORY_PATH = DATA_DIR / "ssa_r2048.h5"
-PHA_PATHS = [DATA_DIR / f"pha_r2048_d1_o{derivatives}.h5" for derivatives in range(1, 7)]
+PHA_PATHS = [DATA_DIR / f"pha_r2048_d1_o{order}.h5" for order in range(6)]
 DERIVATIVE_ORDERS = range(6)
 RESOLUTIONS = (256, 512, 2048)
 REFERENCE_RESOLUTION = 2048
@@ -73,8 +73,8 @@ for resolution in RESOLUTIONS:
 # geometric auction in the number of pairs per diagram, reported by
 # `Kerber, Morozov and Nigmetov (2017) <https://doi.org/10.1145/3064175>`_.
 # Detection computes one Wasserstein matrix per order, so the predicted cost of
-# a run with ``k`` derivatives is the cumulative sum over orders, anchored to
-# the observed 0-derivative runtime.
+# a run with max order ``k`` is the cumulative sum over orders, anchored to
+# the observed order-0 runtime.
 observed_minutes = []
 for path in PHA_PATHS:
     metadata, _, _ = load_results(path)
@@ -96,7 +96,7 @@ for index, resolution in enumerate(RESOLUTIONS):
         linestyle=["-", "--", ":"][index % 3],
         label=f"resolution {resolution}",
     )
-ax_pairs.set_xlabel("Derivatives")
+ax_pairs.set_xlabel("Derivative order")
 ax_pairs.set_ylabel("Mean pairs per diagram")
 ax_pairs.set_title("Diagram size grows with derivative order")
 ax_pairs.set_ylim(bottom=0)
@@ -117,7 +117,7 @@ ax_cost.plot(
     linestyle="none",
     label="recorded runtime",
 )
-ax_cost.set_xlabel("Derivatives")
+ax_cost.set_xlabel("Max derivative order")
 ax_cost.set_ylabel("Detection runtime (minutes)")
 ax_cost.set_title("Cost follows diagram size")
 ax_cost.set_ylim(bottom=0)

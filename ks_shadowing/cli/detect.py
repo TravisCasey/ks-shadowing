@@ -15,7 +15,7 @@ DEFAULT_INITIAL_AMPLITUDE = 0.1
 DEFAULT_THRESHOLD_QUANTILE = 0.4
 DEFAULT_MIN_DURATION = 600
 DEFAULT_DELAY = 1
-DEFAULT_DERIVATIVES = 1
+DEFAULT_MAX_DERIVATIVE_ORDER = 0
 DEFAULT_N_JOBS = -1
 DEFAULT_RPO_FILE = Path("data/rpos_selected.npz")
 DEFAULT_OUTPUT_BY_METHOD = {
@@ -62,13 +62,13 @@ def build_parser() -> ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--derivatives",
+        "--max-derivative-order",
         type=int,
-        default=DEFAULT_DERIVATIVES,
+        default=DEFAULT_MAX_DERIVATIVE_ORDER,
         help=(
-            "Number of spatial-derivative orders included in PHA persistence "
-            "diagrams. 1 (default) means only the field itself; n > 1 "
-            "computes diagrams of orders 0..n-1 and averages their "
+            "Highest spatial-derivative order included in PHA persistence "
+            "diagrams. 0 (default) means only the field itself; k > 0 "
+            "computes diagrams of orders 0..k and averages their "
             "Wasserstein distances. Ignored for SSA."
         ),
     )
@@ -217,7 +217,7 @@ def main() -> None:
         native=arguments.native_rpos,
         threshold_quantile=threshold_quantile,
         delay=arguments.delay if method == "pha" else 1,
-        derivatives=arguments.derivatives if method == "pha" else 1,
+        max_derivative_order=arguments.max_derivative_order if method == "pha" else 0,
     )
 
     print(f"Saving results to {output_path}...")
@@ -249,7 +249,7 @@ def _detect_with_threshold(method, trajectory, rpos, arguments):
         rpos,
         threshold=arguments.threshold,
         delay=arguments.delay,
-        derivatives=arguments.derivatives,
+        max_derivative_order=arguments.max_derivative_order,
         **common_kwargs,
     )
 
@@ -271,7 +271,7 @@ def _detect_with_auto_threshold(method, trajectory, rpos, arguments):
         trajectory,
         rpos,
         delay=arguments.delay,
-        derivatives=arguments.derivatives,
+        max_derivative_order=arguments.max_derivative_order,
         **common_kwargs,
     )
 

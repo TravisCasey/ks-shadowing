@@ -68,7 +68,7 @@ for order, weighted in zip(DERIVATIVE_ORDERS, spectra, strict=True):
         weighted[1:-1],
         color=f"C{order}",
         marker=Line2D.filled_markers[order % len(Line2D.filled_markers)],
-        label=f"{order} derivatives",
+        label=f"order {order}",
     )
 ax_spectrum.axvline(HIGH_WAVENUMBER, color=CUTOFF_COLOR, linestyle="--", linewidth=1.0)
 ax_spectrum.set_yscale("log")
@@ -88,7 +88,7 @@ for order, fraction in zip(DERIVATIVE_ORDERS, high_fractions, strict=True):
         ha="center",
         fontsize="small",
     )
-ax_fraction.set_xlabel("Derivatives")
+ax_fraction.set_xlabel("Derivative order")
 ax_fraction.set_ylabel(f"Fraction of energy above $q = {HIGH_WAVENUMBER}$")
 ax_fraction.set_title("Energy pushed into modes the attractor barely uses")
 ax_fraction.set_ylim(bottom=0)

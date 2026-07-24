@@ -12,13 +12,14 @@ The continuous spatial symmetry along the periodic domain is quotiented out by
 the persistence representation, so the detection grid has no shift dimension.
 Optimal shifts are reconstructed post-hoc in :mod:`~ks_shadowing.pha.shifts`.
 
-Two orthogonal embedding stages thicken the comparison. ``derivatives``
-enriches snapshots spatially: persistence diagrams of the spatial-derivative
-fields of orders ``0..derivatives - 1`` (where order 0 is the field itself)
-are computed and the per-order Wasserstein distances are averaged into the
-``(timestep, phase)`` score. ``delay`` controls temporal aggregation: ``delay``
-consecutive Wasserstein distances along the diagonal of the per-RPO matrix are
-averaged. Both default to ``1`` (no embedding) and compose freely.
+Two orthogonal embedding stages thicken the comparison.
+``max_derivative_order`` enriches snapshots spatially: persistence diagrams of
+the spatial-derivative fields of orders ``0..max_derivative_order`` (where
+order 0 is the field itself) are computed and the per-order Wasserstein
+distances are averaged into the ``(timestep, phase)`` score. ``delay`` controls
+temporal aggregation: ``delay`` consecutive Wasserstein distances along the
+diagonal of the per-RPO matrix are averaged. ``max_derivative_order`` defaults
+to ``0`` and ``delay`` to ``1`` (no embedding); they compose freely.
 
 Wasserstein distances are computed via the
 `Hera <https://github.com/anigmetov/hera>`_ C++ library through custom batched
@@ -58,7 +59,7 @@ def detect(  # noqa: PLR0913
     threshold: float,
     *,
     delay: int = 1,
-    derivatives: int = 1,
+    max_derivative_order: int = 0,
     downsample: int = 1,
     native: bool = False,
     min_duration: int = 1,
@@ -91,12 +92,12 @@ def detect(  # noqa: PLR0913
         Time-delay embedding window size. Mean Wasserstein distance is taken
         across ``delay`` consecutive timesteps. ``1`` (default) applies no
         temporal embedding.
-    derivatives : int, optional
-        Number of spatial-derivative orders to include in the persistence-
-        diagram comparison. Persistence diagrams of orders
-        ``0..derivatives - 1`` are computed and the per-order Wasserstein
-        distances are averaged into the ``(timestep, phase)`` score. ``1``
-        (default) uses only the field itself.
+    max_derivative_order : int, optional
+        Highest spatial-derivative order to include in the persistence-diagram
+        comparison. Persistence diagrams of orders ``0..max_derivative_order``
+        are computed and the per-order Wasserstein distances are averaged into
+        the ``(timestep, phase)`` score. ``0`` (default) uses only the field
+        itself.
     downsample : int, optional
         Sampling stride used to build per-RPO trajectories via
         :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
@@ -126,19 +127,19 @@ def detect(  # noqa: PLR0913
     Raises
     ------
     ValueError
-        If ``delay`` or ``derivatives`` is less than 1.
+        If ``delay`` is less than 1 or ``max_derivative_order`` is negative.
     """
     if delay < 1:
         raise ValueError(f"delay must be at least 1, got {delay}")
-    if derivatives < 1:
-        raise ValueError(f"derivatives must be at least 1, got {derivatives}")
+    if max_derivative_order < 0:
+        raise ValueError(f"max_derivative_order must be non-negative, got {max_derivative_order}")
 
     trajectory_diagrams_per_order = [
         KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
-        for order in range(derivatives)
+        for order in range(max_derivative_order + 1)
     ]
     rpo_diagram_pairs = _compute_rpo_diagram_pairs(
-        rpos, trajectory.resolution, chunk_size, downsample, native, derivatives
+        rpos, trajectory.resolution, chunk_size, downsample, native, max_derivative_order
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -159,7 +160,7 @@ def compute_min_distances(  # noqa: PLR0913
     rpos: Sequence[RPO],
     *,
     delay: int = 1,
-    derivatives: int = 1,
+    max_derivative_order: int = 0,
     downsample: int = 1,
     native: bool = False,
     show_progress: bool = False,
@@ -186,12 +187,12 @@ def compute_min_distances(  # noqa: PLR0913
         Time-delay embedding window size. Mean Wasserstein distance is
         taken across ``delay`` consecutive timesteps. ``1`` (default)
         applies no temporal embedding.
-    derivatives : int, optional
-        Number of spatial-derivative orders to include in the persistence-
-        diagram comparison. Persistence diagrams of orders
-        ``0..derivatives - 1`` are computed and the per-order Wasserstein
-        distances are averaged into the ``(timestep, phase)`` score. ``1``
-        (default) uses only the field itself.
+    max_derivative_order : int, optional
+        Highest spatial-derivative order to include in the persistence-diagram
+        comparison. Persistence diagrams of orders ``0..max_derivative_order``
+        are computed and the per-order Wasserstein distances are averaged into
+        the ``(timestep, phase)`` score. ``0`` (default) uses only the field
+        itself.
     downsample : int, optional
         Sampling stride used to build per-RPO trajectories via
         :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
@@ -219,19 +220,19 @@ def compute_min_distances(  # noqa: PLR0913
     Raises
     ------
     ValueError
-        If ``delay`` or ``derivatives`` is less than 1.
+        If ``delay`` is less than 1 or ``max_derivative_order`` is negative.
     """
     if delay < 1:
         raise ValueError(f"delay must be at least 1, got {delay}")
-    if derivatives < 1:
-        raise ValueError(f"derivatives must be at least 1, got {derivatives}")
+    if max_derivative_order < 0:
+        raise ValueError(f"max_derivative_order must be non-negative, got {max_derivative_order}")
 
     trajectory_diagrams_per_order = [
         KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
-        for order in range(derivatives)
+        for order in range(max_derivative_order + 1)
     ]
     rpo_diagram_pairs = _compute_rpo_diagram_pairs(
-        rpos, trajectory.resolution, chunk_size, downsample, native, derivatives
+        rpos, trajectory.resolution, chunk_size, downsample, native, max_derivative_order
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -246,7 +247,7 @@ def auto_detect(  # noqa: PLR0913
     threshold_quantile: float = 0.4,
     *,
     delay: int = 1,
-    derivatives: int = 1,
+    max_derivative_order: int = 0,
     downsample: int = 1,
     native: bool = False,
     min_duration: int = 1,
@@ -277,12 +278,12 @@ def auto_detect(  # noqa: PLR0913
         Time-delay embedding window size. Mean Wasserstein distance is
         taken across ``delay`` consecutive timesteps. ``1`` (default)
         applies no temporal embedding.
-    derivatives : int, optional
-        Number of spatial-derivative orders to include in the persistence-
-        diagram comparison. Persistence diagrams of orders
-        ``0..derivatives - 1`` are computed and the per-order Wasserstein
-        distances are averaged into the ``(timestep, phase)`` score. ``1``
-        (default) uses only the field itself.
+    max_derivative_order : int, optional
+        Highest spatial-derivative order to include in the persistence-diagram
+        comparison. Persistence diagrams of orders ``0..max_derivative_order``
+        are computed and the per-order Wasserstein distances are averaged into
+        the ``(timestep, phase)`` score. ``0`` (default) uses only the field
+        itself.
     downsample : int, optional
         Sampling stride used to build per-RPO trajectories via
         :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
@@ -314,19 +315,19 @@ def auto_detect(  # noqa: PLR0913
     Raises
     ------
     ValueError
-        If ``delay`` or ``derivatives`` is less than 1.
+        If ``delay`` is less than 1 or ``max_derivative_order`` is negative.
     """
     if delay < 1:
         raise ValueError(f"delay must be at least 1, got {delay}")
-    if derivatives < 1:
-        raise ValueError(f"derivatives must be at least 1, got {derivatives}")
+    if max_derivative_order < 0:
+        raise ValueError(f"max_derivative_order must be non-negative, got {max_derivative_order}")
 
     trajectory_diagrams_per_order = [
         KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
-        for order in range(derivatives)
+        for order in range(max_derivative_order + 1)
     ]
     rpo_diagram_pairs = _compute_rpo_diagram_pairs(
-        rpos, trajectory.resolution, chunk_size, downsample, native, derivatives
+        rpos, trajectory.resolution, chunk_size, downsample, native, max_derivative_order
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -355,20 +356,20 @@ def _compute_rpo_diagram_pairs(  # noqa: PLR0913
     chunk_size: int,
     downsample: int,
     native: bool,
-    derivatives: int,
+    max_derivative_order: int,
 ) -> list[tuple[RPO, list[KSPersistenceTrajectory]]]:
     """Build per-RPO trajectories and their per-order persistence diagrams.
 
-    Each pair carries ``derivatives`` diagram sequences, one per derivative
-    order ``0..derivatives - 1``. Returned pairs are sorted by RPO period
-    descending so that the longest-running RPOs are dispatched first.
+    Each pair carries ``max_derivative_order + 1`` diagram sequences, one per
+    derivative order ``0..max_derivative_order``. Returned pairs are sorted by
+    RPO period descending so that the longest-running RPOs are dispatched first.
     """
     diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]] = []
     for rpo in rpos:
         rpo_trajectory = KSTrajectory.from_rpo(rpo, resolution, downsample, native)
         per_order = [
             KSPersistenceTrajectory.from_trajectory(rpo_trajectory, chunk_size, order=order)
-            for order in range(derivatives)
+            for order in range(max_derivative_order + 1)
         ]
         diagram_pairs.append((rpo, per_order))
 
@@ -459,13 +460,13 @@ def _stream_distance_matrices(
     distance_matrix : NDArray[np.float64], shape (num_timesteps - delay + 1, period)
         Embedded distance matrix for the current RPO.
     """
-    derivatives = len(trajectory_diagrams_per_order)
+    num_orders = len(trajectory_diagrams_per_order)
     flat_offsets_per_order = [diagrams._flatten() for diagrams in trajectory_diagrams_per_order]
     num_timesteps = len(trajectory_diagrams_per_order[0])
 
-    # Per-RPO cost scales as rpo.time_steps * derivatives (one Wasserstein
+    # Per-RPO cost scales as rpo.time_steps * num_orders (one Wasserstein
     # column per phase per order).
-    total_cost = sum(rpo.time_steps for rpo, _ in rpo_diagram_pairs) * derivatives
+    total_cost = sum(rpo.time_steps for rpo, _ in rpo_diagram_pairs) * num_orders
 
     if n_workers == 1:
         with tqdm(
@@ -478,7 +479,7 @@ def _stream_distance_matrices(
                 num_phases = len(phase_diagrams_per_order[0])
                 wasserstein_matrix = np.zeros((num_timesteps, num_phases), dtype=np.float64)
 
-                for order_index in range(derivatives):
+                for order_index in range(num_orders):
                     flat_diagrams, offsets = flat_offsets_per_order[order_index]
                     phase_diagrams = phase_diagrams_per_order[order_index]
 
@@ -500,7 +501,7 @@ def _stream_distance_matrices(
 
                     outer_bar.update(rpo.time_steps)
 
-                wasserstein_matrix /= derivatives
+                wasserstein_matrix /= num_orders
                 yield rpo.index, _apply_delay_embedding(wasserstein_matrix, delay)
         return
 
@@ -539,7 +540,7 @@ def _stream_distance_matrices(
                     num_timesteps=num_timesteps,
                     rpo_diagrams=tuple(
                         phase_diagrams_per_order[order_index].diagrams[phase_index]
-                        for order_index in range(derivatives)
+                        for order_index in range(num_orders)
                     ),
                 )
                 for phase_index in range(num_phases)
@@ -556,7 +557,7 @@ def _stream_distance_matrices(
                 wasserstein_matrix[:, phase_index] = column
 
             yield rpo.index, _apply_delay_embedding(wasserstein_matrix, delay)
-            outer_bar.update(rpo.time_steps * derivatives)
+            outer_bar.update(rpo.time_steps * num_orders)
 
 
 @dataclass(frozen=True, slots=True)
@@ -600,13 +601,13 @@ def _compute_wasserstein_column(
     reduction on the worker keeps cross-process bandwidth linear in
     ``num_timesteps``, not ``num_timesteps * len(diagrams_shm_names)``.
     """
-    derivatives = len(inputs.diagrams_shm_names)
+    num_orders = len(inputs.diagrams_shm_names)
     column = np.zeros(inputs.num_timesteps, dtype=np.float64)
 
     diagrams_shms = [SharedMemory(name=name) for name in inputs.diagrams_shm_names]
     offsets_shms = [SharedMemory(name=name) for name in inputs.offsets_shm_names]
     try:
-        for order_index in range(derivatives):
+        for order_index in range(num_orders):
             offsets = np.ndarray(
                 (inputs.num_timesteps + 1,),
                 dtype=np.int64,
@@ -626,7 +627,7 @@ def _compute_wasserstein_column(
         for shm in offsets_shms:
             shm.close()
 
-    column /= derivatives
+    column /= num_orders
     return inputs.phase_index, column
 
 

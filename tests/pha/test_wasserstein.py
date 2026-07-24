@@ -81,8 +81,9 @@ def test_order_average_before_min_matches_compute_min_distances(
     sample_initial_state: np.ndarray,
 ) -> None:
     """Averaging per-order Wasserstein matrices before the minimum over phases
-    and RPOs reproduces ``compute_min_distances`` at the same ``derivatives``."""
-    derivatives = 2
+    and RPOs reproduces ``compute_min_distances`` at the same
+    ``max_derivative_order``."""
+    max_derivative_order = 1
     downsample = 20
     trajectory = KSTrajectory.from_initial_state(
         sample_initial_state, dt=INTEGRATION_DT, num_timesteps=60, resolution=16
@@ -90,7 +91,7 @@ def test_order_average_before_min_matches_compute_min_distances(
 
     trajectory_diagrams = [
         KSPersistenceTrajectory.from_trajectory(trajectory, order=order)
-        for order in range(derivatives)
+        for order in range(max_derivative_order + 1)
     ]
 
     reduced = np.full(trajectory.num_timesteps, np.inf)
@@ -102,7 +103,7 @@ def test_order_average_before_min_matches_compute_min_distances(
                     trajectory_diagrams[order],
                     KSPersistenceTrajectory.from_trajectory(rpo_trajectory, order=order),
                 )
-                for order in range(derivatives)
+                for order in range(max_derivative_order + 1)
             ]
         )
         np.minimum(reduced, stacked.mean(axis=0).min(axis=1), out=reduced)
@@ -110,7 +111,7 @@ def test_order_average_before_min_matches_compute_min_distances(
     expected = pha.compute_min_distances(
         trajectory,
         small_rpos,
-        derivatives=derivatives,
+        max_derivative_order=max_derivative_order,
         downsample=downsample,
         n_jobs=1,
     )

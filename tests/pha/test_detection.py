@@ -105,11 +105,13 @@ def test_detect_native_mode(sample_initial_state: np.ndarray, small_rpos: list[R
 def test_derivatives_affects_min_distances(
     short_trajectory: KSTrajectory, small_rpos: list[RPO]
 ) -> None:
-    """``compute_min_distances`` at ``derivatives=2`` differs from
-    ``derivatives=1`` on a generic trajectory, confirming the derivatives
+    """``compute_min_distances`` at ``max_derivative_order=1`` differs from
+    ``max_derivative_order=0`` on a generic trajectory, confirming the
     kwarg is wired through the pipeline."""
     base = pha.compute_min_distances(short_trajectory, small_rpos, n_jobs=1)
-    enriched = pha.compute_min_distances(short_trajectory, small_rpos, derivatives=2, n_jobs=1)
+    enriched = pha.compute_min_distances(
+        short_trajectory, small_rpos, max_derivative_order=1, n_jobs=1
+    )
     assert base.shape == enriched.shape
     # Different derivative orders produce different Wasserstein scores
     # generically; equality would mean the kwarg is being ignored.

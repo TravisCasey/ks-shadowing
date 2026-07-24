@@ -26,7 +26,7 @@ try:
 except NameError:
     REPO_ROOT = Path.cwd().parent
 SSA_PATH = REPO_ROOT / "examples" / "data" / "ssa_r2048.h5"
-PHA_PATH = REPO_ROOT / "examples" / "data" / "pha_r2048_d8_o2.h5"
+PHA_PATH = REPO_ROOT / "examples" / "data" / "pha_r2048_d8_o1.h5"
 
 # %%
 # Load both result files and verify they share a trajectory.
@@ -50,7 +50,7 @@ ax.set_xlabel("SSA event length (timesteps)")
 ax.set_ylabel("PHA event length (timesteps)")
 ax.set_title(
     f"{len(matches)} matched pairs "
-    f"(PHA delay={pha_metadata.delay}, {pha_metadata.derivatives - 1} derivative)"
+    f"(PHA delay={pha_metadata.delay}, max order {pha_metadata.max_derivative_order})"
 )
 ax.set_xlim(left=0)
 ax.set_ylim(bottom=0)

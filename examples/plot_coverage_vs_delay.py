@@ -6,7 +6,7 @@ At each trajectory timestep, each detection method reports a binary shadowing
 flag (union across RPOs). ``F_agree`` is the fraction of timesteps where SSA and
 PHA report the same flag; ``F_disagree`` splits into ``F_ssa_only`` (SSA
 shadowing, PHA not) and ``F_pha_only`` (the reverse). All three sum to 1.
-Plotted against PHA ``delay``, with one curve per ``derivatives`` setting.
+Plotted against PHA ``delay``, with one curve per ``max_derivative_order`` setting.
 """
 
 import re
@@ -37,14 +37,14 @@ _, ssa_trajectory, ssa_events = load_results(SSA_PATH)
 ssa_mask = events_to_union_mask(ssa_events, ssa_trajectory.num_timesteps)
 
 # %%
-# For every PHA fixture, compute F_agree / F_ssa_only / F_pha_only and group by derivatives.
-by_derivatives: dict[int, list[tuple[int, float, float, float]]] = defaultdict(list)
+# For every PHA fixture, compute F_agree / F_ssa_only / F_pha_only and group by max order.
+by_max_order: dict[int, list[tuple[int, float, float, float]]] = defaultdict(list)
 for pha_path in sorted(DATA_DIR.glob("pha_r2048_d*_o*.h5")):
     match = PHA_PATTERN.match(pha_path.name)
     if match is None:
         continue
     delay = int(match.group(1))
-    derivatives = int(match.group(2))
+    max_order = int(match.group(2))
 
     _, pha_trajectory, pha_events = load_results(pha_path)
     assert_same_trajectory(ssa_trajectory, pha_trajectory)
@@ -53,22 +53,22 @@ for pha_path in sorted(DATA_DIR.glob("pha_r2048_d*_o*.h5")):
     f_agree = float((ssa_mask == pha_mask).mean())
     f_ssa_only = float((ssa_mask & ~pha_mask).mean())
     f_pha_only = float((~ssa_mask & pha_mask).mean())
-    by_derivatives[derivatives].append((delay, f_agree, f_ssa_only, f_pha_only))
+    by_max_order[max_order].append((delay, f_agree, f_ssa_only, f_pha_only))
 
 # %%
 # Render.
 figure, (ax_agree, ax_disagree) = plt.subplots(1, 2, figsize=(13, 5))
 
-for derivatives in sorted(by_derivatives):
-    rows = sorted(by_derivatives[derivatives])
+for max_order in sorted(by_max_order):
+    rows = sorted(by_max_order[max_order])
     delays = np.array([r[0] for r in rows])
     f_agree = np.array([r[1] for r in rows])
     f_ssa_only = np.array([r[2] for r in rows])
     f_pha_only = np.array([r[3] for r in rows])
 
-    color = f"C{derivatives - 1}"
-    marker = Line2D.filled_markers[(derivatives - 1) % len(Line2D.filled_markers)]
-    label = f"{derivatives - 1} derivatives"
+    color = f"C{max_order}"
+    marker = Line2D.filled_markers[max_order % len(Line2D.filled_markers)]
+    label = f"max order {max_order}"
     ax_agree.plot(delays, f_agree, marker=marker, color=color, label=label)
     ax_disagree.plot(
         delays,

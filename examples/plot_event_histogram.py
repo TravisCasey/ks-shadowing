@@ -25,7 +25,7 @@ except NameError:
     REPO_ROOT = Path.cwd().parent
 DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
-PHA_PATHS = [DATA_DIR / f"pha_r2048_d8_o{derivatives}.h5" for derivatives in (1, 2, 3)]
+PHA_PATHS = [DATA_DIR / f"pha_r2048_d8_o{order}.h5" for order in (0, 1, 2)]
 BIN_WIDTH_TIMESTEPS = 2
 
 # %%
@@ -58,9 +58,9 @@ for pha_metadata, pha_durations in pha_runs:
     ax.plot(
         bin_centers,
         pha_counts,
-        color=f"C{pha_metadata.derivatives - 1}",
+        color=f"C{pha_metadata.max_derivative_order}",
         label=(
-            f"PHA delay={pha_metadata.delay}, {pha_metadata.derivatives - 1} derivatives "
+            f"PHA delay={pha_metadata.delay}, max order {pha_metadata.max_derivative_order} "
             f"({len(pha_durations)} events)"
         ),
     )

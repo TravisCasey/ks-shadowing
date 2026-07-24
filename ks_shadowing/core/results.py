@@ -60,9 +60,9 @@ class DetectionMetadata:
     delay : int
         Time-delay embedding window size for PHA. ``1`` (default) means no
         temporal embedding. Recorded as ``1`` for SSA results.
-    derivatives : int
-        Number of spatial-derivative orders used for PHA. ``1`` (default) means
-        only the field itself. Recorded as ``1`` for SSA results.
+    max_derivative_order : int
+        Highest spatial-derivative order used for PHA. ``0`` (default) means
+        only the field itself. Recorded as ``0`` for SSA results.
     """
 
     detector_type: str
@@ -75,7 +75,7 @@ class DetectionMetadata:
     native: bool = False
     threshold_quantile: float | None = None
     delay: int = 1
-    derivatives: int = 1
+    max_derivative_order: int = 0
 
 
 def save_results(
@@ -132,7 +132,7 @@ def save_results(
         f.attrs["downsample"] = metadata.downsample
         f.attrs["native"] = metadata.native
         f.attrs["delay"] = metadata.delay
-        f.attrs["derivatives"] = metadata.derivatives
+        f.attrs["max_derivative_order"] = metadata.max_derivative_order
         f.attrs["trajectory_path"] = trajectory_path.name
         if metadata.threshold_quantile is not None:
             f.attrs["threshold_quantile"] = metadata.threshold_quantile
@@ -207,7 +207,9 @@ def load_results(
                 float(attrs["threshold_quantile"]) if "threshold_quantile" in attrs else None
             ),
             delay=int(attrs["delay"]) if "delay" in attrs else 1,
-            derivatives=int(attrs["derivatives"]) if "derivatives" in attrs else 1,
+            max_derivative_order=(
+                int(attrs["max_derivative_order"]) if "max_derivative_order" in attrs else 0
+            ),
         )
         trajectory_filename = str(attrs["trajectory_path"])
         event_records = f["events"][:]
