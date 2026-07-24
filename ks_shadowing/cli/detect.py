@@ -73,6 +73,16 @@ def build_parser() -> ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--rescale-orders",
+        action="store_true",
+        default=False,
+        help=(
+            "Divide each derivative order's Wasserstein matrix by a "
+            "per-order median scale before averaging across orders. "
+            "Default off. Ignored for SSA."
+        ),
+    )
+    parser.add_argument(
         "--downsample",
         type=int,
         default=1,
@@ -221,6 +231,12 @@ def main() -> None:
         threshold_quantile=threshold_quantile,
         delay=arguments.delay if method == "pha" else 1,
         max_derivative_order=arguments.max_derivative_order if method == "pha" else 0,
+        rescale_orders=arguments.rescale_orders if method == "pha" else False,
+        order_scales=(
+            tuple(float(x) for x in result.order_scales)
+            if result.order_scales is not None
+            else None
+        ),
     )
 
     print(f"Saving results to {output_path}...")
@@ -253,6 +269,7 @@ def _detect_with_threshold(method, trajectory, rpos, arguments):
         threshold=arguments.threshold,
         delay=arguments.delay,
         max_derivative_order=arguments.max_derivative_order,
+        rescale_orders=arguments.rescale_orders,
         **common_kwargs,
     )
 
@@ -275,6 +292,7 @@ def _detect_with_auto_threshold(method, trajectory, rpos, arguments):
         rpos,
         delay=arguments.delay,
         max_derivative_order=arguments.max_derivative_order,
+        rescale_orders=arguments.rescale_orders,
         **common_kwargs,
     )
 
