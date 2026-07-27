@@ -1,4 +1,4 @@
-r"""
+"""
 Per-order rescaling of the derivative sweep
 ===========================================
 
@@ -26,6 +26,7 @@ shows, without removing it.
 """
 
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -44,14 +45,20 @@ RAW_PATHS = [DATA_DIR / f"pha_r2048_d1_o{k}.h5" for k in range(6)]
 RESCALED_PATHS = [DATA_DIR / f"pha_r2048_d1_o{k}_rescaled.h5" for k in range(6)]
 MAX_ORDERS = range(6)
 
-# Raw sweep: dark shades, one per metric. Rescaled sweep: lighter shades of the
-# same three, so a sweep is identifiable by "how dark" independent of marker.
-RAW_PRECISION_COLOR = "black"
-RAW_F1_COLOR = "0.35"
-RAW_RECALL_COLOR = "0.55"
-RESCALED_PRECISION_COLOR = "0.6"
-RESCALED_F1_COLOR = "0.75"
-RESCALED_RECALL_COLOR = "0.85"
+plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
+# One fixed color and marker per agreement metric, shared with the saturation
+# figure (Tol bright palette). Sweeps are told apart by linestyle: raw solid
+# with filled markers, rescaled dashed with open markers.
+METRIC_STYLES: dict[str, dict[str, Any]] = {
+    "Precision": {"color": "#4477AA", "marker": "o"},
+    "F1": {"color": "#EE6677", "marker": "s"},
+    "Recall": {"color": "#CCBB44", "marker": "^"},
+}
+RESCALED_STYLE: dict[str, Any] = {
+    "linestyle": "--",
+    "markerfacecolor": "none",
+    "markeredgewidth": 0.8,
+}
 
 # %%
 # SSA reference: union mask plus per-RPO masks over the full trajectory.
@@ -118,61 +125,46 @@ raw_attribution = np.array([_attribution(rpo) for rpo in raw_rpo_masks])
 rescaled_attribution = np.array([_attribution(rpo) for rpo in rescaled_rpo_masks])
 
 # %%
-# Render: agreement (left), correct-RPO attribution (right).
+# Render: agreement curves (a), their rescaled-minus-raw difference (b), and
+# correct-RPO attribution (c). The difference panel carries the size of the
+# rescaling effect, which the near-coincident curves in (a) cannot show.
 orders = list(MAX_ORDERS)
-figure, (ax_agreement, ax_attribution) = plt.subplots(1, 2, figsize=(13, 5))
+figure, axes = plt.subplot_mosaic(
+    [["agreement"], ["difference"], ["attribution"]],
+    figsize=(3.4, 6.6),
+    height_ratios=(3, 2, 3),
+    sharex=True,
+)
 
-_LINE_KWARGS = {"linewidth": 1.3, "markersize": 5}
-ax_agreement.plot(orders, raw_precision, color=RAW_PRECISION_COLOR, marker="o", **_LINE_KWARGS)
-ax_agreement.plot(orders, raw_f1, color=RAW_F1_COLOR, marker="s", **_LINE_KWARGS)
-ax_agreement.plot(
-    orders, raw_recall, color=RAW_RECALL_COLOR, marker="^", linestyle="--", **_LINE_KWARGS
-)
-ax_agreement.plot(
-    orders, rescaled_precision, color=RESCALED_PRECISION_COLOR, marker="o", **_LINE_KWARGS
-)
-ax_agreement.plot(orders, rescaled_f1, color=RESCALED_F1_COLOR, marker="s", **_LINE_KWARGS)
-ax_agreement.plot(
-    orders,
-    rescaled_recall,
-    color=RESCALED_RECALL_COLOR,
-    marker="^",
-    linestyle="--",
-    **_LINE_KWARGS,
-)
-ax_agreement.set_xlabel("Max derivative order")
-ax_agreement.set_ylabel("Agreement with SSA mask")
-ax_agreement.set_title("Precision, F1, and recall track closely across sweeps")
-ax_agreement.set_xticks(orders)
-agreement_values = np.concatenate(
-    [raw_precision, raw_f1, raw_recall, rescaled_precision, rescaled_f1, rescaled_recall]
-)
-agreement_margin = 0.03 * (agreement_values.max() - agreement_values.min())
-ax_agreement.set_ylim(
-    agreement_values.min() - agreement_margin, agreement_values.max() + agreement_margin
-)
-metric_handles = [
-    Line2D([], [], color="0.3", marker="o", linestyle="-", label="Precision"),
-    Line2D([], [], color="0.3", marker="s", linestyle="-", label="F1"),
-    Line2D([], [], color="0.3", marker="^", linestyle="--", label="Recall"),
-]
+metrics = {
+    "Precision": (raw_precision, rescaled_precision),
+    "F1": (raw_f1, rescaled_f1),
+    "Recall": (raw_recall, rescaled_recall),
+}
+for name, (raw_values, rescaled_values) in metrics.items():
+    style = METRIC_STYLES[name]
+    axes["agreement"].plot(orders, raw_values, **style)
+    axes["agreement"].plot(orders, rescaled_values, **style, **RESCALED_STYLE)
+    axes["difference"].plot(orders, rescaled_values - raw_values, **style)
+axes["difference"].axhline(0, color="0.6", linewidth=0.6, zorder=0)
+
+axes["attribution"].plot(orders, raw_attribution, color="black", marker="o")
+axes["attribution"].plot(orders, rescaled_attribution, color="black", **RESCALED_STYLE, marker="o")
+
+axes["agreement"].set_title("(a)", loc="left")
+axes["agreement"].set_ylabel("Agreement with SSA mask")
+axes["difference"].set_title("(b)", loc="left")
+axes["difference"].set_ylabel("Rescaled $-$ raw")
+axes["attribution"].set_title("(c)", loc="left")
+axes["attribution"].set_ylabel("Per-RPO attribution vs. SSA")
+axes["attribution"].set_xlabel("Max derivative order")
+axes["attribution"].set_xticks(orders)
+
+metric_handles = [Line2D([], [], label=name, **style) for name, style in METRIC_STYLES.items()]
 sweep_handles = [
     Line2D([], [], color="black", linestyle="-", label="Raw"),
-    Line2D([], [], color="0.7", linestyle="-", label="Rescaled"),
+    Line2D([], [], color="black", linestyle="--", label="Rescaled"),
 ]
-metric_legend = ax_agreement.legend(
-    handles=metric_handles, loc="lower left", fontsize="x-small", title="Metric"
-)
-ax_agreement.add_artist(metric_legend)
-ax_agreement.legend(handles=sweep_handles, loc="lower right", fontsize="x-small", title="Sweep")
+figure.legend(handles=metric_handles + sweep_handles, loc="outside upper center", ncols=3)
 
-ax_attribution.plot(orders, raw_attribution, color="black", marker="o", label="Raw")
-ax_attribution.plot(orders, rescaled_attribution, color="0.45", marker="s", label="Rescaled")
-ax_attribution.set_xlabel("Max derivative order")
-ax_attribution.set_ylabel("Per-RPO attribution vs. SSA")
-ax_attribution.set_title("Rescaling slows the high-order decline")
-ax_attribution.set_xticks(orders)
-ax_attribution.legend(fontsize="small")
-
-plt.tight_layout()
 plt.show()

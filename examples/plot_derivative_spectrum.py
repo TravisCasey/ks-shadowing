@@ -7,7 +7,8 @@ PHA's derivative embedding computes persistence diagrams of
 ``q`` by :math:`(2 \pi q / L)^{k}`. The Kuramoto-Sivashinsky attractor at
 ``L = 22`` holds 99.98% of its energy below ``q = 8``, so each added order
 shifts the field the diagrams actually see toward modes the dynamics barely
-populate: by 5 derivatives, a quarter of the energy sits above that cutoff.
+populate: by 5 derivatives, a quarter of the energy sits at or above that
+cutoff.
 
 The state is stored as 17 complex Fourier modes with the constant and Nyquist
 modes identically zero, so the spectrum spans ``q = 1`` to ``q = 15`` and the
@@ -22,7 +23,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.lines import Line2D
+from matplotlib.ticker import PercentFormatter
 
 from ks_shadowing import DOMAIN_SIZE, load_results
 
@@ -38,6 +39,15 @@ HIGH_WAVENUMBER = 8
 # first few hundred rows; the spectrum before that is not representative.
 TRANSIENT_TIMESTEPS = 500
 CUTOFF_COLOR = "black"
+# Direct value labels for the largest fractions only; the lower orders are too
+# cramped near zero to annotate readably, and the axis scale covers them.
+ANNOTATED_ORDERS = (4, 5)
+
+plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
+# One fixed color and marker per derivative order, shared across the gallery
+# figures: viridis sampled light to dark with increasing order.
+ORDER_COLORS = plt.get_cmap("viridis")(np.linspace(0.78, 0.0, 6))
+ORDER_MARKERS = ("o", "s", "^", "v", "D", "P")
 
 # %%
 # Mean energy per Fourier mode on the attractor.
@@ -60,38 +70,40 @@ for order in DERIVATIVE_ORDERS:
 
 # %%
 # Render.
-figure, (ax_spectrum, ax_fraction) = plt.subplots(1, 2, figsize=(13, 5))
+figure, (ax_spectrum, ax_fraction) = plt.subplots(2, 1, figsize=(3.4, 4.6))
 
 for order, weighted in zip(DERIVATIVE_ORDERS, spectra, strict=True):
     ax_spectrum.plot(
         mode_indices[1:-1],
         weighted[1:-1],
-        color=f"C{order}",
-        marker=Line2D.filled_markers[order % len(Line2D.filled_markers)],
+        color=ORDER_COLORS[order],
+        marker=ORDER_MARKERS[order],
         label=f"order {order}",
     )
-ax_spectrum.axvline(HIGH_WAVENUMBER, color=CUTOFF_COLOR, linestyle="--", linewidth=1.0)
+ax_spectrum.axvline(HIGH_WAVENUMBER, color=CUTOFF_COLOR, linestyle="--", linewidth=0.8)
 ax_spectrum.set_yscale("log")
 ax_spectrum.set_ylim(bottom=1e-8)
+ax_spectrum.set_title("(a)", loc="left")
 ax_spectrum.set_xlabel("Fourier mode index $q$")
 ax_spectrum.set_ylabel("Fraction of energy")
-ax_spectrum.set_title("Energy distribution after differentiation")
-ax_spectrum.legend(fontsize="small")
+figure.legend(loc="outside upper center", ncols=3)
 
 ax_fraction.plot(list(DERIVATIVE_ORDERS), high_fractions, color=CUTOFF_COLOR, marker="o")
 for order, fraction in zip(DERIVATIVE_ORDERS, high_fractions, strict=True):
+    if order not in ANNOTATED_ORDERS:
+        continue
     ax_fraction.annotate(
-        f"{fraction:.2%}",
+        f"{fraction:.0%}",
         xy=(order, fraction),
-        xytext=(0, 8),
+        xytext=(-6, 4),
         textcoords="offset points",
-        ha="center",
-        fontsize="small",
+        ha="right",
     )
+ax_fraction.yaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=0))
+ax_fraction.set_title("(b)", loc="left")
 ax_fraction.set_xlabel("Derivative order")
-ax_fraction.set_ylabel(f"Fraction of energy above $q = {HIGH_WAVENUMBER}$")
-ax_fraction.set_title("Energy pushed into modes the attractor barely uses")
+ax_fraction.set_ylabel(rf"Energy at $q \geq {HIGH_WAVENUMBER}$")
 ax_fraction.set_ylim(bottom=0)
+ax_fraction.set_xticks(list(DERIVATIVE_ORDERS))
 
-plt.tight_layout()
 plt.show()

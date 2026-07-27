@@ -1,4 +1,4 @@
-r"""
+"""
 Two ingredients behind the derivative saturation
 ================================================
 
@@ -10,7 +10,7 @@ disjoint trajectory windows, computed live from the public API at resolution 256
 shortest-period RPOs are used, and only two windows -- enough to show the shape
 while keeping the phase count and runtime low.
 
-Left panel: scale. Differentiating a field multiplies Fourier mode ``q`` by
+Panel (a): scale. Differentiating a field multiplies Fourier mode ``q`` by
 ``(i q)^order``, so each added order inflates the Wasserstein magnitude it
 produces. Across these windows the per-order scale grows roughly fivefold from
 order 0 to order 5. PHA averages the per-order matrices with *equal* weight, so
@@ -19,7 +19,7 @@ high-order run is effectively dominated by its largest order. That is a
 statement about the averaging step, not a literal detection vote but it is
 exactly the kind of scale imbalance that would let extra orders stop helping.
 
-Right panel: redundancy. The high orders are also measuring nearly the same
+Panel (b): redundancy. The high orders are also measuring nearly the same
 thing. Rank-correlating each order's isolated per-timestep distance across the
 pooled windows, orders 3-5 line up almost perfectly with one another (Spearman
 around 0.85) while order 0 stands apart (around 0.3 against the rest). So the
@@ -32,6 +32,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.typing import NDArray
 
 from ks_shadowing import KSTrajectory, load_results, load_rpos
 from ks_shadowing.pha import KSPersistenceTrajectory, wasserstein_matrix
@@ -49,6 +50,8 @@ NUM_RPOS = 2  # the two shortest-period RPOs (72, 79 phases)
 NUM_ORDERS = 6
 # Spearman cells above this are light (viridis) and need dark annotation text.
 LIGHT_CELL = 0.6
+
+plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 
 # %%
 # Build the per-order RPO diagrams once, at the same sampling the committed
@@ -70,12 +73,12 @@ rpo_diagrams = [
 ]
 
 # %%
-# Per (window, order): the Wasserstein scale (median of the full matrix) and the
+# Per (window, RPO, order): the Wasserstein scale (median of the full matrix) and the
 # isolated per-timestep distance (min over phases, then over RPOs). The reduction
 # order matters -- min over phases first, then over RPOs -- so it matches how
 # detection collapses one order's matrix.
 scale_samples: list[list[float]] = [[] for _ in range(NUM_ORDERS)]
-isolated_columns: list[list[np.ndarray]] = [[] for _ in range(NUM_ORDERS)]
+isolated_columns: list[list[NDArray[np.float64]]] = [[] for _ in range(NUM_ORDERS)]
 for start in WINDOW_STARTS:
     window = KSTrajectory(
         modes=trajectory[start : start + WINDOW_TIMESTEPS].modes,
@@ -101,42 +104,36 @@ ranked = np.argsort(np.argsort(isolated, axis=1), axis=1)
 spearman = np.corrcoef(ranked)  # (6, 6)
 
 # %%
-# Render: scale dominance (left) and inter-order redundancy (right).
+# Render: scale dominance (a) and inter-order redundancy (b). The relative
+# scale and the vote share are the same curve up to a constant (both normalize
+# ``scales``), so the annotation reports the share rather than a second line.
 orders = list(range(NUM_ORDERS))
-figure, (ax_scale, ax_redundancy) = plt.subplots(1, 2, figsize=(13, 5))
+figure, (ax_scale, ax_redundancy) = plt.subplots(2, 1, figsize=(3.4, 5.6))
 
-# The relative scale and the vote share are the same curve up to a constant
-# (both normalize ``scales``), so plot it once and let the right axis re-read it
-# as a share of the unweighted mean rather than drawing a redundant second line.
 ax_scale.plot(orders, relative, color="black", marker="o")
+ax_scale.set_title("(a)", loc="left")
 ax_scale.set_xlabel("Derivative order")
-ax_scale.set_ylabel("Wasserstein scale (relative to order 0)")
-ax_scale.set_title("Differentiation inflates the high orders (~5x)")
+ax_scale.set_ylabel("Wasserstein scale\n(relative to order 0)")
 ax_scale.set_xticks(orders)
 ax_scale.set_ylim(bottom=0)
 ax_scale.annotate(
     f"order 5: {vote_share[5]:.0%} of the mean",
     xy=(5, relative[5]),
-    xytext=(-8, 4),
+    xytext=(-8, 0),
     textcoords="offset points",
     ha="right",
-    fontsize="small",
+    va="center",
 )
 
-share_per_unit = scales[0] / scales.sum()  # relative-scale -> vote-share conversion
-ax_share = ax_scale.twinx()
-low, high = ax_scale.get_ylim()
-ax_share.set_ylim(low * share_per_unit, high * share_per_unit)
-ax_share.set_ylabel("Share of the unweighted mean of scales")
-
 image = ax_redundancy.imshow(spearman, cmap="viridis", vmin=0.0, vmax=1.0)
+ax_redundancy.set_title("(b)", loc="left")
 ax_redundancy.set_xticks(orders)
 ax_redundancy.set_yticks(orders)
 ax_redundancy.set_xlabel("Derivative order")
 ax_redundancy.set_ylabel("Derivative order")
-ax_redundancy.set_title("High orders measure nearly the same thing")
+# The matrix is symmetric; annotate the lower triangle only.
 for row in orders:
-    for column in orders:
+    for column in range(row + 1):
         value = spearman[row, column]
         ax_redundancy.text(
             column,
@@ -145,9 +142,8 @@ for row in orders:
             ha="center",
             va="center",
             color="black" if value > LIGHT_CELL else "white",
-            fontsize="small",
+            fontsize=6,
         )
 figure.colorbar(image, ax=ax_redundancy, label="Spearman correlation")
 
-plt.tight_layout()
 plt.show()

@@ -27,11 +27,13 @@ except NameError:
     REPO_ROOT = Path.cwd().parent
 RESULT_PATH = REPO_ROOT / "examples" / "data" / "ssa_r2048.h5"
 RPO_PATH = REPO_ROOT / "data" / "rpos_selected.npz"
-CONTEXT_FRACTION = 1.8
+CONTEXT_FRACTION = 2.1
+
+plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 
 # %%
 # Load the fixture and pick the best event.
-metadata, trajectory, events = load_results(RESULT_PATH)
+_, trajectory, events = load_results(RESULT_PATH)
 event = select_event_by_rank(events)
 rpo = load_rpos(RPO_PATH)[event.rpo_index]
 
@@ -50,42 +52,36 @@ dt = trajectory.dt
 times = np.arange(plot_start, plot_end) * dt
 relative_times = (np.arange(plot_start, plot_end) - event.start_timestep) * dt
 space = np.linspace(0, DOMAIN_SIZE, trajectory.resolution, endpoint=False)
-vmin = float(min(trajectory_physical.min(), aligned_rpo.min()))
-vmax = float(max(trajectory_physical.max(), aligned_rpo.max()))
+# Symmetric limits keep the diverging colormap's white at u = 0.
+vmax = float(max(np.abs(trajectory_physical).max(), np.abs(aligned_rpo).max()))
 
 # %%
-# Render.
-figure, axes = plt.subplots(2, 1, figsize=(12, 7))
+# Render. The trajectory panel keeps absolute time; the RPO panel uses
+# event-relative time. Both spans are equal, so the panels stay aligned.
+figure, axes = plt.subplots(2, 1, figsize=(7.0, 4.6), sharey=True)
 
-top = axes[0].pcolormesh(
-    times,
-    space,
-    trajectory_physical.T,
-    shading="auto",
-    cmap="RdBu_r",
-    vmin=vmin,
-    vmax=vmax,
+panels = (
+    ("(a)", "Chaotic trajectory", trajectory_physical, times, event.start_timestep * dt),
+    ("(b)", f"RPO {event.rpo_index} (aligned)", aligned_rpo, relative_times, 0.0),
 )
+for ax, (tag, name, field, x_values, event_start) in zip(axes, panels, strict=True):
+    mesh = ax.pcolormesh(
+        x_values,
+        space,
+        field.T,
+        shading="auto",
+        cmap="RdBu_r",
+        vmin=-vmax,
+        vmax=vmax,
+        rasterized=True,
+    )
+    ax.set_title(tag, loc="left")
+    ax.set_title(name)
+    ax.set_ylabel("$x$")
+    ax.axvline(event_start, color="black", linestyle="--", linewidth=1.0)
+    ax.axvline(event_start + duration * dt, color="black", linestyle="--", linewidth=1.0)
 axes[0].set_xlabel("Time")
-axes[0].set_title("Chaotic trajectory")
-axes[0].axvline(event.start_timestep * dt, color="black", linestyle="--", linewidth=1.5)
-axes[0].axvline(event.end_timestep * dt, color="black", linestyle="--", linewidth=1.5)
-figure.colorbar(top, ax=axes[0], label="u(x, t)")
-
-bottom = axes[1].pcolormesh(
-    relative_times,
-    space,
-    aligned_rpo.T,
-    shading="auto",
-    cmap="RdBu_r",
-    vmin=vmin,
-    vmax=vmax,
-)
 axes[1].set_xlabel("Time relative to event start")
-axes[1].set_title(f"RPO {event.rpo_index} (aligned)")
-axes[1].axvline(0, color="black", linestyle="--", linewidth=1.5)
-axes[1].axvline(duration * dt, color="black", linestyle="--", linewidth=1.5)
-figure.colorbar(bottom, ax=axes[1], label="u(x, t)")
+figure.colorbar(mesh, ax=axes, label="$u(x, t)$", pad=0.02)
 
-plt.tight_layout()
 plt.show()

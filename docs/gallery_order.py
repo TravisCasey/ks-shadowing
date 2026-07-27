@@ -9,13 +9,12 @@ EXAMPLE_ORDER = [
     "plot_shadowing_event.py",
     "plot_event_histogram.py",
     "plot_matched_events.py",
-    "plot_coverage_vs_delay.py",
+    "plot_coverage_vs_embedding.py",
     "plot_derivative_spectrum.py",
     "plot_derivative_saturation.py",
     "plot_derivative_mechanism.py",
     "plot_derivative_rescaling.py",
-    "plot_runtime_vs_resolution.py",
-    "plot_diagram_cost.py",
+    "plot_computational_cost.py",
 ]
 
 

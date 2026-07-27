@@ -2,9 +2,13 @@
 Event duration distributions: SSA vs. PHA
 ==========================================
 
-Per-bin event counts for SSA and three PHA derivative orders at delay 8 on the
-same trajectory, plotted as lines over a shared duration grid in
-trajectory-time units.
+Per-bin event counts for SSA and three PHA settings on the same trajectory --
+no embedding (delay 1, max order 0), the delay-axis setting (delay 8, max
+order 0), and the derivative-axis setting (delay 1, max order 2) -- plotted
+as step histograms over a shared duration grid in trajectory-time units. The
+log count axis keeps both the peak and the long tail readable. The two
+embedding axes are shown independently: delays greater than 1 are used only
+at max order 0.
 """
 
 from pathlib import Path
@@ -25,8 +29,17 @@ except NameError:
     REPO_ROOT = Path.cwd().parent
 DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
-PHA_PATHS = [DATA_DIR / f"pha_r2048_d8_o{order}.h5" for order in (0, 1, 2)]
+PHA_PATHS = [
+    DATA_DIR / "pha_r2048_d1_o0.h5",  # no embedding
+    DATA_DIR / "pha_r2048_d8_o0.h5",  # delay axis
+    DATA_DIR / "pha_r2048_d1_o2.h5",  # derivative axis
+]
 BIN_WIDTH_TIMESTEPS = 2
+
+plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
+# One fixed color per derivative order, shared across the gallery figures:
+# viridis sampled light to dark with increasing order. SSA is always black.
+ORDER_COLORS = plt.get_cmap("viridis")(np.linspace(0.78, 0.0, 6))
 
 # %%
 # Load all result files and convert event lengths to durations in time units.
@@ -50,26 +63,43 @@ bin_centers = 0.5 * (bins[:-1] + bins[1:])
 
 # %%
 # Render.
-figure, ax = plt.subplots(figsize=(10, 5))
+figure, ax = plt.subplots(figsize=(3.4, 2.4))
 ssa_counts, _ = np.histogram(ssa_durations, bins=bins)
-ax.plot(bin_centers, ssa_counts, color="black", label=f"SSA ({len(ssa_durations)} events)")
+ax.plot(
+    bin_centers,
+    ssa_counts,
+    drawstyle="steps-mid",
+    color="black",
+    label=f"SSA ({len(ssa_durations)} events)",
+)
 for pha_metadata, pha_durations in pha_runs:
     pha_counts, _ = np.histogram(pha_durations, bins=bins)
+    max_order = pha_metadata.max_derivative_order
+    # The unembedded baseline takes the recessive dashed style: dashes vanish
+    # where curves overlap, and the baseline is the one curve that stands
+    # clear of the cluster. The delay-8 run shares the baseline's max-order-0
+    # color and the max-order-2 run shares its delay-1 setting, so the dashes
+    # are what separate the baseline from each; the embedded runs stay solid.
+    if pha_metadata.delay > 1:
+        setting = f"delay {pha_metadata.delay}"
+        linestyle = "-"
+    elif max_order > 0:
+        setting = f"max order {max_order}"
+        linestyle = "-"
+    else:
+        setting = "no embedding"
+        linestyle = "--"
     ax.plot(
         bin_centers,
         pha_counts,
-        color=f"C{pha_metadata.max_derivative_order}",
-        label=(
-            f"PHA delay={pha_metadata.delay}, max order {pha_metadata.max_derivative_order} "
-            f"({len(pha_durations)} events)"
-        ),
+        drawstyle="steps-mid",
+        color=ORDER_COLORS[max_order],
+        linestyle=linestyle,
+        label=f"PHA, {setting} ({len(pha_durations)} events)",
     )
-ax.set_xlim(bins[0], bins[-1])
+ax.set_yscale("log")
+ax.set_xlim(0, bins[-1])
 ax.set_xlabel("Event duration (time units)")
 ax.set_ylabel("Number of events")
-ax.set_title("Shadowing event duration")
-ax.set_xlim(left=0)
-ax.set_ylim(bottom=0)
 ax.legend()
-plt.tight_layout()
 plt.show()
