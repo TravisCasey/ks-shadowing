@@ -13,6 +13,7 @@ EXAMPLE_ORDER = [
     "plot_derivative_spectrum.py",
     "plot_derivative_saturation.py",
     "plot_derivative_mechanism.py",
+    "plot_derivative_rescaling.py",
     "plot_runtime_vs_resolution.py",
     "plot_diagram_cost.py",
 ]
