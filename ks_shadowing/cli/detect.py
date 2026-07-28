@@ -2,60 +2,107 @@
 
 import time
 from argparse import ArgumentParser, Namespace
+from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
 
-from ks_shadowing import load_rpos, pha, ssa
+from ks_shadowing import RPO, DetectionResult, load_rpos, pha, ssa
 from ks_shadowing.core import DEFAULT_CHUNK_SIZE, INTEGRATION_DT
 from ks_shadowing.core.results import DetectionMetadata, save_results
 from ks_shadowing.core.trajectory import KSTrajectory
 
-DEFAULT_INITIAL_AMPLITUDE = 0.1
-DEFAULT_THRESHOLD_QUANTILE = 0.4
-DEFAULT_MIN_DURATION = 600
-DEFAULT_DELAY = 1
-DEFAULT_MAX_DERIVATIVE_ORDER = 0
-DEFAULT_N_JOBS = -1
-DEFAULT_RPO_FILE = Path("data/rpos_selected.npz")
-MIN_TRAJECTORY_STEPS = 2
-DEFAULT_OUTPUT_BY_METHOD = {
+_DEFAULT_INITIAL_AMPLITUDE = 0.1
+_DEFAULT_THRESHOLD_QUANTILE = 0.4
+_DEFAULT_MIN_DURATION = 600
+_DEFAULT_DELAY = 1
+_DEFAULT_MAX_DERIVATIVE_ORDER = 0
+_DEFAULT_N_JOBS = -1
+_DEFAULT_RPO_FILE = Path("data/rpos_selected.npz")
+_MIN_TRAJECTORY_STEPS = 2
+_DEFAULT_OUTPUT_BY_METHOD = {
     "ssa": Path("results/shadowing_results_ssa.h5"),
     "pha": Path("results/shadowing_results_pha.h5"),
 }
 
 
-def build_parser() -> ArgumentParser:
+def _build_parser() -> ArgumentParser:
     """Build CLI parser for ``ks-detect``."""
     parser = ArgumentParser(description="Detect shadowing events with SSA or PHA.")
-    parser.add_argument("--method", choices=["ssa", "pha"], required=True)
-    parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument("--rpo-file", type=Path, default=DEFAULT_RPO_FILE)
+    parser.add_argument("--version", action="version", version=version("ks-shadowing"))
+    parser.add_argument(
+        "--method", choices=["ssa", "pha"], required=True, help="Detection algorithm to run."
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Result HDF5 path. Defaults to results/shadowing_results_<method>.h5.",
+    )
+    parser.add_argument(
+        "--rpo-file",
+        type=Path,
+        default=_DEFAULT_RPO_FILE,
+        help="RPO data file (.npz). Default path is relative to the repository root.",
+    )
 
-    parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--trajectory-steps", type=int, default=None)
-    parser.add_argument("--resolution", type=int, required=True)
-    parser.add_argument("--initial-amplitude", type=float, default=None)
+    parser.add_argument(
+        "--seed", type=int, default=None, help="RNG seed for the random initial condition."
+    )
+    parser.add_argument(
+        "--trajectory-steps",
+        type=int,
+        default=None,
+        help=(
+            "Number of integration steps; the saved trajectory has one additional row for the "
+            "initial condition. Total integration cost scales with --downsample. Required "
+            "unless --trajectory is given."
+        ),
+    )
+    parser.add_argument(
+        "--resolution", type=int, required=True, help="Spatial grid resolution for detection."
+    )
+    parser.add_argument(
+        "--initial-amplitude",
+        type=float,
+        default=None,
+        help="Amplitude of the random initial Fourier modes. Default 0.1.",
+    )
     parser.add_argument(
         "--trajectory",
         type=Path,
         default=None,
         help=(
-            "Use an existing trajectory file (written by ks-detect on a "
-            "prior run). Mutually exclusive with --seed, "
-            "--trajectory-steps, --initial-amplitude, --downsample. "
-            "--resolution is still required. Must live in the same "
-            "directory as --output."
+            "Reuse an existing trajectory file instead of generating one; must be a sibling "
+            "of --output. Sampling is inferred from the file, so it is mutually exclusive "
+            "with --seed, --trajectory-steps, --initial-amplitude, --downsample."
         ),
     )
 
-    parser.add_argument("--threshold-quantile", type=float, default=None)
-    parser.add_argument("--threshold", type=float, default=None)
-    parser.add_argument("--min-duration", type=int, default=DEFAULT_MIN_DURATION)
+    parser.add_argument(
+        "--threshold-quantile",
+        type=float,
+        default=None,
+        help="Quantile of the per-timestep min-distance distribution used as the "
+        "detection threshold. Mutually exclusive with --threshold. Default 0.4.",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Manual distance threshold for detection. Mutually exclusive with "
+        "--threshold-quantile.",
+    )
+    parser.add_argument(
+        "--min-duration",
+        type=int,
+        default=_DEFAULT_MIN_DURATION,
+        help="Minimum event duration in timesteps for a detected path to be kept.",
+    )
     parser.add_argument(
         "--delay",
         type=int,
-        default=DEFAULT_DELAY,
+        default=_DEFAULT_DELAY,
         help=(
             "PHA time-delay embedding window. 1 (default) means no temporal "
             "embedding; the per-RPO Wasserstein matrix is used directly. "
@@ -66,7 +113,7 @@ def build_parser() -> ArgumentParser:
     parser.add_argument(
         "--max-derivative-order",
         type=int,
-        default=DEFAULT_MAX_DERIVATIVE_ORDER,
+        default=_DEFAULT_MAX_DERIVATIVE_ORDER,
         help=(
             "Highest spatial-derivative order included in PHA persistence "
             "diagrams. 0 (default) means only the field itself; k > 0 "
@@ -77,41 +124,42 @@ def build_parser() -> ArgumentParser:
     parser.add_argument(
         "--rescale-orders",
         action="store_true",
-        default=False,
-        help=(
-            "Divide each derivative order's Wasserstein matrix by a "
-            "per-order median scale before averaging across orders. "
-            "Default off. Ignored for SSA."
-        ),
+        help="Divide each PHA derivative order's Wasserstein matrix by a "
+        "per-order median scale before averaging across orders. Ignored for SSA.",
     )
     parser.add_argument(
         "--downsample",
         type=int,
         default=None,
-        help=(
-            "Sampling stride for a newly generated trajectory: integrated "
-            "at the native timestep and stored every Nth row, giving an "
-            "effective dt of N times the native dt. Mutually exclusive "
-            "with --trajectory (detection infers the per-RPO stride from "
-            "the loaded trajectory's dt). Default 1."
-        ),
+        help="Sampling stride for a newly generated trajectory: sets the saved "
+        "sampling stride, so stored dt = 0.02 * N. Generation-only; mutually "
+        "exclusive with --trajectory, which infers sampling from the file.",
     )
     parser.add_argument(
         "--native-rpos",
         action="store_true",
-        default=False,
-        help=(
-            "When the inferred downsample is > 1, build per-RPO "
-            "trajectories by visiting every native RPO timestep through "
-            "the stride permutation instead of subsampling at the same "
-            "stride. Trades increased per-RPO work for fuller sampling of "
-            "each orbit. Default off."
-        ),
+        help="Build per-RPO trajectories by visiting every native RPO timestep "
+        "through the stride permutation instead of subsampling, for fuller "
+        "per-orbit coverage at higher per-RPO cost. No effect unless the "
+        "sampling stride exceeds 1 (the two variants coincide at stride 1).",
     )
 
-    parser.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
-    parser.add_argument("--n-jobs", type=int, default=DEFAULT_N_JOBS)
-    parser.add_argument("--show-progress", action="store_true", default=False)
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=DEFAULT_CHUNK_SIZE,
+        help="Rows of trajectory processed per memory-bounded chunk.",
+    )
+    parser.add_argument(
+        "--n-jobs",
+        type=int,
+        default=_DEFAULT_N_JOBS,
+        help="Worker processes for per-RPO detection. -1 (default) uses all CPUs; "
+        "1 runs in-process with no multiprocessing.",
+    )
+    parser.add_argument(
+        "--show-progress", action="store_true", help="Display a cost-weighted progress bar."
+    )
     return parser
 
 
@@ -123,8 +171,11 @@ def _validate_arguments(parser: ArgumentParser, arguments: Namespace) -> None:
         parser.error("--delay must be >= 1.")
     if arguments.max_derivative_order < 0:
         parser.error("--max-derivative-order must be >= 0.")
-    if arguments.trajectory_steps is not None and arguments.trajectory_steps < MIN_TRAJECTORY_STEPS:
-        parser.error(f"--trajectory-steps must be >= {MIN_TRAJECTORY_STEPS}.")
+    if (
+        arguments.trajectory_steps is not None
+        and arguments.trajectory_steps < _MIN_TRAJECTORY_STEPS
+    ):
+        parser.error(f"--trajectory-steps must be >= {_MIN_TRAJECTORY_STEPS}.")
     if arguments.threshold is not None and arguments.threshold < 0:
         parser.error("--threshold must be >= 0.")
     if arguments.threshold_quantile is not None and not (0 < arguments.threshold_quantile < 1):
@@ -175,7 +226,7 @@ def _resolve_trajectory(arguments: Namespace, output_path: Path) -> tuple[KSTraj
     initial_amplitude = (
         arguments.initial_amplitude
         if arguments.initial_amplitude is not None
-        else DEFAULT_INITIAL_AMPLITUDE
+        else _DEFAULT_INITIAL_AMPLITUDE
     )
     rng = np.random.default_rng(arguments.seed)
     print("Generating trajectory...")
@@ -210,14 +261,14 @@ def _resolve_trajectory(arguments: Namespace, output_path: Path) -> tuple[KSTraj
 
 def main() -> None:
     """Run CLI detection and save events."""
-    parser = build_parser()
+    parser = _build_parser()
     arguments = parser.parse_args()
     _validate_arguments(parser, arguments)
     if arguments.threshold_quantile is None:
-        arguments.threshold_quantile = DEFAULT_THRESHOLD_QUANTILE
+        arguments.threshold_quantile = _DEFAULT_THRESHOLD_QUANTILE
 
     method = arguments.method
-    output_path = arguments.output or DEFAULT_OUTPUT_BY_METHOD[method]
+    output_path = arguments.output or _DEFAULT_OUTPUT_BY_METHOD[method]
 
     trajectory, trajectory_path = _resolve_trajectory(arguments, output_path)
     downsample = round(trajectory.dt / INTEGRATION_DT)
@@ -279,7 +330,9 @@ def main() -> None:
         )
 
 
-def _detect_with_threshold(method, trajectory, rpos, arguments):
+def _detect_with_threshold(
+    method: str, trajectory: KSTrajectory, rpos: list[RPO], arguments: Namespace
+) -> DetectionResult:
     """Dispatch :func:`ssa.detect` or :func:`pha.detect` for a manual threshold."""
     common_kwargs = {
         "min_duration": arguments.min_duration,
@@ -301,7 +354,9 @@ def _detect_with_threshold(method, trajectory, rpos, arguments):
     )
 
 
-def _detect_with_auto_threshold(method, trajectory, rpos, arguments):
+def _detect_with_auto_threshold(
+    method: str, trajectory: KSTrajectory, rpos: list[RPO], arguments: Namespace
+) -> DetectionResult:
     """Dispatch :func:`ssa.auto_detect` or :func:`pha.auto_detect`."""
     common_kwargs = {
         "threshold_quantile": arguments.threshold_quantile,
