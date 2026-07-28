@@ -2,20 +2,12 @@
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
 from ks_shadowing import ssa
 from ks_shadowing.core import INTEGRATION_DT
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.trajectory import KSTrajectory
-
-
-@pytest.fixture
-def short_trajectory(small_rpos: list[RPO]) -> KSTrajectory:
-    """200-timestep trajectory at resolution 32 seeded from the shortest RPO."""
-    rpo = small_rpos[0]
-    return KSTrajectory.from_initial_state(
-        rpo.modes, dt=INTEGRATION_DT, num_timesteps=200, resolution=32
-    )
 
 
 def test_detect_deterministic_and_sorted(
@@ -60,7 +52,9 @@ def test_auto_detect_threshold_matches_quantile(
     assert threshold == pytest.approx(expected_threshold)
 
 
-def test_detect_native_mode(sample_initial_state: np.ndarray, small_rpos: list[RPO]) -> None:
+def test_detect_native_mode(
+    sample_initial_state: NDArray[np.complex128], small_rpos: list[RPO]
+) -> None:
     """``ssa.detect`` runs end-to-end at ``native=True`` with an inferred
     downsample of 2 and returns events with valid bounds, ``shifts`` shape,
     and ``shifts`` dtype."""
@@ -81,6 +75,7 @@ def test_detect_native_mode(sample_initial_state: np.ndarray, small_rpos: list[R
         n_jobs=1,
     ).events
 
+    assert events
     for event in events:
         assert 0 <= event.start_timestep < event.end_timestep <= len(trajectory)
         assert event.shifts.shape == (event.end_timestep - event.start_timestep,)

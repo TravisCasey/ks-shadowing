@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 from scipy import fft
 
 from ks_shadowing.core.integrator import DOMAIN_SIZE, ksint
@@ -21,7 +22,7 @@ def test_post_init_rejects_invalid_modes() -> None:
         KSTrajectory(modes=np.zeros((5, 10), dtype=np.complex128), dt=0.02, resolution=64)
 
 
-def test_from_initial_state_length(sample_initial_state: np.ndarray) -> None:
+def test_from_initial_state_length(sample_initial_state: NDArray[np.complex128]) -> None:
     """``from_initial_state(num_timesteps=N)`` produces a trajectory of
     length ``N``."""
     result = KSTrajectory.from_initial_state(
@@ -52,9 +53,9 @@ def test_to_comoving_round_trip(random_trajectory: KSTrajectory) -> None:
 
 
 def test_to_comoving_start_time_offset(random_trajectory: KSTrajectory) -> None:
-    """``to_comoving(d, start_time=t)`` on ``traj[k:]`` (where ``t`` is the
-    time at row ``k``) matches rows ``[k:]`` of ``to_comoving(d, start_time=0)``
-    on the full trajectory."""
+    """``to_comoving(d, start_time=t)`` on ``random_trajectory[k:]`` (where
+    ``t`` is the time at row ``k``) matches rows ``[k:]`` of
+    ``to_comoving(d, start_time=0)`` on the full trajectory."""
     drift = 0.27
     offset = 5
     offset_time = offset * random_trajectory.dt
@@ -204,7 +205,9 @@ def test_from_rpo_slices_when_not_native(rpo_data_path: Path) -> None:
     downsample = 23
 
     native_only = KSTrajectory.from_rpo(rpo, resolution=64, downsample=1, native=False)
-    paper = KSTrajectory.from_rpo(rpo, resolution=64, downsample=downsample, native=False)
+    sliced = KSTrajectory.from_rpo(rpo, resolution=64, downsample=downsample, native=False)
 
-    assert paper.dt == pytest.approx(rpo.dt * downsample)
-    np.testing.assert_allclose(paper.modes, native_only.modes[::downsample], rtol=1e-12, atol=1e-12)
+    assert sliced.dt == pytest.approx(rpo.dt * downsample)
+    np.testing.assert_allclose(
+        sliced.modes, native_only.modes[::downsample], rtol=1e-12, atol=1e-12
+    )

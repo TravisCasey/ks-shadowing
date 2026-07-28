@@ -1,7 +1,6 @@
 """Regression tests for the public plotting helpers.
 
-The lean-test policy applies (see CLAUDE.md). Covers
-``events_to_union_mask`` boundary semantics and the lab-frame
+Covers ``events_to_union_mask`` boundary semantics and the lab-frame
 alignment produced by ``align_rpo_to_window``.
 """
 
@@ -54,14 +53,13 @@ def test_events_to_union_mask_empty_list() -> None:
 
 def test_align_rpo_matches_trajectory_at_best_event() -> None:
     """At the lowest-mean-distance event in the SSA fixture, each row of
-    the aligned RPO panel must be close (in L2 per row) to the
-    corresponding trajectory row. The 3 * mean_distance bound is a loose
-    sanity check that catches sign errors and native-phase mapping bugs;
-    any correctly aligned panel falls well under it.
-    """
+    the aligned RPO panel is close (in L2 per row) to the corresponding
+    trajectory row."""
     pytest.skip("fixture predates the sign-convention fix")
     if not FIXTURE_SSA.exists():
         pytest.skip(f"SSA fixture not present: {FIXTURE_SSA}")
+    if not RPO_FILE.exists():
+        pytest.skip(f"RPO data file not found: {RPO_FILE}")
 
     _, trajectory, events = load_results(FIXTURE_SSA)
     assert events, "fixture must contain at least one event"
@@ -78,6 +76,8 @@ def test_align_rpo_matches_trajectory_at_best_event() -> None:
     per_row_l2 = np.linalg.norm(aligned - trajectory_physical, axis=1)
     mean_l2 = float(per_row_l2.mean())
 
+    # 3 * mean_distance is a loose sanity check that catches sign errors and
+    # native-phase mapping bugs; a correctly aligned panel falls well under it.
     assert mean_l2 <= 3.0 * event.mean_distance, (
         f"mean per-row L2 {mean_l2:.4f} exceeds 3 * mean_distance "
         f"({event.mean_distance:.4f}); alignment is likely off (sign error "

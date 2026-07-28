@@ -1,6 +1,10 @@
 """Tests for the 3D SSA pathfinding pipeline."""
 
+from collections.abc import Iterator
+
 import numpy as np
+import pytest
+from numpy.typing import NDArray
 
 from ks_shadowing.ssa.pathfinding import (
     _CLOSE_PASS_DTYPE,
@@ -9,19 +13,17 @@ from ks_shadowing.ssa.pathfinding import (
 )
 
 
-def _gen(*phase_distances: np.ndarray):
+def _distances_from_phases(
+    *phase_distances: NDArray[np.float64],
+) -> Iterator[tuple[int, int, NDArray[np.float64]]]:
     """Yield ``(phase, chunk_start, dist_sq)`` from per-phase distance arrays.
 
     Each element of ``phase_distances`` becomes one phase; entries are
     squared internally to match the format expected by
     ``_extract_shadowing_events``.
     """
-
-    def generate():
-        for phase, distances in enumerate(phase_distances):
-            yield phase, 0, distances**2
-
-    return generate()
+    for phase, distances in enumerate(phase_distances):
+        yield phase, 0, distances**2
 
 
 def test_26_connected_with_wraparounds() -> None:
@@ -36,7 +38,7 @@ def test_26_connected_with_wraparounds() -> None:
     filler = np.full((1, resolution), 10.0)
 
     events = _extract_shadowing_events(
-        _gen(dist_p0, filler, filler, dist_p3),
+        _distances_from_phases(dist_p0, filler, filler, dist_p3),
         rpo_index=0,
         period=4,
         resolution=resolution,
@@ -49,7 +51,7 @@ def test_26_connected_with_wraparounds() -> None:
     dist_shift[0, 0] = 0.5
     dist_shift[0, resolution - 1] = 0.5
     events = _extract_shadowing_events(
-        _gen(dist_shift),
+        _distances_from_phases(dist_shift),
         rpo_index=0,
         period=1,
         resolution=resolution,
@@ -69,7 +71,7 @@ def test_constant_shift_path_and_statistics() -> None:
         dtype=np.float64,
     )
     events = _extract_shadowing_events(
-        _gen(distances),
+        _distances_from_phases(distances),
         rpo_index=7,
         period=3,
         resolution=resolution,
@@ -83,7 +85,7 @@ def test_constant_shift_path_and_statistics() -> None:
     assert event.end_timestep == 3
     assert event.start_phase == 0
     np.testing.assert_array_equal(event.shifts, [1, 1, 1])
-    assert event.mean_distance == (0.2 + 0.8 + 0.4) / 3
+    assert event.mean_distance == pytest.approx((0.2 + 0.8 + 0.4) / 3)
     assert event.min_distance == 0.2
 
 
@@ -94,7 +96,7 @@ def test_shift_drift_and_break() -> None:
     valid = np.full((3, resolution), 10.0)
     valid[0, 2] = valid[1, 3] = valid[2, 4] = 0.5
     events = _extract_shadowing_events(
-        _gen(valid),
+        _distances_from_phases(valid),
         rpo_index=0,
         period=1,
         resolution=resolution,
@@ -107,7 +109,7 @@ def test_shift_drift_and_break() -> None:
     broken = np.full((3, resolution), 10.0)
     broken[0, 2] = broken[1, 5] = broken[2, 6] = 0.5
     events = _extract_shadowing_events(
-        _gen(broken),
+        _distances_from_phases(broken),
         rpo_index=0,
         period=1,
         resolution=resolution,
@@ -122,7 +124,7 @@ def test_min_duration_filter() -> None:
     distances = np.array([[0.5], [0.5]], dtype=np.float64)
     assert (
         _extract_shadowing_events(
-            _gen(distances),
+            _distances_from_phases(distances),
             rpo_index=0,
             period=1,
             resolution=1,
@@ -132,7 +134,7 @@ def test_min_duration_filter() -> None:
         == []
     )
     events = _extract_shadowing_events(
-        _gen(distances),
+        _distances_from_phases(distances),
         rpo_index=0,
         period=1,
         resolution=1,

@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
 from ks_shadowing.core.integrator import (
     _complex_to_interleaved,
@@ -10,7 +11,7 @@ from ks_shadowing.core.integrator import (
 )
 
 
-def test_complex_interleaved_roundtrip(sample_initial_state: np.ndarray) -> None:
+def test_complex_interleaved_roundtrip(sample_initial_state: NDArray[np.complex128]) -> None:
     """Complex -> interleaved -> complex preserves the input."""
     interleaved = _complex_to_interleaved(sample_initial_state)
     recovered = _interleaved_to_complex(interleaved)
@@ -18,7 +19,7 @@ def test_complex_interleaved_roundtrip(sample_initial_state: np.ndarray) -> None
 
 
 def test_ksint_deterministic_and_preserves_initial(
-    sample_initial_state: np.ndarray,
+    sample_initial_state: NDArray[np.complex128],
 ) -> None:
     """``ksint`` returns ``(steps + 1, 17)`` complex128 with row 0 equal to
     ``initial_state``, and is deterministic across calls."""
@@ -40,7 +41,7 @@ def test_ksint_invalid_shape_raises() -> None:
         ksint(np.zeros((17, 2), dtype=np.complex128), dt=0.25, steps=10)
 
 
-def test_ksint_save_interval(sample_initial_state: np.ndarray) -> None:
+def test_ksint_save_interval(sample_initial_state: NDArray[np.complex128]) -> None:
     """Integrating with ``save_interval=k`` returns every kth row of the
     full-resolution integration."""
     dt = 0.02

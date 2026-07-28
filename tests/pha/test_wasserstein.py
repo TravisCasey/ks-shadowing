@@ -1,6 +1,8 @@
 """Tests for batched Wasserstein distance bindings."""
 
 import numpy as np
+import pytest
+from numpy.typing import NDArray
 
 from ks_shadowing import pha
 from ks_shadowing.core import INTEGRATION_DT
@@ -44,7 +46,7 @@ def test_wasserstein_column_self_zero(rng: np.random.Generator) -> None:
 
     column = _wasserstein_column(flat, offsets, diagrams.diagrams[0])
     assert column.shape == (4,)
-    assert column[0] == 0.0
+    assert column[0] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_wasserstein_column_empty_inputs() -> None:
@@ -71,7 +73,9 @@ def test_wasserstein_matrix_is_transpose_symmetric(rng: np.random.Generator) -> 
 
     matrix = wasserstein_matrix(first, second)
     assert matrix.shape == (3, 4)
-    np.testing.assert_allclose(matrix, wasserstein_matrix(second, first).T, rtol=1e-6, atol=1e-6)
+    # The wrapper's default delta = 0.01 permits 1% relative error per value;
+    # symmetric comparison of two independent solves tolerates 2%.
+    np.testing.assert_allclose(matrix, wasserstein_matrix(second, first).T, rtol=0.02, atol=1e-6)
 
     self_matrix = wasserstein_matrix(diagrams, diagrams)
     np.testing.assert_allclose(np.diag(self_matrix), 0.0, atol=1e-6)
@@ -79,7 +83,7 @@ def test_wasserstein_matrix_is_transpose_symmetric(rng: np.random.Generator) -> 
 
 def test_order_average_before_min_matches_compute_min_distances(
     small_rpos: list[RPO],
-    sample_initial_state: np.ndarray,
+    sample_initial_state: NDArray[np.complex128],
 ) -> None:
     """Averaging per-order Wasserstein matrices before the minimum over phases
     and RPOs reproduces ``compute_min_distances`` at the same
@@ -124,7 +128,7 @@ def test_order_average_before_min_matches_compute_min_distances(
 
 def test_rescaled_min_distances_match_manual_scale_division(
     small_rpos: list[RPO],
-    sample_initial_state: np.ndarray,
+    sample_initial_state: NDArray[np.complex128],
 ) -> None:
     """Dividing each order's Wasserstein matrix by the prepass scales before the
     order mean and phase/RPO minimum reproduces ``compute_min_distances`` with

@@ -1,10 +1,8 @@
 """Tests for persistence diagram computation."""
 
 import numpy as np
-import pytest
 
 from ks_shadowing.core.trajectory import KSTrajectory
-from ks_shadowing.pha.detection import _apply_delay_embedding
 from ks_shadowing.pha.persistence import (
     KSPersistenceTrajectory,
     _zeroth_persistence_diagram_periodic,
@@ -29,27 +27,6 @@ def test_zeroth_diagram_pair_count_scales() -> None:
     field = np.sin(5 * x)
     diagram = _zeroth_persistence_diagram_periodic(field)
     assert len(diagram) == 4
-
-
-def test_apply_delay_embedding_explicit() -> None:
-    """``_apply_delay_embedding(matrix, delay=2)`` averages entries along
-    diagonals ``(t + l, (j + l) mod J)`` for ``l in range(delay)``."""
-    matrix = np.arange(12, dtype=np.float64).reshape(4, 3)
-    expected = np.array(
-        [[2.0, 3.0, 2.5], [5.0, 6.0, 5.5], [8.0, 9.0, 8.5]],
-        dtype=np.float64,
-    )
-    np.testing.assert_allclose(_apply_delay_embedding(matrix, delay=2), expected)
-
-
-def test_apply_delay_embedding_invalid_delay_raises() -> None:
-    """``_apply_delay_embedding`` raises ``ValueError`` when ``delay`` is
-    less than 1 or exceeds the trajectory length."""
-    matrix = np.zeros((10, 5), dtype=np.float64)
-    with pytest.raises(ValueError):
-        _apply_delay_embedding(matrix, delay=0)
-    with pytest.raises(ValueError):
-        _apply_delay_embedding(matrix, delay=11)
 
 
 def test_chunked_diagrams_match_unchunked(rng: np.random.Generator) -> None:

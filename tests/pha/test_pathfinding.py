@@ -1,11 +1,15 @@
 """Tests for the 2D PHA pathfinding pipeline."""
 
 import numpy as np
+import pytest
+from numpy.typing import NDArray
 
 from ks_shadowing.pha.pathfinding import _extract_shadowing_events
 
 
-def _diagonal_matrix(num_timesteps: int, period: int, distances: list[float]) -> np.ndarray:
+def _diagonal_matrix(
+    num_timesteps: int, period: int, distances: list[float]
+) -> NDArray[np.float64]:
     """Return an ``(num_timesteps, period)`` matrix filled with 10.0 except
     for a diagonal of ``distances`` starting at ``(0, 0)``."""
     matrix = np.full((num_timesteps, period), 10.0, dtype=np.float64)
@@ -43,7 +47,7 @@ def test_diagonal_event_statistics() -> None:
     assert event.start_timestep == 0
     assert event.end_timestep == 3
     assert event.start_phase == 0
-    assert event.mean_distance == (0.2 + 0.8 + 0.4) / 3
+    assert event.mean_distance == pytest.approx((0.2 + 0.8 + 0.4) / 3)
     assert event.min_distance == 0.2
     assert len(event.shifts) == 3
     np.testing.assert_array_equal(event.shifts, np.zeros(3, dtype=np.int32))
