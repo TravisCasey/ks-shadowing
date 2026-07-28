@@ -1,6 +1,7 @@
 """RPO Shadowing detection for Kuramoto-Sivashinsky system."""
 
 from ks_shadowing import pha, ssa
+from ks_shadowing.core import INTEGRATION_DT
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.integrator import DOMAIN_SIZE
 from ks_shadowing.core.matching import MatchedEvent, match_events
@@ -18,11 +19,6 @@ from ks_shadowing.plotting import (
     events_to_union_mask,
     select_event_by_rank,
 )
-
-# Keep in sync with ks_shadowing.core.INTEGRATION_DT.
-INTEGRATION_DT: float = 0.02
-"""Native ETDRK4 integration timestep. See
-:data:`ks_shadowing.core.INTEGRATION_DT` for full documentation."""
 
 __all__: list[str] = [
     "DOMAIN_SIZE",

@@ -392,19 +392,10 @@ def _min_distances_from_pairs(
             disable=not show_progress,
         ) as bar:
             for rpo, rpo_trajectory in rpo_trajectory_pairs:
-                min_distances_sq = np.full(len(trajectory), np.inf, dtype=np.float64)
-                for _, chunk_start, dist_sq in _compute_distances_sq(
+                rpo_min_distances = _min_distances_for_rpo(
                     trajectory, rpo, rpo_trajectory, chunk_size
-                ):
-                    chunk_end = chunk_start + dist_sq.shape[0]
-                    phase_min_sq = np.min(dist_sq, axis=1)
-                    np.minimum(
-                        min_distances_sq[chunk_start:chunk_end],
-                        phase_min_sq,
-                        out=min_distances_sq[chunk_start:chunk_end],
-                    )
-
-                np.minimum(min_distances, np.sqrt(min_distances_sq), out=min_distances)
+                )
+                np.minimum(min_distances, rpo_min_distances, out=min_distances)
                 bar.update(cost_by_rpo_index[rpo.index])
     else:
         with (
@@ -599,18 +590,41 @@ def _min_distances_single_rpo(
         inputs.trajectory_dt,
         inputs.resolution,
     ) as trajectory:
-        min_distances_sq = np.full(len(trajectory), np.inf, dtype=np.float64)
-        for _, chunk_start, dist_sq in _compute_distances_sq(
+        rpo_min_distances = _min_distances_for_rpo(
             trajectory, inputs.rpo, inputs.rpo_trajectory, inputs.chunk_size
-        ):
-            chunk_end = chunk_start + dist_sq.shape[0]
-            phase_min_sq = np.min(dist_sq, axis=1)
-            np.minimum(
-                min_distances_sq[chunk_start:chunk_end],
-                phase_min_sq,
-                out=min_distances_sq[chunk_start:chunk_end],
-            )
-    return inputs.rpo.index, np.sqrt(min_distances_sq)
+        )
+    return inputs.rpo.index, rpo_min_distances
+
+
+def _min_distances_for_rpo(
+    trajectory: KSTrajectory,
+    rpo: RPO,
+    rpo_trajectory: KSTrajectory,
+    chunk_size: int,
+) -> NDArray[np.float64]:
+    """Compute per-timestep minimum :math:`L_2` distances to a single RPO.
+
+    Streams squared distances via ``_compute_distances_sq`` and reduces each
+    chunk to a per-timestep minimum over all phases and shifts.
+
+    Returns
+    -------
+    NDArray[np.float64], shape (num_timesteps,)
+        Minimum :math:`L_2` distance to this RPO at each trajectory timestep.
+    """
+    min_distances_sq = np.full(len(trajectory), np.inf, dtype=np.float64)
+    for _, chunk_start, dist_sq in _compute_distances_sq(
+        trajectory, rpo, rpo_trajectory, chunk_size
+    ):
+        chunk_end = chunk_start + dist_sq.shape[0]
+        phase_min_sq = np.min(dist_sq, axis=1)
+        np.minimum(
+            min_distances_sq[chunk_start:chunk_end],
+            phase_min_sq,
+            out=min_distances_sq[chunk_start:chunk_end],
+        )
+
+    return np.sqrt(min_distances_sq)
 
 
 def _compute_distances_sq(

@@ -93,14 +93,14 @@ def load_rpos(path: str | os.PathLike[str]) -> list[RPO]:
     list[RPO]
         All RPOs in the file, ordered by index.
     """
-    data = np.load(path)
-    return [
-        RPO(
-            index=rpo_index,
-            modes=data["fourier_coeffs"][rpo_index].astype(np.complex128),
-            period=float(data["periods"][rpo_index]),
-            time_steps=int(data["time_steps"][rpo_index]),
-            spatial_shift=float(data["spatial_shifts"][rpo_index]),
-        )
-        for rpo_index in range(len(data["periods"]))
-    ]
+    with np.load(path) as data:
+        return [
+            RPO(
+                index=rpo_index,
+                modes=data["fourier_coeffs"][rpo_index].astype(np.complex128),
+                period=float(data["periods"][rpo_index]),
+                time_steps=int(data["time_steps"][rpo_index]),
+                spatial_shift=float(data["spatial_shifts"][rpo_index]),
+            )
+            for rpo_index in range(len(data["periods"]))
+        ]

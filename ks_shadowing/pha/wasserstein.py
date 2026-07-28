@@ -3,6 +3,7 @@ Wasserstein distance computation.
 """
 
 from ctypes import CDLL, POINTER, c_double, c_int, c_int64
+from functools import cache
 from pathlib import Path
 
 import numpy as np
@@ -10,28 +11,27 @@ from numpy.typing import NDArray
 
 from ks_shadowing.pha.persistence import KSPersistenceTrajectory
 
-_lib: CDLL | None = None
 
-
+@cache
 def _get_lib() -> CDLL:
-    """Return the cached library singleton."""
-    global _lib  # noqa: PLW0603
-    if _lib is None:
-        so_path = Path(__file__).parent / "libhera2py.so"
-        _lib = CDLL(str(so_path))
+    """Load and return the cached Wasserstein shared object."""
+    so_path = Path(__file__).parent / "libhera2py.so"
+    if not so_path.exists():
+        raise RuntimeError(f"Could not find libhera2py.so at {so_path}.")
+    lib = CDLL(str(so_path))
 
-        _lib.wasserstein_column_c.argtypes = [
-            POINTER(c_double),  # dgms_a
-            POINTER(c_int64),  #  offsets_a
-            c_int64,  #           num_a
-            POINTER(c_double),  # dgm_b
-            c_int64,  #           length_b
-            c_double,  #          delta
-            POINTER(c_double),  # out
-        ]
-        _lib.wasserstein_column_c.restype = c_int
+    lib.wasserstein_column_c.argtypes = [
+        POINTER(c_double),  # dgms_a
+        POINTER(c_int64),  #  offsets_a
+        c_int64,  #           num_a
+        POINTER(c_double),  # dgm_b
+        c_int64,  #           length_b
+        c_double,  #          delta
+        POINTER(c_double),  # out
+    ]
+    lib.wasserstein_column_c.restype = c_int
 
-    return _lib
+    return lib
 
 
 def _wasserstein_column(

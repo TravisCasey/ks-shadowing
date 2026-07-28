@@ -12,6 +12,8 @@ from numpy.typing import NDArray
 def _get_lib() -> CDLL:
     """Load and return the cached union-find shared object."""
     so_path = Path(__file__).parent / "libunionfind2py.so"
+    if not so_path.exists():
+        raise RuntimeError(f"Could not find libunionfind2py.so at {so_path}.")
     lib = CDLL(str(so_path))
 
     lib.connected_components_c.argtypes = [

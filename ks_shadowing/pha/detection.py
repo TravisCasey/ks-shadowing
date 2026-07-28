@@ -138,6 +138,62 @@ def _compute_order_scales(
     return scales
 
 
+def _prepare_diagrams_and_scales(  # noqa: PLR0913
+    trajectory: KSTrajectory,
+    rpos: Sequence[RPO],
+    delay: int,
+    max_derivative_order: int,
+    rescale_orders: bool,
+    native: bool,
+    chunk_size: int,
+) -> tuple[
+    list[KSPersistenceTrajectory],
+    list[tuple[RPO, list[KSPersistenceTrajectory]]],
+    NDArray[np.float64],
+]:
+    """Validate embedding parameters and build diagrams and per-order scales.
+
+    Shared setup for :func:`detect`, :func:`compute_min_distances`, and
+    :func:`auto_detect`: computes per-order trajectory persistence diagrams,
+    builds per-RPO diagram pairs via ``_compute_rpo_diagram_pairs``, and
+    estimates per-order rescaling scales when ``rescale_orders`` is set
+    (``np.ones`` otherwise).
+
+    Raises
+    ------
+    ValueError
+        If ``delay`` is less than 1, ``delay`` exceeds the trajectory length,
+        ``max_derivative_order`` is negative, or ``trajectory.dt`` is not an
+        integer multiple of some RPO's native timestep.
+    """
+    if delay < 1:
+        raise ValueError(f"delay must be at least 1, got {delay}")
+    if delay > len(trajectory):
+        raise ValueError(f"delay ({delay}) exceeds trajectory length ({len(trajectory)})")
+    if max_derivative_order < 0:
+        raise ValueError(f"max_derivative_order must be non-negative, got {max_derivative_order}")
+
+    trajectory_diagrams_per_order = [
+        KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
+        for order in range(max_derivative_order + 1)
+    ]
+    rpo_diagram_pairs = _compute_rpo_diagram_pairs(
+        rpos,
+        trajectory.resolution,
+        chunk_size,
+        native,
+        max_derivative_order,
+        trajectory.dt,
+    )
+
+    if rescale_orders:
+        order_scales = _compute_order_scales(trajectory_diagrams_per_order, rpo_diagram_pairs)
+    else:
+        order_scales = np.ones(max_derivative_order + 1, dtype=np.float64)
+
+    return trajectory_diagrams_per_order, rpo_diagram_pairs, order_scales
+
+
 def detect(  # noqa: PLR0913
     trajectory: KSTrajectory,
     rpos: Sequence[RPO],
@@ -223,31 +279,11 @@ def detect(  # noqa: PLR0913
     """
     if threshold < 0:
         raise ValueError(f"threshold must be non-negative, got {threshold}")
-    if delay < 1:
-        raise ValueError(f"delay must be at least 1, got {delay}")
-    if delay > len(trajectory):
-        raise ValueError(f"delay ({delay}) exceeds trajectory length ({len(trajectory)})")
-    if max_derivative_order < 0:
-        raise ValueError(f"max_derivative_order must be non-negative, got {max_derivative_order}")
 
-    trajectory_diagrams_per_order = [
-        KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
-        for order in range(max_derivative_order + 1)
-    ]
-    rpo_diagram_pairs = _compute_rpo_diagram_pairs(
-        rpos,
-        trajectory.resolution,
-        chunk_size,
-        native,
-        max_derivative_order,
-        trajectory.dt,
+    trajectory_diagrams_per_order, rpo_diagram_pairs, order_scales = _prepare_diagrams_and_scales(
+        trajectory, rpos, delay, max_derivative_order, rescale_orders, native, chunk_size
     )
     n_workers = _resolve_n_jobs(n_jobs)
-
-    if rescale_orders:
-        order_scales = _compute_order_scales(trajectory_diagrams_per_order, rpo_diagram_pairs)
-    else:
-        order_scales = np.ones(max_derivative_order + 1, dtype=np.float64)
 
     events = _detect_from_diagrams(
         trajectory_diagrams_per_order,
@@ -339,31 +375,10 @@ def compute_min_distances(  # noqa: PLR0913
         ``max_derivative_order`` is negative, or ``trajectory.dt`` is not an
         integer multiple of some RPO's native timestep.
     """
-    if delay < 1:
-        raise ValueError(f"delay must be at least 1, got {delay}")
-    if delay > len(trajectory):
-        raise ValueError(f"delay ({delay}) exceeds trajectory length ({len(trajectory)})")
-    if max_derivative_order < 0:
-        raise ValueError(f"max_derivative_order must be non-negative, got {max_derivative_order}")
-
-    trajectory_diagrams_per_order = [
-        KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
-        for order in range(max_derivative_order + 1)
-    ]
-    rpo_diagram_pairs = _compute_rpo_diagram_pairs(
-        rpos,
-        trajectory.resolution,
-        chunk_size,
-        native,
-        max_derivative_order,
-        trajectory.dt,
+    trajectory_diagrams_per_order, rpo_diagram_pairs, order_scales = _prepare_diagrams_and_scales(
+        trajectory, rpos, delay, max_derivative_order, rescale_orders, native, chunk_size
     )
     n_workers = _resolve_n_jobs(n_jobs)
-
-    if rescale_orders:
-        order_scales = _compute_order_scales(trajectory_diagrams_per_order, rpo_diagram_pairs)
-    else:
-        order_scales = np.ones(max_derivative_order + 1, dtype=np.float64)
 
     return _min_distances_from_diagrams(
         trajectory_diagrams_per_order,
@@ -455,31 +470,10 @@ def auto_detect(  # noqa: PLR0913
         ``max_derivative_order`` is negative, or ``trajectory.dt`` is not an
         integer multiple of some RPO's native timestep.
     """
-    if delay < 1:
-        raise ValueError(f"delay must be at least 1, got {delay}")
-    if delay > len(trajectory):
-        raise ValueError(f"delay ({delay}) exceeds trajectory length ({len(trajectory)})")
-    if max_derivative_order < 0:
-        raise ValueError(f"max_derivative_order must be non-negative, got {max_derivative_order}")
-
-    trajectory_diagrams_per_order = [
-        KSPersistenceTrajectory.from_trajectory(trajectory, chunk_size, order=order)
-        for order in range(max_derivative_order + 1)
-    ]
-    rpo_diagram_pairs = _compute_rpo_diagram_pairs(
-        rpos,
-        trajectory.resolution,
-        chunk_size,
-        native,
-        max_derivative_order,
-        trajectory.dt,
+    trajectory_diagrams_per_order, rpo_diagram_pairs, order_scales = _prepare_diagrams_and_scales(
+        trajectory, rpos, delay, max_derivative_order, rescale_orders, native, chunk_size
     )
     n_workers = _resolve_n_jobs(n_jobs)
-
-    if rescale_orders:
-        order_scales = _compute_order_scales(trajectory_diagrams_per_order, rpo_diagram_pairs)
-    else:
-        order_scales = np.ones(max_derivative_order + 1, dtype=np.float64)
 
     min_distances = _min_distances_from_diagrams(
         trajectory_diagrams_per_order,
