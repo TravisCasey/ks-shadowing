@@ -49,7 +49,7 @@ from ks_shadowing.core.parallel import (
 )
 from ks_shadowing.core.results import DetectionResult
 from ks_shadowing.core.rpo import RPO
-from ks_shadowing.core.trajectory import KSTrajectory
+from ks_shadowing.core.trajectory import KSTrajectory, _check_rpo_sampling
 from ks_shadowing.pha.pathfinding import _extract_shadowing_events
 from ks_shadowing.pha.persistence import KSPersistenceTrajectory
 from ks_shadowing.pha.shifts import _compute_event_shifts
@@ -86,8 +86,12 @@ def _compute_order_scales(
     Raises
     ------
     ValueError
-        If any order's median scale is zero or non-finite.
+        If ``rpo_diagram_pairs`` is empty, or if any order's median scale is
+        non-positive or non-finite.
     """
+    if not rpo_diagram_pairs:
+        raise ValueError("rescale_orders requires at least one RPO to estimate order scales")
+
     num_orders = len(trajectory_diagrams_per_order)
     num_timesteps = len(trajectory_diagrams_per_order[0])
 
@@ -124,7 +128,7 @@ def _compute_order_scales(
                 )
 
         median = float(np.median(np.concatenate(pooled_values)))
-        if not np.isfinite(median) or median == 0.0:
+        if not np.isfinite(median) or median <= 0.0:
             raise ValueError(
                 f"order {order_index} produced a non-positive or non-finite median "
                 f"scale ({median}); cannot rescale"
@@ -216,10 +220,16 @@ def detect(  # noqa: PLR0913
     Raises
     ------
     ValueError
-        If ``delay`` is less than 1 or ``max_derivative_order`` is negative.
+        If ``threshold`` is negative, ``delay`` is less than 1, ``delay``
+        exceeds the trajectory length, or ``max_derivative_order`` is
+        negative.
     """
+    if threshold < 0:
+        raise ValueError(f"threshold must be non-negative, got {threshold}")
     if delay < 1:
         raise ValueError(f"delay must be at least 1, got {delay}")
+    if delay > len(trajectory):
+        raise ValueError(f"delay ({delay}) exceeds trajectory length ({len(trajectory)})")
     if max_derivative_order < 0:
         raise ValueError(f"max_derivative_order must be non-negative, got {max_derivative_order}")
 
@@ -228,7 +238,13 @@ def detect(  # noqa: PLR0913
         for order in range(max_derivative_order + 1)
     ]
     rpo_diagram_pairs = _compute_rpo_diagram_pairs(
-        rpos, trajectory.resolution, chunk_size, downsample, native, max_derivative_order
+        rpos,
+        trajectory.resolution,
+        chunk_size,
+        downsample,
+        native,
+        max_derivative_order,
+        trajectory.dt,
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -327,10 +343,13 @@ def compute_min_distances(  # noqa: PLR0913
     Raises
     ------
     ValueError
-        If ``delay`` is less than 1 or ``max_derivative_order`` is negative.
+        If ``delay`` is less than 1, ``delay`` exceeds the trajectory length,
+        or ``max_derivative_order`` is negative.
     """
     if delay < 1:
         raise ValueError(f"delay must be at least 1, got {delay}")
+    if delay > len(trajectory):
+        raise ValueError(f"delay ({delay}) exceeds trajectory length ({len(trajectory)})")
     if max_derivative_order < 0:
         raise ValueError(f"max_derivative_order must be non-negative, got {max_derivative_order}")
 
@@ -339,7 +358,13 @@ def compute_min_distances(  # noqa: PLR0913
         for order in range(max_derivative_order + 1)
     ]
     rpo_diagram_pairs = _compute_rpo_diagram_pairs(
-        rpos, trajectory.resolution, chunk_size, downsample, native, max_derivative_order
+        rpos,
+        trajectory.resolution,
+        chunk_size,
+        downsample,
+        native,
+        max_derivative_order,
+        trajectory.dt,
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -438,10 +463,13 @@ def auto_detect(  # noqa: PLR0913
     Raises
     ------
     ValueError
-        If ``delay`` is less than 1 or ``max_derivative_order`` is negative.
+        If ``delay`` is less than 1, ``delay`` exceeds the trajectory length,
+        or ``max_derivative_order`` is negative.
     """
     if delay < 1:
         raise ValueError(f"delay must be at least 1, got {delay}")
+    if delay > len(trajectory):
+        raise ValueError(f"delay ({delay}) exceeds trajectory length ({len(trajectory)})")
     if max_derivative_order < 0:
         raise ValueError(f"max_derivative_order must be non-negative, got {max_derivative_order}")
 
@@ -450,7 +478,13 @@ def auto_detect(  # noqa: PLR0913
         for order in range(max_derivative_order + 1)
     ]
     rpo_diagram_pairs = _compute_rpo_diagram_pairs(
-        rpos, trajectory.resolution, chunk_size, downsample, native, max_derivative_order
+        rpos,
+        trajectory.resolution,
+        chunk_size,
+        downsample,
+        native,
+        max_derivative_order,
+        trajectory.dt,
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -495,15 +529,19 @@ def _compute_rpo_diagram_pairs(  # noqa: PLR0913
     downsample: int,
     native: bool,
     max_derivative_order: int,
+    trajectory_dt: float,
 ) -> list[tuple[RPO, list[KSPersistenceTrajectory]]]:
     """Build per-RPO trajectories and their per-order persistence diagrams.
 
-    Each pair carries ``max_derivative_order + 1`` diagram sequences, one per
-    derivative order ``0..max_derivative_order``. Returned pairs are sorted by
-    RPO period descending so that the longest-running RPOs are dispatched first.
+    Validates that ``trajectory_dt`` matches ``rpo.dt * downsample`` for each
+    RPO before integrating it. Each pair carries ``max_derivative_order + 1``
+    diagram sequences, one per derivative order ``0..max_derivative_order``.
+    Returned pairs are sorted by RPO period descending so that the
+    longest-running RPOs are dispatched first.
     """
     diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]] = []
     for rpo in rpos:
+        _check_rpo_sampling(trajectory_dt, rpo, downsample)
         rpo_trajectory = KSTrajectory.from_rpo(rpo, resolution, downsample, native)
         per_order = [
             KSPersistenceTrajectory.from_trajectory(rpo_trajectory, chunk_size, order=order)

@@ -66,7 +66,21 @@ class KSPersistenceTrajectory:
             the resulting field. ``0`` (default) leaves the field unchanged;
             higher orders compute :math:`\partial^{n} u / \partial x^{n}`
             first. Must be non-negative.
+
+        Returns
+        -------
+        Self
+            Persistence trajectory with one diagram per timestep of
+            ``trajectory``, at the same ``dt``.
+
+        Raises
+        ------
+        ValueError
+            If ``order`` is negative.
         """
+        if order < 0:
+            raise ValueError(f"order must be non-negative, got {order}")
+
         if order == 0:
             source = trajectory
         else:

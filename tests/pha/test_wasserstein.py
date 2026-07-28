@@ -87,7 +87,11 @@ def test_order_average_before_min_matches_compute_min_distances(
     max_derivative_order = 1
     downsample = 20
     trajectory = KSTrajectory.from_initial_state(
-        sample_initial_state, dt=INTEGRATION_DT, num_timesteps=60, resolution=16
+        sample_initial_state,
+        dt=INTEGRATION_DT,
+        num_timesteps=60,
+        resolution=16,
+        save_interval=downsample,
     )
 
     trajectory_diagrams = [
@@ -129,7 +133,11 @@ def test_rescaled_min_distances_match_manual_scale_division(
     max_derivative_order = 1
     downsample = 20
     trajectory = KSTrajectory.from_initial_state(
-        sample_initial_state, dt=INTEGRATION_DT, num_timesteps=60, resolution=16
+        sample_initial_state,
+        dt=INTEGRATION_DT,
+        num_timesteps=60,
+        resolution=16,
+        save_interval=downsample,
     )
 
     trajectory_diagrams = [

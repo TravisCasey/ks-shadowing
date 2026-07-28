@@ -6,6 +6,8 @@
  * order.
  */
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <hera/wasserstein.h>
 #include <span>
@@ -66,7 +68,28 @@ int wasserstein_column_c(const double *dgms_a, const int64_t *offsets_a,
         std::span<const double>{dgm_b, static_cast<std::size_t>(2 * length_b)});
 
     for (int64_t i = 0; i < num_a; ++i) {
-      out[i] = hera::wasserstein_dist(pair_dgms_a[i], pair_dgm_b, params);
+      const auto &dgm_a = pair_dgms_a[i];
+      if (dgm_a.size() == pair_dgm_b.size()) {
+        double scale = 1.0;
+        double sum_sq = 0.0;
+        for (std::size_t k = 0; k < dgm_a.size(); ++k) {
+          scale = std::max(
+              {scale, std::abs(dgm_a[k].first), std::abs(dgm_a[k].second),
+               std::abs(pair_dgm_b[k].first), std::abs(pair_dgm_b[k].second)});
+          double delta_birth = dgm_a[k].first - pair_dgm_b[k].first;
+          double delta_death = dgm_a[k].second - pair_dgm_b[k].second;
+          sum_sq += (delta_birth * delta_birth) + (delta_death * delta_death);
+        }
+        // The auction's relative-error termination can stagnate when the true
+        // distance is near machine precision relative to the diagram scale;
+        // skip it for diagrams this close to identical.
+        double identity_cost = std::sqrt(sum_sq);
+        if (identity_cost <= 1e-7 * scale) {
+          out[i] = identity_cost;
+          continue;
+        }
+      }
+      out[i] = hera::wasserstein_dist(dgm_a, pair_dgm_b, params);
     }
     return 0;
   } catch (...) {

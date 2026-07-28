@@ -41,15 +41,33 @@ def _find_components(
     num_elements : int
         Number of elements (indexed 0 to ``num_elements - 1``).
     edges_a : NDArray[np.int32], shape (num_edges,)
-        First element of each edge pair.
+        First element of each edge pair. Values must lie in
+        ``[0, num_elements)`` (not checked).
     edges_b : NDArray[np.int32], shape (num_edges,)
-        Second element of each edge pair.
+        Second element of each edge pair. Same in-range precondition as
+        ``edges_a``.
 
     Returns
     -------
     NDArray[np.int32], shape (num_elements,)
         Component root for each element.
+
+    Raises
+    ------
+    ValueError
+        If ``edges_a`` and ``edges_b`` have different lengths, or if
+        ``num_elements`` or the number of edges exceeds ``int32`` range.
     """
+    int32_max = np.iinfo(np.int32).max
+    if len(edges_a) != len(edges_b):
+        raise ValueError(
+            f"edges_a and edges_b must have the same length, got {len(edges_a)} and {len(edges_b)}"
+        )
+    if num_elements > int32_max:
+        raise ValueError(f"num_elements must be <= {int32_max}, got {num_elements}")
+    if len(edges_a) > int32_max:
+        raise ValueError(f"number of edges must be <= {int32_max}, got {len(edges_a)}")
+
     lib = _get_lib()
 
     edges_a = np.ascontiguousarray(edges_a, dtype=np.int32)

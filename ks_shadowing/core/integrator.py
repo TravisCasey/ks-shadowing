@@ -125,16 +125,31 @@ def ksint(
     NDArray[np.complex128], shape (steps // save_interval + 1, 17)
         Trajectory in complex Fourier format. Row 0 is the initial
         condition.
+
+    Raises
+    ------
+    ValueError
+        If ``steps`` is not positive, ``save_interval`` is not positive,
+        ``initial_state`` has the wrong shape, mode 0 or the Nyquist mode (index
+        16) of ``initial_state`` is nonzero, or ``dt`` is not positive.
     """
     if steps <= 0:
         raise ValueError(f"steps must be positive, got {steps}")
     if save_interval < 1:
         raise ValueError(f"save_interval must be positive, got {save_interval}")
+    if dt <= 0:
+        raise ValueError(f"dt must be positive, got {dt}")
 
     initial_state = np.asarray(initial_state, dtype=np.complex128)
     if initial_state.shape != (_COMPLEX_MODES,):
         raise ValueError(
             f"initial_state must have shape ({_COMPLEX_MODES},), got {initial_state.shape}"
+        )
+    if initial_state[0] != 0 or initial_state[_COMPLEX_MODES - 1] != 0:
+        raise ValueError(
+            f"initial_state[0] and initial_state[{_COMPLEX_MODES - 1}] (mode 0 and the "
+            f"Nyquist mode) must be zero, got {initial_state[0]} and "
+            f"{initial_state[_COMPLEX_MODES - 1]}"
         )
 
     interleaved_input = _complex_to_interleaved(initial_state)

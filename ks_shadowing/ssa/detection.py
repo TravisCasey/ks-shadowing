@@ -36,7 +36,7 @@ from ks_shadowing.core.parallel import (
 )
 from ks_shadowing.core.results import DetectionResult
 from ks_shadowing.core.rpo import RPO
-from ks_shadowing.core.trajectory import KSTrajectory, shift_distances_sq
+from ks_shadowing.core.trajectory import KSTrajectory, _check_rpo_sampling, shift_distances_sq
 from ks_shadowing.ssa.pathfinding import _extract_shadowing_events
 
 
@@ -99,9 +99,17 @@ def detect(  # noqa: PLR0913
     DetectionResult
         ``events`` sorted by ``(start_timestep, rpo_index)`` and ``threshold``
         echoing the input ``threshold``.
+
+    Raises
+    ------
+    ValueError
+        If ``threshold`` is negative.
     """
+    if threshold < 0:
+        raise ValueError(f"threshold must be non-negative, got {threshold}")
+
     rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
-        rpos, trajectory.resolution, downsample, native
+        rpos, trajectory.resolution, downsample, native, trajectory.dt
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -166,7 +174,7 @@ def compute_min_distances(  # noqa: PLR0913
         Minimum :math:`L_2` distance to any RPO at each timestep.
     """
     rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
-        rpos, trajectory.resolution, downsample, native
+        rpos, trajectory.resolution, downsample, native, trajectory.dt
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -233,7 +241,7 @@ def auto_detect(  # noqa: PLR0913
         set to the automatically selected quantile value.
     """
     rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
-        rpos, trajectory.resolution, downsample, native
+        rpos, trajectory.resolution, downsample, native, trajectory.dt
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -259,14 +267,17 @@ def _compute_rpo_trajectory_pairs(
     resolution: int,
     downsample: int,
     native: bool,
+    trajectory_dt: float,
 ) -> list[tuple[RPO, KSTrajectory]]:
     """Build an RPO trajectory for each RPO at the requested sampling.
 
-    Returned pairs are sorted by RPO ``time_steps`` descending so that the
-    longest-running RPOs are dispatched first.
+    Validates that ``trajectory_dt`` matches ``rpo.dt * downsample`` for each
+    RPO before integrating it. Returned pairs are sorted by RPO ``time_steps``
+    descending so that the longest-running RPOs are dispatched first.
     """
     pairs: list[tuple[RPO, KSTrajectory]] = []
     for rpo in rpos:
+        _check_rpo_sampling(trajectory_dt, rpo, downsample)
         rpo_trajectory = KSTrajectory.from_rpo(rpo, resolution, downsample, native)
         pairs.append((rpo, rpo_trajectory))
 

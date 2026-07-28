@@ -33,6 +33,7 @@ At resolution 2048, each chunk of 50000 steps uses approximately 780 MiB.
 """
 
 _COMPLEX_MODES = 17
+_MIN_RESOLUTION = 2 * (_COMPLEX_MODES - 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,7 +99,15 @@ class KSTrajectory:
         Self
             Trajectory with ``len(result) == num_timesteps`` and
             ``result.dt == dt * save_interval``.
+
+        Raises
+        ------
+        ValueError
+            If ``num_timesteps`` is less than 2.
         """
+        if num_timesteps < 2:  # noqa: PLR2004
+            raise ValueError(f"num_timesteps must be at least 2, got {num_timesteps}")
+
         integration_steps = (num_timesteps - 1) * save_interval
         modes = ksint(initial_state, dt, integration_steps, save_interval=save_interval)
         return cls(modes=modes, dt=dt * save_interval, resolution=resolution)
@@ -148,7 +157,15 @@ class KSTrajectory:
         -------
         Self
             Trajectory with ``dt = rpo.dt * downsample``.
+
+        Raises
+        ------
+        ValueError
+            If ``downsample`` is less than 1.
         """
+        if downsample < 1:
+            raise ValueError(f"downsample must be positive, got {downsample}")
+
         integrated = ksint(rpo.modes, rpo.dt, rpo.time_steps - 1)
 
         if not native:
@@ -233,6 +250,11 @@ class KSTrajectory:
         NDArray[np.float64], shape (num_timesteps, resolution)
             Physical-space field values, scaled by ``resolution`` for
             normalization.
+
+        Notes
+        -----
+        ``resolution`` below 32 truncates the higher-index Fourier modes
+        during ``irfft``, silently corrupting the reconstructed field.
         """
         return self.resolution * fft.irfft(self.modes, self.resolution, axis=-1)
 
@@ -368,10 +390,34 @@ def shift_distances_sq(
     -------
     NDArray[np.float64], shape (T, resolution)
         Squared L2 distance at each timestep and shift.
+
+    Raises
+    ------
+    ValueError
+        If ``resolution`` is less than 32.
     """
+    if resolution < _MIN_RESOLUTION:
+        raise ValueError(
+            f"resolution must be at least {_MIN_RESOLUTION}, got {resolution}: "
+            "irfft crops the 17 stored modes below this size, corrupting the L2 distance"
+        )
+
     norms_a = np.sum(np.abs(modes_a) ** 2, axis=-1)
     norms_b = np.sum(np.abs(modes_b) ** 2, axis=-1)
     cross_corr = fft.irfft(np.conj(modes_a) * modes_b, n=resolution, axis=-1)
     return (
         2 * resolution * (norms_a[:, np.newaxis] + norms_b[:, np.newaxis] - resolution * cross_corr)
     )
+
+
+def _check_rpo_sampling(trajectory_dt: float, rpo: RPO, downsample: int) -> None:
+    """Raise ValueError when trajectory sampling does not match rpo.dt * downsample."""
+    # 10% tolerance: catches integer-factor mismatches, not per-orbit dt tuning
+    expected_dt = rpo.dt * downsample
+    if abs(trajectory_dt - expected_dt) > 0.1 * expected_dt:
+        suggested_downsample = max(1, round(trajectory_dt / rpo.dt))
+        raise ValueError(
+            f"trajectory dt={trajectory_dt} is inconsistent with rpo.dt * downsample="
+            f"{expected_dt} (rpo.dt={rpo.dt}, downsample={downsample}); "
+            f"try downsample={suggested_downsample}"
+        )
