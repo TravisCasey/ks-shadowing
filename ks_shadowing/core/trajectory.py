@@ -159,14 +159,13 @@ class KSTrajectory:
         indices = (np.arange(cycle_length) * downsample) % rpo.time_steps
         # period_wraps[r] counts how many full RPO periods the cumulative
         # native-row index r * downsample has passed. Multiplying mode k by
-        # exp(-2pi*i*k*s/L) rolls the real-space signal by +s; rolling each
-        # row by +period_wraps[r] * spatial_shift closes the relative-
-        # periodicity gap so the stored sequence is a valid forward KSE
-        # evolution at dt_traj from integrated[0].
+        # exp(+2pi*i*k*s/L) rolls the real-space signal by -s; rolling each row
+        # by -period_wraps[r] * spatial_shift ensures the stored sequence is a
+        # valid forward KSE evolution at dt_traj from integrated[0].
         period_wraps = (np.arange(cycle_length) * downsample) // rpo.time_steps
         wavenumbers = np.arange(_COMPLEX_MODES)
         shift_phase = np.exp(
-            -2j
+            2j
             * np.pi
             * wavenumbers[np.newaxis, :]
             * period_wraps[:, np.newaxis]
@@ -241,9 +240,10 @@ class KSTrajectory:
         r"""Transform to co-moving frame given drift per unit time.
 
         Multiplies mode ``k`` at row ``r`` (``0 <= r < num_timesteps``) by
-        :math:`\exp(2 \pi i \cdot k \cdot \text{drift\_rate}
+        :math:`\exp(-2 \pi i \cdot k \cdot \text{drift\_rate}
         \cdot (\text{start\_time} + r \cdot \text{self.dt}) / L)` where
-        :math:`L` is the domain size.
+        :math:`L` is the domain size. In physical space this is a circular roll
+        by ``+drift_rate * t * resolution / L`` grid cells.
 
         Parameters
         ----------
@@ -262,7 +262,7 @@ class KSTrajectory:
         wavenumbers = np.arange(_COMPLEX_MODES)  # (17,)
         times = start_time + np.arange(self.num_timesteps) * self.dt  # (T,)
         phase = (
-            2j
+            -2j
             * np.pi
             * wavenumbers[np.newaxis, :]
             * drift_rate

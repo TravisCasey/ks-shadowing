@@ -24,7 +24,7 @@ class RPO:
     r"""Relative periodic orbit (RPO) data.
 
     Represents an orbit of the Kuramoto-Sivashinsky equation with approximate
-    spatial shift symmetry: :math:`u(x,\, t + T) = u(x - \phi,\, t)` where
+    spatial shift symmetry: :math:`u(x,\, t + T) = u(x + \phi,\, t)` where
     :math:`T` is the ``period`` and :math:`\phi` is the ``spatial_shift``.
 
     All RPOs are for domain size ``L = 22.0``. Each orbit has a native timestep
@@ -44,7 +44,9 @@ class RPO:
     time_steps : int
         Number of integration steps in one period.
     spatial_shift : float
-        Accumulated spatial shift over one period.
+        Accumulated spatial shift over one period, in domain units, under
+        ``u(x, t + T) = u(x + spatial_shift, t)``. Positive values mean the
+        pattern translates toward decreasing ``x``.
     """
 
     index: int
@@ -71,7 +73,9 @@ class RPO:
         float
             Drift rate in domain-units per time-unit. Independent of any
             sampling rate at which a trajectory representing the orbit
-            is stored.
+            is stored. A positive rate means the pattern translates toward
+            decreasing ``x``; :meth:`~ks_shadowing.core.trajectory.KSTrajectory.to_comoving` at this
+            rate cancels that motion.
         """
         return self.spatial_shift / self.period
 

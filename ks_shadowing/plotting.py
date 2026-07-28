@@ -129,7 +129,14 @@ def align_rpo_to_window(
     flags. It derives the integer number of native RPO phases per
     saved-trajectory row from ``round(trajectory.dt / rpo.dt)``, and the per-row
     co-moving spatial shift from ``event.shifts`` (clamped to nearest-end
-    outside ``[event.start_timestep, event.end_timestep)``).
+    outside ``[event.start_timestep, event.end_timestep)``). That native-phase
+    mapping is exact for ``native=True`` detection runs, and for the slicing
+    variant whenever ``downsample`` divides ``rpo.time_steps``. Otherwise the
+    slicing variant's period is ``ceil(rpo.time_steps / downsample)`` rows and
+    the mapping slips by ``e`` native steps per period wrap, where
+    ``e = ceil(rpo.time_steps / downsample) * downsample - rpo.time_steps``
+    satisfies ``0 < e < downsample``, so its error grows linearly with the
+    wrap count.
 
     Parameters
     ----------
@@ -172,7 +179,7 @@ def align_rpo_to_window(
         np.clip(window_rows - event.start_timestep, 0, len(event.shifts) - 1)
     ]
 
-    extraction = window_shifts - drift_offset + wraps * spatial_shift_pixels
+    extraction = window_shifts + drift_offset + wraps * spatial_shift_pixels
     extraction_offsets = np.round(extraction).astype(np.int64) % resolution
 
     window_len = window_end - window_start

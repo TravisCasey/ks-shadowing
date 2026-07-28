@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from scipy import fft
 
+from ks_shadowing.core.integrator import DOMAIN_SIZE, ksint
 from ks_shadowing.core.rpo import load_rpos
 from ks_shadowing.core.trajectory import KSTrajectory, shift_distances_sq
 
@@ -60,6 +61,44 @@ def test_to_comoving_start_time_offset(random_trajectory: KSTrajectory) -> None:
     full = random_trajectory.to_comoving(drift_rate=drift, start_time=0.0)
     sliced = random_trajectory[offset:].to_comoving(drift_rate=drift, start_time=offset_time)
     np.testing.assert_allclose(sliced.modes, full.modes[offset:], atol=1e-12)
+
+
+def test_to_comoving_closes_rpo_period(rpo_data_path: Path) -> None:
+    """``to_comoving`` at ``RPO.drift_rate`` makes an RPO periodic."""
+    rpo = load_rpos(rpo_data_path)[0]
+    trajectory = KSTrajectory.from_initial_state(
+        rpo.modes, rpo.dt, rpo.time_steps + 1, resolution=64
+    )
+    comoving = trajectory.to_comoving(rpo.drift_rate)
+    np.testing.assert_allclose(comoving.modes[-1], comoving.modes[0], rtol=1e-6, atol=1e-6)
+
+
+def test_to_comoving_rolls_physical_field(rng: np.random.Generator) -> None:
+    """``to_comoving`` shifts the physical field right by the drift cell count,
+    pinning the frame's absolute roll direction against ``to_physical``/``np.roll``.
+
+    Independent of RPO data: mode ``k`` at row 1 is multiplied by
+    ``exp(-2j*pi*k*drift_rate*dt/L)``, and ``irfft`` reconstructs
+    ``physical(x)`` from term ``exp(2j*pi*k*x/L)``, so this phase is equivalent
+    to evaluating the lab-frame field at ``x - cells`` grid points, i.e.
+    ``np.roll(lab_physical, +cells)``.
+    """
+    resolution = 64
+    cells = 3
+    drift_rate = DOMAIN_SIZE * cells / resolution
+    dt = 1.0
+
+    modes = np.zeros((2, 17), dtype=np.complex128)
+    modes[0, 1:16] = (rng.standard_normal(15) + 1j * rng.standard_normal(15)) * 0.1
+    modes[1] = modes[0]
+    trajectory = KSTrajectory(modes=modes, dt=dt, resolution=resolution)
+
+    comoving = trajectory.to_comoving(drift_rate=drift_rate)
+    lab_physical = trajectory.to_physical()
+    comoving_physical = comoving.to_physical()
+
+    expected = np.roll(lab_physical[1], +cells)
+    np.testing.assert_allclose(comoving_physical[1], expected, rtol=1e-6, atol=1e-6)
 
 
 def test_shift_distances_sq_matches_brute_force(rng: np.random.Generator) -> None:
@@ -136,6 +175,26 @@ def test_from_rpo_reorders_when_native(rpo_data_path: Path) -> None:
         rtol=1e-12,
         atol=1e-12,
     )
+
+
+def test_from_rpo_native_is_forward_evolution(rpo_data_path: Path) -> None:
+    """``from_rpo(native=True)`` produces a row that is the forward KSE
+    evolution of the previous row across a native-period wrap.
+    """
+    rpo = load_rpos(rpo_data_path)[1]
+    downsample = 23
+    assert math.gcd(downsample, rpo.time_steps) == 1
+
+    reordered = KSTrajectory.from_rpo(rpo, resolution=64, downsample=downsample, native=True)
+
+    wrap_row = next(
+        r
+        for r in range(1, reordered.num_timesteps)
+        if (r * downsample) // rpo.time_steps != ((r - 1) * downsample) // rpo.time_steps
+    )
+
+    predicted = ksint(reordered.modes[wrap_row - 1], rpo.dt, downsample)[-1]
+    np.testing.assert_allclose(reordered.modes[wrap_row], predicted, rtol=1e-4, atol=1e-3)
 
 
 def test_from_rpo_slices_when_not_native(rpo_data_path: Path) -> None:
