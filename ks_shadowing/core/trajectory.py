@@ -410,14 +410,21 @@ def shift_distances_sq(
     )
 
 
-def _check_rpo_sampling(trajectory_dt: float, rpo: RPO, downsample: int) -> None:
-    """Raise ValueError when trajectory sampling does not match rpo.dt * downsample."""
-    # 10% tolerance: catches integer-factor mismatches, not per-orbit dt tuning
+def _resolve_rpo_downsample(trajectory_dt: float, rpo: RPO) -> int:
+    """Derive the per-RPO downsample stride implied by ``trajectory_dt``.
+
+    Returns ``N = max(1, round(trajectory_dt / rpo.dt))``. Raises
+    ``ValueError`` unless ``trajectory_dt`` is within 1.5% of ``rpo.dt * N``,
+    i.e. the trajectory sampling must be an integer multiple of the orbit's
+    native timestep.
+    """
+    downsample = max(1, round(trajectory_dt / rpo.dt))
     expected_dt = rpo.dt * downsample
-    if abs(trajectory_dt - expected_dt) > 0.1 * expected_dt:
-        suggested_downsample = max(1, round(trajectory_dt / rpo.dt))
+    # 1.5%: passes per-orbit dt tuning (~1%), rejects between-grid sampling
+    if not math.isclose(trajectory_dt, expected_dt, rel_tol=0.015):
         raise ValueError(
-            f"trajectory dt={trajectory_dt} is inconsistent with rpo.dt * downsample="
-            f"{expected_dt} (rpo.dt={rpo.dt}, downsample={downsample}); "
-            f"try downsample={suggested_downsample}"
+            f"trajectory dt={trajectory_dt} is not an integer multiple of rpo.dt="
+            f"{rpo.dt} (nearest N={downsample} implies dt={expected_dt}); trajectory "
+            f"sampling must be an integer multiple of the orbit's native timestep"
         )
+    return downsample

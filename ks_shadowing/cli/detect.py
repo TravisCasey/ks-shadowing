@@ -18,6 +18,7 @@ DEFAULT_DELAY = 1
 DEFAULT_MAX_DERIVATIVE_ORDER = 0
 DEFAULT_N_JOBS = -1
 DEFAULT_RPO_FILE = Path("data/rpos_selected.npz")
+MIN_TRAJECTORY_STEPS = 2
 DEFAULT_OUTPUT_BY_METHOD = {
     "ssa": Path("results/shadowing_results_ssa.h5"),
     "pha": Path("results/shadowing_results_pha.h5"),
@@ -42,12 +43,13 @@ def build_parser() -> ArgumentParser:
         help=(
             "Use an existing trajectory file (written by ks-detect on a "
             "prior run). Mutually exclusive with --seed, "
-            "--trajectory-steps, --initial-amplitude. --resolution is "
-            "still required. Must live in the same directory as --output."
+            "--trajectory-steps, --initial-amplitude, --downsample. "
+            "--resolution is still required. Must live in the same "
+            "directory as --output."
         ),
     )
 
-    parser.add_argument("--threshold-quantile", type=float, default=DEFAULT_THRESHOLD_QUANTILE)
+    parser.add_argument("--threshold-quantile", type=float, default=None)
     parser.add_argument("--threshold", type=float, default=None)
     parser.add_argument("--min-duration", type=int, default=DEFAULT_MIN_DURATION)
     parser.add_argument(
@@ -85,12 +87,13 @@ def build_parser() -> ArgumentParser:
     parser.add_argument(
         "--downsample",
         type=int,
-        default=1,
+        default=None,
         help=(
-            "Sampling stride. The trajectory is integrated at the native "
-            "timestep and stored every Nth row, giving an effective dt of "
-            "N times the native dt. Per-RPO trajectories use the same "
-            "stride. Default 1."
+            "Sampling stride for a newly generated trajectory: integrated "
+            "at the native timestep and stored every Nth row, giving an "
+            "effective dt of N times the native dt. Mutually exclusive "
+            "with --trajectory (detection infers the per-RPO stride from "
+            "the loaded trajectory's dt). Default 1."
         ),
     )
     parser.add_argument(
@@ -98,11 +101,11 @@ def build_parser() -> ArgumentParser:
         action="store_true",
         default=False,
         help=(
-            "When --downsample > 1, build per-RPO trajectories by visiting "
-            "every native RPO timestep through the stride-downsample "
-            "permutation instead of subsampling at the same stride. Trades "
-            "increased per-RPO work for fuller sampling of each orbit. "
-            "Default off."
+            "When the inferred downsample is > 1, build per-RPO "
+            "trajectories by visiting every native RPO timestep through "
+            "the stride permutation instead of subsampling at the same "
+            "stride. Trades increased per-RPO work for fuller sampling of "
+            "each orbit. Default off."
         ),
     )
 
@@ -110,6 +113,24 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--n-jobs", type=int, default=DEFAULT_N_JOBS)
     parser.add_argument("--show-progress", action="store_true", default=False)
     return parser
+
+
+def _validate_arguments(parser: ArgumentParser, arguments: Namespace) -> None:
+    """Reject out-of-range values and conflicting flag combinations."""
+    if arguments.downsample is not None and arguments.downsample < 1:
+        parser.error("--downsample must be >= 1.")
+    if arguments.delay < 1:
+        parser.error("--delay must be >= 1.")
+    if arguments.max_derivative_order < 0:
+        parser.error("--max-derivative-order must be >= 0.")
+    if arguments.trajectory_steps is not None and arguments.trajectory_steps < MIN_TRAJECTORY_STEPS:
+        parser.error(f"--trajectory-steps must be >= {MIN_TRAJECTORY_STEPS}.")
+    if arguments.threshold is not None and arguments.threshold < 0:
+        parser.error("--threshold must be >= 0.")
+    if arguments.threshold_quantile is not None and not (0 < arguments.threshold_quantile < 1):
+        parser.error("--threshold-quantile must be in (0, 1).")
+    if arguments.threshold is not None and arguments.threshold_quantile is not None:
+        parser.error("--threshold and --threshold-quantile are mutually exclusive.")
 
 
 def _resolve_trajectory(arguments: Namespace, output_path: Path) -> tuple[KSTrajectory, Path]:
@@ -125,13 +146,14 @@ def _resolve_trajectory(arguments: Namespace, output_path: Path) -> tuple[KSTraj
         arguments.trajectory_steps is not None
         or arguments.seed is not None
         or arguments.initial_amplitude is not None
+        or arguments.downsample is not None
     )
 
     if arguments.trajectory is not None:
         if generation_flags_set:
             raise SystemExit(
                 "ks-detect: --trajectory is mutually exclusive with "
-                "--trajectory-steps, --seed, --initial-amplitude."
+                "--trajectory-steps, --seed, --initial-amplitude, --downsample."
             )
         if arguments.trajectory.parent.resolve() != output_path.parent.resolve():
             raise SystemExit(
@@ -149,6 +171,7 @@ def _resolve_trajectory(arguments: Namespace, output_path: Path) -> tuple[KSTraj
             "ks-detect: --trajectory-steps is required when --trajectory is not given."
         )
 
+    downsample = arguments.downsample if arguments.downsample is not None else 1
     initial_amplitude = (
         arguments.initial_amplitude
         if arguments.initial_amplitude is not None
@@ -165,11 +188,11 @@ def _resolve_trajectory(arguments: Namespace, output_path: Path) -> tuple[KSTraj
         INTEGRATION_DT,
         arguments.trajectory_steps + 1,
         arguments.resolution,
-        save_interval=arguments.downsample,
+        save_interval=downsample,
     )
     print(
         f"  Shape: {trajectory.modes.shape} "
-        f"({arguments.trajectory_steps * INTEGRATION_DT:.0f} time units, "
+        f"({(len(trajectory) - 1) * trajectory.dt:.0f} time units, "
         f"dt={trajectory.dt:.4f})"
     )
 
@@ -189,11 +212,16 @@ def main() -> None:
     """Run CLI detection and save events."""
     parser = build_parser()
     arguments = parser.parse_args()
+    _validate_arguments(parser, arguments)
+    if arguments.threshold_quantile is None:
+        arguments.threshold_quantile = DEFAULT_THRESHOLD_QUANTILE
 
     method = arguments.method
     output_path = arguments.output or DEFAULT_OUTPUT_BY_METHOD[method]
 
     trajectory, trajectory_path = _resolve_trajectory(arguments, output_path)
+    downsample = round(trajectory.dt / INTEGRATION_DT)
+    print(f"  Downsample (inferred from trajectory dt): {downsample}")
 
     print("Loading RPOs...")
     rpos = load_rpos(arguments.rpo_file)
@@ -226,7 +254,7 @@ def main() -> None:
         rpo_file=str(arguments.rpo_file),
         spatial_resolution=arguments.resolution,
         elapsed_seconds=elapsed_seconds,
-        downsample=arguments.downsample,
+        downsample=downsample,
         native=arguments.native_rpos,
         threshold_quantile=threshold_quantile,
         delay=arguments.delay if method == "pha" else 1,
@@ -258,7 +286,6 @@ def _detect_with_threshold(method, trajectory, rpos, arguments):
         "show_progress": arguments.show_progress,
         "n_jobs": arguments.n_jobs,
         "chunk_size": arguments.chunk_size,
-        "downsample": arguments.downsample,
         "native": arguments.native_rpos,
     }
     if method == "ssa":
@@ -282,7 +309,6 @@ def _detect_with_auto_threshold(method, trajectory, rpos, arguments):
         "show_progress": arguments.show_progress,
         "n_jobs": arguments.n_jobs,
         "chunk_size": arguments.chunk_size,
-        "downsample": arguments.downsample,
         "native": arguments.native_rpos,
     }
     if method == "ssa":

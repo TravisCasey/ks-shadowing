@@ -36,7 +36,7 @@ from ks_shadowing.core.parallel import (
 )
 from ks_shadowing.core.results import DetectionResult
 from ks_shadowing.core.rpo import RPO
-from ks_shadowing.core.trajectory import KSTrajectory, _check_rpo_sampling, shift_distances_sq
+from ks_shadowing.core.trajectory import KSTrajectory, _resolve_rpo_downsample, shift_distances_sq
 from ks_shadowing.ssa.pathfinding import _extract_shadowing_events
 
 
@@ -45,7 +45,6 @@ def detect(  # noqa: PLR0913
     rpos: Sequence[RPO],
     threshold: float,
     *,
-    downsample: int = 1,
     native: bool = False,
     min_duration: int = 1,
     show_progress: bool = False,
@@ -66,21 +65,18 @@ def detect(  # noqa: PLR0913
     trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
         Trajectory to scan for shadowing events.
     rpos : Sequence[:class:`~ks_shadowing.core.rpo.RPO`]
-        Relative periodic orbits to shadow against. Each RPO is integrated at
-        its own native timestep to preserve numerical accuracy.
+        Relative periodic orbits to shadow against. Each RPO's per-RPO
+        trajectory is built at a downsample stride inferred from
+        ``trajectory.dt`` and the RPO's own native timestep.
     threshold : float
         Maximum :math:`L_2` distance for a grid entry to count as a close pass.
         Typically set by quantile with :func:`compute_min_distances`. This
         flow is automated via :func:`auto_detect`.
-    downsample : int, optional
-        Sampling stride used to build per-RPO trajectories via
-        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
-        Default 1.
     native : bool, optional
         If ``True``, build per-RPO trajectories by reordering native rows
-        with the stride-``downsample`` permutation; if ``False``, by
-        slicing every ``downsample``-th native row. Default ``False``.
-        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        with the inferred-stride permutation; if ``False``, by slicing every
+        stride-th native row. Default ``False``. See
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     min_duration : int, optional
         Minimum event duration in timesteps. Default is 1.
     show_progress : bool, optional
@@ -103,13 +99,14 @@ def detect(  # noqa: PLR0913
     Raises
     ------
     ValueError
-        If ``threshold`` is negative.
+        If ``threshold`` is negative, or if ``trajectory.dt`` is not an
+        integer multiple of some RPO's native timestep.
     """
     if threshold < 0:
         raise ValueError(f"threshold must be non-negative, got {threshold}")
 
     rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
-        rpos, trajectory.resolution, downsample, native, trajectory.dt
+        rpos, trajectory.resolution, native, trajectory.dt
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -129,7 +126,6 @@ def compute_min_distances(  # noqa: PLR0913
     trajectory: KSTrajectory,
     rpos: Sequence[RPO],
     *,
-    downsample: int = 1,
     native: bool = False,
     show_progress: bool = False,
     n_jobs: int = 1,
@@ -147,16 +143,14 @@ def compute_min_distances(  # noqa: PLR0913
     trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
         Trajectory whose minimum distances are computed.
     rpos : Sequence[:class:`~ks_shadowing.core.rpo.RPO`]
-        Relative periodic orbits to compare against.
-    downsample : int, optional
-        Sampling stride used to build per-RPO trajectories via
-        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
-        Default 1.
+        Relative periodic orbits to compare against. Each RPO's per-RPO
+        trajectory is built at a downsample stride inferred from
+        ``trajectory.dt`` and the RPO's own native timestep.
     native : bool, optional
         If ``True``, build per-RPO trajectories by reordering native rows
-        with the stride-``downsample`` permutation; if ``False``, by
-        slicing every ``downsample``-th native row. Default ``False``.
-        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        with the inferred-stride permutation; if ``False``, by slicing every
+        stride-th native row. Default ``False``. See
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     show_progress : bool, optional
         Whether to display a ``tqdm`` progress bar over RPOs. Default is
         ``False``.
@@ -172,9 +166,15 @@ def compute_min_distances(  # noqa: PLR0913
     -------
     NDArray[np.float64], shape (num_timesteps,)
         Minimum :math:`L_2` distance to any RPO at each timestep.
+
+    Raises
+    ------
+    ValueError
+        If ``trajectory.dt`` is not an integer multiple of some RPO's native
+        timestep.
     """
     rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
-        rpos, trajectory.resolution, downsample, native, trajectory.dt
+        rpos, trajectory.resolution, native, trajectory.dt
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -188,7 +188,6 @@ def auto_detect(  # noqa: PLR0913
     rpos: Sequence[RPO],
     threshold_quantile: float = 0.4,
     *,
-    downsample: int = 1,
     native: bool = False,
     min_duration: int = 1,
     show_progress: bool = False,
@@ -208,19 +207,17 @@ def auto_detect(  # noqa: PLR0913
     trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
         Trajectory to scan for shadowing events.
     rpos : Sequence[:class:`~ks_shadowing.core.rpo.RPO`]
-        Relative periodic orbits to detect shadowing against.
+        Relative periodic orbits to detect shadowing against. Each RPO's
+        per-RPO trajectory is built at a downsample stride inferred from
+        ``trajectory.dt`` and the RPO's own native timestep.
     threshold_quantile : float, optional
         Quantile of per-timestep minimum distances used as the detection
         threshold. Default is 0.4.
-    downsample : int, optional
-        Sampling stride used to build per-RPO trajectories via
-        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
-        Default 1.
     native : bool, optional
         If ``True``, build per-RPO trajectories by reordering native rows
-        with the stride-``downsample`` permutation; if ``False``, by
-        slicing every ``downsample``-th native row. Default ``False``.
-        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        with the inferred-stride permutation; if ``False``, by slicing every
+        stride-th native row. Default ``False``. See
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     min_duration : int, optional
         Minimum event duration in timesteps. Default is 1.
     show_progress : bool, optional
@@ -239,9 +236,15 @@ def auto_detect(  # noqa: PLR0913
     DetectionResult
         ``events`` sorted by ``(start_timestep, rpo_index)`` and ``threshold``
         set to the automatically selected quantile value.
+
+    Raises
+    ------
+    ValueError
+        If ``trajectory.dt`` is not an integer multiple of some RPO's native
+        timestep.
     """
     rpo_trajectory_pairs = _compute_rpo_trajectory_pairs(
-        rpos, trajectory.resolution, downsample, native, trajectory.dt
+        rpos, trajectory.resolution, native, trajectory.dt
     )
     n_workers = _resolve_n_jobs(n_jobs)
 
@@ -265,19 +268,18 @@ def auto_detect(  # noqa: PLR0913
 def _compute_rpo_trajectory_pairs(
     rpos: Sequence[RPO],
     resolution: int,
-    downsample: int,
     native: bool,
     trajectory_dt: float,
 ) -> list[tuple[RPO, KSTrajectory]]:
-    """Build an RPO trajectory for each RPO at the requested sampling.
+    """Build an RPO trajectory for each RPO at its inferred sampling.
 
-    Validates that ``trajectory_dt`` matches ``rpo.dt * downsample`` for each
-    RPO before integrating it. Returned pairs are sorted by RPO ``time_steps``
+    Derives each RPO's downsample stride from ``trajectory_dt`` before
+    integrating it. Returned pairs are sorted by RPO ``time_steps``
     descending so that the longest-running RPOs are dispatched first.
     """
     pairs: list[tuple[RPO, KSTrajectory]] = []
     for rpo in rpos:
-        _check_rpo_sampling(trajectory_dt, rpo, downsample)
+        downsample = _resolve_rpo_downsample(trajectory_dt, rpo)
         rpo_trajectory = KSTrajectory.from_rpo(rpo, resolution, downsample, native)
         pairs.append((rpo, rpo_trajectory))
 

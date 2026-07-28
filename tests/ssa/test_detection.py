@@ -61,8 +61,9 @@ def test_auto_detect_threshold_matches_quantile(
 
 
 def test_detect_native_mode(sample_initial_state: np.ndarray, small_rpos: list[RPO]) -> None:
-    """``ssa.detect`` runs end-to-end at ``native=True, downsample=2`` and
-    returns events with valid bounds, ``shifts`` shape, and ``shifts`` dtype."""
+    """``ssa.detect`` runs end-to-end at ``native=True`` with an inferred
+    downsample of 2 and returns events with valid bounds, ``shifts`` shape,
+    and ``shifts`` dtype."""
     trajectory = KSTrajectory.from_initial_state(
         sample_initial_state,
         dt=INTEGRATION_DT,
@@ -75,7 +76,6 @@ def test_detect_native_mode(sample_initial_state: np.ndarray, small_rpos: list[R
         trajectory,
         small_rpos[:1],
         threshold=1e6,
-        downsample=2,
         native=True,
         min_duration=1,
         n_jobs=1,

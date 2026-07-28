@@ -49,7 +49,7 @@ from ks_shadowing.core.parallel import (
 )
 from ks_shadowing.core.results import DetectionResult
 from ks_shadowing.core.rpo import RPO
-from ks_shadowing.core.trajectory import KSTrajectory, _check_rpo_sampling
+from ks_shadowing.core.trajectory import KSTrajectory, _resolve_rpo_downsample
 from ks_shadowing.pha.pathfinding import _extract_shadowing_events
 from ks_shadowing.pha.persistence import KSPersistenceTrajectory
 from ks_shadowing.pha.shifts import _compute_event_shifts
@@ -146,7 +146,6 @@ def detect(  # noqa: PLR0913
     delay: int = 1,
     max_derivative_order: int = 0,
     rescale_orders: bool = False,
-    downsample: int = 1,
     native: bool = False,
     min_duration: int = 1,
     show_progress: bool = False,
@@ -167,8 +166,9 @@ def detect(  # noqa: PLR0913
     trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
         Trajectory to scan for shadowing events.
     rpos : Sequence[:class:`~ks_shadowing.core.rpo.RPO`]
-        Relative periodic orbits to shadow against. Each RPO is integrated at
-        its own native timestep to preserve numerical accuracy.
+        Relative periodic orbits to shadow against. Each RPO's per-RPO
+        trajectory is built at a downsample stride inferred from
+        ``trajectory.dt`` and the RPO's own native timestep.
     threshold : float
         Maximum delay-embedded Wasserstein distance for a grid entry to count
         as a close pass. Typically set by quantile with
@@ -190,15 +190,11 @@ def detect(  # noqa: PLR0913
         averaging across orders; distances become dimensionless multiples of the
         per-order scale, so a manual ``threshold`` is not comparable with runs
         using the other setting. Default ``False`` (no rescaling).
-    downsample : int, optional
-        Sampling stride used to build per-RPO trajectories via
-        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
-        Default 1.
     native : bool, optional
         If ``True``, build per-RPO trajectories by reordering native rows
-        with the stride-``downsample`` permutation; if ``False``, by
-        slicing every ``downsample``-th native row. Default ``False``.
-        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        with the inferred-stride permutation; if ``False``, by slicing every
+        stride-th native row. Default ``False``. See
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     min_duration : int, optional
         Minimum event duration in timesteps. Default is 1.
     show_progress : bool, optional
@@ -221,8 +217,9 @@ def detect(  # noqa: PLR0913
     ------
     ValueError
         If ``threshold`` is negative, ``delay`` is less than 1, ``delay``
-        exceeds the trajectory length, or ``max_derivative_order`` is
-        negative.
+        exceeds the trajectory length, ``max_derivative_order`` is negative,
+        or ``trajectory.dt`` is not an integer multiple of some RPO's native
+        timestep.
     """
     if threshold < 0:
         raise ValueError(f"threshold must be non-negative, got {threshold}")
@@ -241,7 +238,6 @@ def detect(  # noqa: PLR0913
         rpos,
         trajectory.resolution,
         chunk_size,
-        downsample,
         native,
         max_derivative_order,
         trajectory.dt,
@@ -263,7 +259,7 @@ def detect(  # noqa: PLR0913
         n_workers,
         order_scales,
     )
-    events = _attach_shifts(events, trajectory, rpos, downsample, native)
+    events = _attach_shifts(events, trajectory, rpos, native)
     return DetectionResult(
         events=events,
         threshold=threshold,
@@ -278,7 +274,6 @@ def compute_min_distances(  # noqa: PLR0913
     delay: int = 1,
     max_derivative_order: int = 0,
     rescale_orders: bool = False,
-    downsample: int = 1,
     native: bool = False,
     show_progress: bool = False,
     n_jobs: int = 1,
@@ -298,8 +293,9 @@ def compute_min_distances(  # noqa: PLR0913
     trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
         Trajectory whose minimum distances are computed.
     rpos : Sequence[:class:`~ks_shadowing.core.rpo.RPO`]
-        Relative periodic orbits to shadow against. Each RPO is integrated at
-        its own native timestep to preserve numerical accuracy.
+        Relative periodic orbits to shadow against. Each RPO's per-RPO
+        trajectory is built at a downsample stride inferred from
+        ``trajectory.dt`` and the RPO's own native timestep.
     delay : int, optional
         Time-delay embedding window size. Mean Wasserstein distance is
         taken across ``delay`` consecutive timesteps. ``1`` (default)
@@ -316,15 +312,11 @@ def compute_min_distances(  # noqa: PLR0913
         averaging across orders; distances become dimensionless multiples of the
         per-order scale, so a manual ``threshold`` is not comparable with runs
         using the other setting. Default ``False`` (no rescaling).
-    downsample : int, optional
-        Sampling stride used to build per-RPO trajectories via
-        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
-        Default 1.
     native : bool, optional
         If ``True``, build per-RPO trajectories by reordering native rows
-        with the stride-``downsample`` permutation; if ``False``, by
-        slicing every ``downsample``-th native row. Default ``False``.
-        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        with the inferred-stride permutation; if ``False``, by slicing every
+        stride-th native row. Default ``False``. See
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     show_progress : bool, optional
         Whether to display ``tqdm`` progress bars. Default is ``False``.
     n_jobs : int, optional
@@ -344,7 +336,8 @@ def compute_min_distances(  # noqa: PLR0913
     ------
     ValueError
         If ``delay`` is less than 1, ``delay`` exceeds the trajectory length,
-        or ``max_derivative_order`` is negative.
+        ``max_derivative_order`` is negative, or ``trajectory.dt`` is not an
+        integer multiple of some RPO's native timestep.
     """
     if delay < 1:
         raise ValueError(f"delay must be at least 1, got {delay}")
@@ -361,7 +354,6 @@ def compute_min_distances(  # noqa: PLR0913
         rpos,
         trajectory.resolution,
         chunk_size,
-        downsample,
         native,
         max_derivative_order,
         trajectory.dt,
@@ -391,7 +383,6 @@ def auto_detect(  # noqa: PLR0913
     delay: int = 1,
     max_derivative_order: int = 0,
     rescale_orders: bool = False,
-    downsample: int = 1,
     native: bool = False,
     min_duration: int = 1,
     show_progress: bool = False,
@@ -412,8 +403,9 @@ def auto_detect(  # noqa: PLR0913
     trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
         Trajectory to scan for shadowing events.
     rpos : Sequence[:class:`~ks_shadowing.core.rpo.RPO`]
-        Relative periodic orbits to shadow against. Each RPO is integrated at
-        its own native timestep to preserve numerical accuracy.
+        Relative periodic orbits to shadow against. Each RPO's per-RPO
+        trajectory is built at a downsample stride inferred from
+        ``trajectory.dt`` and the RPO's own native timestep.
     threshold_quantile : float, optional
         Quantile of per-timestep minimum distances used as the detection
         threshold. Default is 0.4.
@@ -433,15 +425,11 @@ def auto_detect(  # noqa: PLR0913
         averaging across orders; distances become dimensionless multiples of the
         per-order scale, so a manual ``threshold`` is not comparable with runs
         using the other setting. Default ``False`` (no rescaling).
-    downsample : int, optional
-        Sampling stride used to build per-RPO trajectories via
-        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
-        Default 1.
     native : bool, optional
         If ``True``, build per-RPO trajectories by reordering native rows
-        with the stride-``downsample`` permutation; if ``False``, by
-        slicing every ``downsample``-th native row. Default ``False``.
-        See :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
+        with the inferred-stride permutation; if ``False``, by slicing every
+        stride-th native row. Default ``False``. See
+        :meth:`~ks_shadowing.core.trajectory.KSTrajectory.from_rpo`.
     min_duration : int, optional
         Minimum event duration in timesteps. Default is 1.
     show_progress : bool, optional
@@ -464,7 +452,8 @@ def auto_detect(  # noqa: PLR0913
     ------
     ValueError
         If ``delay`` is less than 1, ``delay`` exceeds the trajectory length,
-        or ``max_derivative_order`` is negative.
+        ``max_derivative_order`` is negative, or ``trajectory.dt`` is not an
+        integer multiple of some RPO's native timestep.
     """
     if delay < 1:
         raise ValueError(f"delay must be at least 1, got {delay}")
@@ -481,7 +470,6 @@ def auto_detect(  # noqa: PLR0913
         rpos,
         trajectory.resolution,
         chunk_size,
-        downsample,
         native,
         max_derivative_order,
         trajectory.dt,
@@ -514,7 +502,7 @@ def auto_detect(  # noqa: PLR0913
         n_workers,
         order_scales,
     )
-    events = _attach_shifts(events, trajectory, rpos, downsample, native)
+    events = _attach_shifts(events, trajectory, rpos, native)
     return DetectionResult(
         events=events,
         threshold=threshold,
@@ -526,22 +514,21 @@ def _compute_rpo_diagram_pairs(  # noqa: PLR0913
     rpos: Sequence[RPO],
     resolution: int,
     chunk_size: int,
-    downsample: int,
     native: bool,
     max_derivative_order: int,
     trajectory_dt: float,
 ) -> list[tuple[RPO, list[KSPersistenceTrajectory]]]:
     """Build per-RPO trajectories and their per-order persistence diagrams.
 
-    Validates that ``trajectory_dt`` matches ``rpo.dt * downsample`` for each
-    RPO before integrating it. Each pair carries ``max_derivative_order + 1``
-    diagram sequences, one per derivative order ``0..max_derivative_order``.
+    Derives each RPO's downsample stride from ``trajectory_dt`` before
+    integrating it. Each pair carries ``max_derivative_order + 1`` diagram
+    sequences, one per derivative order ``0..max_derivative_order``.
     Returned pairs are sorted by RPO period descending so that the
     longest-running RPOs are dispatched first.
     """
     diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]] = []
     for rpo in rpos:
-        _check_rpo_sampling(trajectory_dt, rpo, downsample)
+        downsample = _resolve_rpo_downsample(trajectory_dt, rpo)
         rpo_trajectory = KSTrajectory.from_rpo(rpo, resolution, downsample, native)
         per_order = [
             KSPersistenceTrajectory.from_trajectory(rpo_trajectory, chunk_size, order=order)
@@ -880,14 +867,13 @@ def _attach_shifts(
     events: list[ShadowingEvent],
     trajectory: KSTrajectory,
     rpos: Sequence[RPO],
-    downsample: int,
     native: bool,
 ) -> list[ShadowingEvent]:
     """Reconstruct spatial shifts for each event and sort the result.
 
     PHA quotients out spatial shifts during detection, leaving events with
     zero-filled ``shifts`` arrays. For each RPO shadowed by at least one event,
-    builds an RPO trajectory at the requested sampling and transforms it to
+    builds an RPO trajectory at its inferred sampling and transforms it to
     its co-moving frame, then passes this co-moving trajectory to each event's
     shift reconstruction in ``_compute_event_shifts``. Sorts the result by
     ``(start_timestep, rpo_index)``.
@@ -901,6 +887,7 @@ def _attach_shifts(
     events_with_shifts: list[ShadowingEvent] = []
     for rpo_index, rpo_events in events_by_rpo.items():
         rpo = rpo_by_index[rpo_index]
+        downsample = _resolve_rpo_downsample(trajectory.dt, rpo)
         rpo_trajectory = KSTrajectory.from_rpo(rpo, trajectory.resolution, downsample, native)
         rpo_comoving = rpo_trajectory.to_comoving(rpo.drift_rate)
 

@@ -117,7 +117,6 @@ def test_order_average_before_min_matches_compute_min_distances(
         trajectory,
         small_rpos,
         max_derivative_order=max_derivative_order,
-        downsample=downsample,
         n_jobs=1,
     )
     np.testing.assert_allclose(reduced, expected, rtol=1e-6, atol=1e-6)
@@ -174,7 +173,6 @@ def test_rescaled_min_distances_match_manual_scale_division(
         trajectory,
         small_rpos,
         max_derivative_order=max_derivative_order,
-        downsample=downsample,
         rescale_orders=True,
         n_jobs=1,
     )

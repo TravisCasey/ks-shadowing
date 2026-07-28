@@ -33,7 +33,7 @@ import numpy as np
 from matplotlib.lines import Line2D
 from numpy.typing import NDArray
 
-from ks_shadowing import events_to_union_mask, load_results
+from ks_shadowing import assert_same_trajectory, events_to_union_mask, load_results, load_rpos
 
 try:
     REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -62,9 +62,9 @@ RESCALED_STYLE: dict[str, Any] = {
 
 # %%
 # SSA reference: union mask plus per-RPO masks over the full trajectory.
-_, trajectory, ssa_events = load_results(SSA_PATH)
+metadata, trajectory, ssa_events = load_results(SSA_PATH)
 num_timesteps = trajectory.num_timesteps
-num_rpos = max(event.rpo_index for event in ssa_events) + 1
+num_rpos = len(load_rpos(REPO_ROOT / metadata.rpo_file))
 ssa_mask = events_to_union_mask(ssa_events, num_timesteps)
 ssa_rpo = np.zeros((num_rpos, num_timesteps), dtype=bool)
 for event in ssa_events:
@@ -79,7 +79,8 @@ def _load_sweep(
     masks: list[NDArray[np.bool_]] = []
     rpo_masks: list[NDArray[np.bool_]] = []
     for path in paths:
-        _, _, events = load_results(path)
+        _, pha_trajectory, events = load_results(path)
+        assert_same_trajectory(trajectory, pha_trajectory)
         masks.append(events_to_union_mask(events, num_timesteps))
         rpo = np.zeros((num_rpos, num_timesteps), dtype=bool)
         for event in events:
