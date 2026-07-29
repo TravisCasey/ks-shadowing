@@ -11,7 +11,7 @@ Two detection methods are implemented:
 
 ## Installation
 
-Requires Python 3.12+, CMake, and the following system libraries:
+Requires Python 3.12 or 3.13, CMake, and the following system libraries:
 
 - **FFTW3** -- Fast Fourier Transform (for the KS integrator)
 - **Eigen3** -- Linear algebra (for the KS integrator)
@@ -67,7 +67,10 @@ uv run ruff check .
 uv run ruff format .
 
 # Type checking
-uv run ty check src tests
+uv run ty check
+
+# Build HTML docs (requires dev dependencies)
+uv run sphinx-build docs docs/_build/html
 
 # Clear build cache if the C++ library fails to build after a clean checkout
 uv cache clean ks-shadowing

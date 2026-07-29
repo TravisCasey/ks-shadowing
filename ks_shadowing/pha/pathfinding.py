@@ -46,7 +46,7 @@ def _extract_shadowing_events(
     :class:`~ks_shadowing.core.event.ShadowingEvent`, skipping components
     whose longest path is shorter than ``min_duration``. Returned events
     carry zero-filled ``shifts``; PHA reconstructs spatial shifts post-hoc via
-    :func:`~ks_shadowing.pha.shifts._compute_event_shifts`.
+    ``_compute_event_shifts`` in ``pha/shifts.py``.
 
     Parameters
     ----------
