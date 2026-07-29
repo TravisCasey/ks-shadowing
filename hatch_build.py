@@ -15,10 +15,19 @@ class CMakeBuildHook(BuildHookInterface):
     PLUGIN_NAME = "cmake"
 
     def initialize(self, version: str, build_data: dict) -> None:
+        if self.target_name != "wheel":
+            # sdists must not require CMake or a C++ toolchain to build.
+            return
+
+        build_data["infer_tag"] = True
+        build_data["pure_python"] = False
+
         root = Path(self.root)
         build_dir = root / "build"
 
-        subprocess.check_call(["cmake", "-S", ".", "-B", str(build_dir)], cwd=root)
+        subprocess.check_call(
+            ["cmake", "-S", ".", "-B", str(build_dir), "-DCMAKE_BUILD_TYPE=Release"], cwd=root
+        )
         subprocess.check_call(["cmake", "--build", str(build_dir)], cwd=root)
 
         # Copy libks2py.so to core/

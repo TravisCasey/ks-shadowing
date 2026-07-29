@@ -29,6 +29,7 @@ add_library(project_options INTERFACE)
 target_compile_options(project_options INTERFACE
     -O3 -Wall -Wextra -Wpedantic)
 if(KS_TARGET_ARCH)
+  unset(KS_TARGET_ARCH_OK CACHE)
   check_cxx_compiler_flag("${KS_TARGET_ARCH}" KS_TARGET_ARCH_OK)
   if(KS_TARGET_ARCH_OK)
     target_compile_options(project_options INTERFACE "${KS_TARGET_ARCH}")

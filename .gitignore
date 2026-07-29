@@ -1,11 +1,6 @@
 # Build artifacts
 build/
 dist/
-csrc/CMakeFiles/
-csrc/cmake_install.cmake
-csrc/*.so
-csrc/ksint/*.so
-csrc/hera/*.so
 
 # Python
 __pycache__/

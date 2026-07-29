@@ -2,7 +2,6 @@
  * ETDRK4 integrator for the Kuramoto-Sivashinsky equation in Fourier space.
  * The state is represented using N/2-1 complex modes, stored as N-2 real
  * coefficients in interleaved real/imaginary format.
- *
  */
 
 #pragma once

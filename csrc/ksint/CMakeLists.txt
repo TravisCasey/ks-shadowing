@@ -1,5 +1,5 @@
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFTW3 REQUIRED fftw3)
+pkg_check_modules(FFTW3 REQUIRED IMPORTED_TARGET fftw3)
 find_package(Eigen3 REQUIRED NO_MODULE)
 
 add_library(ks2py SHARED
@@ -9,12 +9,11 @@ add_library(ks2py SHARED
 
 target_include_directories(ks2py PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${FFTW3_INCLUDE_DIRS}
 )
 
 target_link_libraries(ks2py PRIVATE
     project_options
-    ${FFTW3_LIBRARIES}
+    PkgConfig::FFTW3
     Eigen3::Eigen
 )
 

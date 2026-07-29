@@ -25,12 +25,12 @@ extern "C" {
  *   num_steps      - Total number of integration steps
  *   save_interval  - Save state every save_interval steps
  */
-int ksf(double *out_trajectory, double *initial_state, double domain_size,
+int ksf(double *out_trajectory, const double *initial_state, double domain_size,
         double time_step, std::size_t num_steps, std::size_t save_interval) {
   try {
     ksint::KS integrator(N, time_step, domain_size);
 
-    Eigen::Map<Eigen::ArrayXd> a0(initial_state, N - 2);
+    Eigen::Map<const Eigen::ArrayXd> a0(initial_state, N - 2);
     Eigen::ArrayXXd result = integrator.intg(a0, num_steps, save_interval);
 
     std::memcpy(out_trajectory, result.data(), result.size() * sizeof(double));
