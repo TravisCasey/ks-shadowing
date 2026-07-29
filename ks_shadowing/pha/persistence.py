@@ -127,7 +127,7 @@ class KSPersistenceTrajectory:
         if not self.diagrams:
             return np.zeros((0, 2), dtype=np.float64), np.zeros(1, dtype=np.int64)
 
-        lengths = np.array([dgm.shape[0] for dgm in self.diagrams], dtype=np.int64)
+        lengths = np.array([diagram.shape[0] for diagram in self.diagrams], dtype=np.int64)
         offsets = np.zeros(len(self.diagrams) + 1, dtype=np.int64)
         offsets[1:] = np.cumsum(lengths)
 
@@ -157,7 +157,7 @@ def _zeroth_persistence_diagram_periodic(field: NDArray[np.float64]) -> NDArray[
 
     Returns
     -------
-    NDArray[np.float64], shape (n_points, 2)
+    NDArray[np.float64], shape (num_pairs, 2)
         Persistence pairs ``(birth, death)`` with ``birth < death``. The single
         essential class (infinite death) is excluded.
     """

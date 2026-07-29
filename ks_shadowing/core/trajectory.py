@@ -92,7 +92,7 @@ class KSTrajectory:
         save_interval : int, optional
             Save every ``save_interval``-th integrated state. The integrator
             still steps at ``dt``; only the saved trajectory is coarsened. The
-            resulting :attr:`dt` is ``dt * save_interval``. Default 1.
+            resulting :attr:`dt` is ``dt * save_interval``. Default is 1.
 
         Returns
         -------
@@ -142,13 +142,13 @@ class KSTrajectory:
 
         Parameters
         ----------
-        rpo : :class:`~ks_shadowing.core.rpo.RPO`
+        rpo : RPO
             Source orbit. Integrated at its native ``rpo.dt`` to preserve
             relative-periodicity calibration.
         resolution : int
             Number of physical-space grid points for inverse FFT.
         downsample : int, optional
-            Sampling stride. Default 1.
+            Sampling stride. Default is 1.
         native : bool, optional
             Selects the slicing or reordering variant described above.
             Default ``False``.
@@ -306,7 +306,14 @@ class KSTrajectory:
         -------
         Self
             New trajectory containing the selected timesteps.
+
+        Raises
+        ------
+        TypeError
+            If ``key`` is not a slice.
         """
+        if not isinstance(key, slice):
+            raise TypeError("KSTrajectory indices must be slices")
         return type(self)(modes=self.modes[key], dt=self.dt, resolution=self.resolution)
 
     def chunks_physical(
@@ -331,9 +338,7 @@ class KSTrajectory:
         """
         for start in range(0, self.num_timesteps, chunk_size):
             end = min(start + chunk_size, self.num_timesteps)
-            chunk_modes = self.modes[start:end]
-            physical = self.resolution * fft.irfft(chunk_modes, self.resolution, axis=-1)
-            yield start, physical
+            yield start, self[start:end].to_physical()
 
     def chunks_fourier(
         self, chunk_size: int = DEFAULT_CHUNK_SIZE

@@ -40,6 +40,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -69,6 +70,13 @@ plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 ORDER_COLORS = plt.get_cmap("viridis")(np.linspace(0.78, 0.0, 6))
 ORDER_MARKERS = ("o", "s", "^", "v", "D", "P")
 
+
+def _elapsed_seconds(path: Path) -> float:
+    """Read the ``elapsed_seconds`` attribute without loading the trajectory."""
+    with h5py.File(path, "r") as f:
+        return float(f.attrs["elapsed_seconds"])
+
+
 # %%
 # SSA: one runtime per resolution.
 ssa_runtimes: dict[int, float] = {}
@@ -76,8 +84,7 @@ for path in DATA_DIR.glob("ssa_r*.h5"):
     match = SSA_PATTERN.match(path.name)
     if match is None:
         continue
-    metadata, _, _ = load_results(path)
-    ssa_runtimes[int(match.group(1))] = metadata.elapsed_seconds
+    ssa_runtimes[int(match.group(1))] = _elapsed_seconds(path)
 
 # %%
 # PHA: runtimes grouped by max order, then resolution, then delay. Panel (a)
@@ -88,8 +95,7 @@ for path in DATA_DIR.glob("pha_r*_d*_o*.h5"):
     if match is None:
         continue
     resolution, delay, max_order = (int(group) for group in match.groups())
-    metadata, _, _ = load_results(path)
-    pha_runtimes[max_order][resolution][delay] = metadata.elapsed_seconds
+    pha_runtimes[max_order][resolution][delay] = _elapsed_seconds(path)
 
 # %%
 # Mean pairs per diagram, per derivative order, at several spatial resolutions.

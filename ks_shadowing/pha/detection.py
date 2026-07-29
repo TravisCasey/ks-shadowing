@@ -154,10 +154,7 @@ def _prepare_diagrams_and_scales(  # noqa: PLR0913
     """Validate embedding parameters and build diagrams and per-order scales.
 
     Shared setup for :func:`detect`, :func:`compute_min_distances`, and
-    :func:`auto_detect`: computes per-order trajectory persistence diagrams,
-    builds per-RPO diagram pairs via ``_compute_rpo_diagram_pairs``, and
-    estimates per-order rescaling scales when ``rescale_orders`` is set
-    (``np.ones`` otherwise).
+    :func:`auto_detect`.
 
     Raises
     ------
@@ -226,14 +223,17 @@ def detect(  # noqa: PLR0913
         trajectory is built at a downsample stride inferred from
         ``trajectory.dt`` and the RPO's own native timestep.
     threshold : float
-        Maximum delay-embedded Wasserstein distance for a grid entry to count
-        as a close pass. Typically set by quantile with
+        Grid entries with delay-embedded Wasserstein distance strictly below
+        ``threshold`` count as close passes. Typically set by quantile with
         :func:`~ks_shadowing.pha.detection.compute_min_distances`. This flow
         is automated via :func:`~ks_shadowing.pha.detection.auto_detect`.
     delay : int, optional
         Time-delay embedding window size. Mean Wasserstein distance is taken
         across ``delay`` consecutive timesteps. ``1`` (default) applies no
-        temporal embedding.
+        temporal embedding. Event ``start_timestep``/``end_timestep`` index the
+        trajectory directly: delay-embedded row ``i`` averages original
+        timesteps ``i`` through ``i + delay - 1``, so the trailing ``delay - 1``
+        timesteps cannot start an event.
     max_derivative_order : int, optional
         Highest spatial-derivative order to include in the persistence-diagram
         comparison. Persistence diagrams of orders ``0..max_derivative_order``
@@ -696,9 +696,9 @@ def _stream_distance_matrices(  # noqa: PLR0913
         shm_blocks = [
             (
                 stack.enter_context(_shared_memory_view(flat)),
-                stack.enter_context(_shared_memory_view(offs)),
+                stack.enter_context(_shared_memory_view(offsets)),
             )
-            for flat, offs in flat_offsets_per_order
+            for flat, offsets in flat_offsets_per_order
         ]
         diagrams_shm_names = tuple(diagrams_shm.name for diagrams_shm, _ in shm_blocks)
         offsets_shm_names = tuple(offsets_shm.name for _, offsets_shm in shm_blocks)
@@ -707,7 +707,7 @@ def _stream_distance_matrices(  # noqa: PLR0913
             num_phases = len(phase_diagrams_per_order[0])
             wasserstein_matrix = np.empty((num_timesteps, num_phases), dtype=np.float64)
 
-            par_column_inputs = [
+            parallel_column_inputs = [
                 _WassersteinColumnInputs(
                     phase_index=phase_index,
                     diagrams_shm_names=diagrams_shm_names,
@@ -722,7 +722,7 @@ def _stream_distance_matrices(  # noqa: PLR0913
                 for phase_index in range(num_phases)
             ]
             column_results: Iterable[tuple[int, NDArray[np.float64]]] = pool.imap_unordered(
-                _compute_wasserstein_column, par_column_inputs
+                _compute_wasserstein_column, parallel_column_inputs
             )
             if show_progress:
                 column_results = tqdm(
@@ -851,8 +851,8 @@ def _apply_delay_embedding(
     delayed = np.zeros((delayed_timesteps, rpo_timesteps), dtype=np.float64)
 
     for offset in range(delay):
-        col_indices = (np.arange(rpo_timesteps) + offset) % rpo_timesteps
-        delayed += wasserstein_matrix[offset : offset + delayed_timesteps][:, col_indices]
+        column_indices = (np.arange(rpo_timesteps) + offset) % rpo_timesteps
+        delayed += wasserstein_matrix[offset : offset + delayed_timesteps][:, column_indices]
 
     return delayed / delay
 

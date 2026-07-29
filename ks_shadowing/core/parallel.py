@@ -1,6 +1,7 @@
 """Parallelism utilities."""
 
 import multiprocessing as mp
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from multiprocessing import cpu_count
@@ -26,7 +27,10 @@ def _resolve_n_jobs(n_jobs: int) -> int:
     """Convert ``n_jobs`` parameter to actual worker count.
 
     Follows scikit-learn convention: 1 means sequential, -1 means all CPUs, and
-    positive integers specify the exact worker count.
+    positive integers specify the exact worker count. ``-1`` resolves to the
+    process's CPU affinity mask where available (respecting container/cgroup
+    CPU limits and taskset pinning), falling back to the system-wide CPU count
+    on platforms without :func:`os.sched_getaffinity` (e.g. macOS, Windows).
 
     Parameters
     ----------
@@ -46,7 +50,10 @@ def _resolve_n_jobs(n_jobs: int) -> int:
     if n_jobs == 1:
         return 1
     if n_jobs == -1:
-        return cpu_count()
+        try:
+            return len(os.sched_getaffinity(0))
+        except AttributeError:
+            return cpu_count()
     if n_jobs < -1 or n_jobs == 0:
         raise ValueError(f"n_jobs must be -1 or a positive integer, got {n_jobs}")
     return n_jobs

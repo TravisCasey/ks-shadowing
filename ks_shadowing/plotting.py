@@ -70,6 +70,9 @@ def select_event_by_rank(
     ------
     IndexError
         If ``rank`` is out of range for ``events``.
+    AttributeError
+        If ``key`` is not an attribute of
+        :class:`~ks_shadowing.core.event.ShadowingEvent`.
     """
     if not events:
         raise IndexError("cannot select from empty event list")
@@ -82,8 +85,8 @@ def select_event_by_rank(
 def assert_same_trajectory(traj_a: KSTrajectory, traj_b: KSTrajectory) -> None:
     """Raise ``ValueError`` if two trajectories are not bit-identical.
 
-    Compares length, resolution, and modes element-wise. Used when two
-    result files are combined (e.g., matched-event analyses) to verify
+    Compares length, resolution, ``dt``, and modes element-wise. Used when
+    two result files are combined (e.g., matched-event analyses) to verify
     they were detected against the same trajectory.
 
     Parameters
@@ -94,7 +97,7 @@ def assert_same_trajectory(traj_a: KSTrajectory, traj_b: KSTrajectory) -> None:
     Raises
     ------
     ValueError
-        If the trajectories differ in length, resolution, or modes
+        If the trajectories differ in length, resolution, ``dt``, or modes
         content.
     """
     if traj_a.num_timesteps != traj_b.num_timesteps:

@@ -88,7 +88,7 @@ ax_spectrum.set_xlabel("Fourier mode index $q$")
 ax_spectrum.set_ylabel("Fraction of energy")
 figure.legend(loc="outside upper center", ncols=3)
 
-ax_fraction.plot(list(DERIVATIVE_ORDERS), high_fractions, color=CUTOFF_COLOR, marker="o")
+ax_fraction.plot(list(DERIVATIVE_ORDERS), high_fractions, color="black", marker="o")
 for order, fraction in zip(DERIVATIVE_ORDERS, high_fractions, strict=True):
     if order not in ANNOTATED_ORDERS:
         continue

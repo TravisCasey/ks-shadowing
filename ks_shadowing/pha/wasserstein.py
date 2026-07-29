@@ -81,13 +81,13 @@ def _wasserstein_column(
     out = np.empty(num_diagrams_a, dtype=np.float64)
 
     diagrams_a_ptr = diagrams_a.ctypes.data_as(POINTER(c_double)) if diagrams_a.size > 0 else None
-    rpo_ptr = diagram_b.ctypes.data_as(POINTER(c_double)) if diagram_b.size > 0 else None
+    diagram_b_ptr = diagram_b.ctypes.data_as(POINTER(c_double)) if diagram_b.size > 0 else None
 
     ret = lib.wasserstein_column_c(
         diagrams_a_ptr,
         offsets_a.ctypes.data_as(POINTER(c_int64)),
         c_int64(num_diagrams_a),
-        rpo_ptr,
+        diagram_b_ptr,
         c_int64(diagram_b_length),
         c_double(delta),
         out.ctypes.data_as(POINTER(c_double)),

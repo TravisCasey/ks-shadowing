@@ -69,7 +69,8 @@ def detect(  # noqa: PLR0913
         trajectory is built at a downsample stride inferred from
         ``trajectory.dt`` and the RPO's own native timestep.
     threshold : float
-        Maximum :math:`L_2` distance for a grid entry to count as a close pass.
+        Grid entries with :math:`L_2` distance strictly below ``threshold``
+        count as close passes.
         Typically set by quantile with :func:`compute_min_distances`. This
         flow is automated via :func:`auto_detect`.
     native : bool, optional
@@ -143,7 +144,7 @@ def compute_min_distances(  # noqa: PLR0913
     trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
         Trajectory whose minimum distances are computed.
     rpos : Sequence[:class:`~ks_shadowing.core.rpo.RPO`]
-        Relative periodic orbits to compare against. Each RPO's per-RPO
+        Relative periodic orbits to shadow against. Each RPO's per-RPO
         trajectory is built at a downsample stride inferred from
         ``trajectory.dt`` and the RPO's own native timestep.
     native : bool, optional
@@ -207,8 +208,8 @@ def auto_detect(  # noqa: PLR0913
     trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
         Trajectory to scan for shadowing events.
     rpos : Sequence[:class:`~ks_shadowing.core.rpo.RPO`]
-        Relative periodic orbits to detect shadowing against. Each RPO's
-        per-RPO trajectory is built at a downsample stride inferred from
+        Relative periodic orbits to shadow against. Each RPO's per-RPO
+        trajectory is built at a downsample stride inferred from
         ``trajectory.dt`` and the RPO's own native timestep.
     threshold_quantile : float, optional
         Quantile of per-timestep minimum distances used as the detection
@@ -441,15 +442,17 @@ class _DetectWorkerInputs:
     modes_shape : tuple[int, ...]
         Shape of the trajectory modes array in shared memory.
     trajectory_dt : float
-        Trajectory integration timestep.
+        Trajectory sampling timestep.
     resolution : int
         Spatial resolution of the trajectory.
     rpo : :class:`~ks_shadowing.core.rpo.RPO`
         Source RPO metadata.
     rpo_trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
-        Integrated RPO trajectory over one period.
+        Integrated RPO trajectory over one period, or one permutation cycle
+        at ``native=True``.
     threshold : float
-        Maximum :math:`L_2` distance for a grid entry to count as a close pass.
+        Grid entries with :math:`L_2` distance strictly below ``threshold``
+        count as close passes.
     min_duration : int
         Minimum event duration in timesteps.
     chunk_size : int
@@ -480,13 +483,14 @@ class _MinDistanceWorkerInputs:
     modes_shape : tuple[int, ...]
         Shape of the trajectory modes array in shared memory.
     trajectory_dt : float
-        Trajectory integration timestep.
+        Trajectory sampling timestep.
     resolution : int
         Spatial resolution of the trajectory.
     rpo : :class:`~ks_shadowing.core.rpo.RPO`
         Source RPO metadata.
     rpo_trajectory : :class:`~ks_shadowing.core.trajectory.KSTrajectory`
-        Integrated RPO trajectory over one period.
+        Integrated RPO trajectory over one period, or one permutation cycle
+        at ``native=True``.
     chunk_size : int
         Maximum number of trajectory timesteps processed at once in the
         distance computation.
@@ -540,7 +544,8 @@ def _detect_single_rpo(inputs: _DetectWorkerInputs) -> tuple[int, list[Shadowing
     -------
     rpo_index : int
         Index of the RPO supplied in ``inputs``; echoed back so the parent can
-        attribute completion under :func:`multiprocessing.pool.Pool.imap_unordered`.
+        attribute completion under
+        :meth:`multiprocessing.pool.Pool.imap_unordered`.
     events : list[ShadowingEvent]
         Events detected for the single RPO.
     """
@@ -580,7 +585,8 @@ def _min_distances_single_rpo(
     -------
     rpo_index : int
         Index of the RPO supplied in ``inputs``; echoed back so the parent can
-        attribute completion under :func:`multiprocessing.pool.Pool.imap_unordered`.
+        attribute completion under
+        :meth:`multiprocessing.pool.Pool.imap_unordered`.
     min_distances : NDArray[np.float64], shape (num_timesteps,)
         Minimum :math:`L_2` distance to this RPO at each trajectory timestep.
     """
@@ -603,9 +609,6 @@ def _min_distances_for_rpo(
     chunk_size: int,
 ) -> NDArray[np.float64]:
     """Compute per-timestep minimum :math:`L_2` distances to a single RPO.
-
-    Streams squared distances via ``_compute_distances_sq`` and reduces each
-    chunk to a per-timestep minimum over all phases and shifts.
 
     Returns
     -------

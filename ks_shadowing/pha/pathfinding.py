@@ -56,7 +56,8 @@ def _extract_shadowing_events(
         Index of the RPO whose phases label the columns of ``distance_matrix``;
         stored on each returned event.
     threshold : float
-        Maximum Wasserstein distance for a grid entry to count as a close pass.
+        Grid entries with Wasserstein distance strictly below ``threshold``
+        count as close passes.
     min_duration : int
         Minimum event duration in timesteps.
 
@@ -105,7 +106,7 @@ def _collect_close_passes(
     distance_matrix : NDArray[np.float64]
         Distance matrix to threshold.
     threshold : float
-        Maximum distance for close passes.
+        Distances strictly below ``threshold`` are collected as close passes.
 
     Returns
     -------
@@ -168,32 +169,34 @@ def _find_connected_components(
     edges_a: list[int] = []
     edges_b: list[int] = []
 
+    # Each pass's edges depend on the row buffers left behind by earlier
+    # passes in sorted (timestep, phase) order.
     for pass_index in range(pass_count):
-        t = int(timesteps[pass_index])
-        p = int(phases[pass_index])
+        timestep = int(timesteps[pass_index])
+        phase = int(phases[pass_index])
 
-        if t != current_timestep:
-            if t == current_timestep + 1:
+        if timestep != current_timestep:
+            if timestep == current_timestep + 1:
                 prev_row, curr_row = curr_row, prev_row
                 curr_row.fill(-1)
             else:
                 # First row, or a gap of >= 2 timesteps: no row t-1 to inherit.
                 prev_row.fill(-1)
                 curr_row.fill(-1)
-            current_timestep = t
+            current_timestep = timestep
 
-        curr_row[p] = pass_index
+        curr_row[phase] = pass_index
 
-        for dt, dp in backward_neighbors:
-            row = prev_row if dt == -1 else curr_row
-            neighbor = row[(p + dp) % period]
+        for dtimestep, dphase in backward_neighbors:
+            row = prev_row if dtimestep == -1 else curr_row
+            neighbor = row[(phase + dphase) % period]
             if neighbor >= 0:
                 edges_a.append(pass_index)
                 edges_b.append(neighbor)
 
         # Phase wraparound: when at the last phase column, phase 0 in the
         # same row was previously processed.
-        if p == period - 1:
+        if phase == period - 1:
             neighbor = curr_row[0]
             if neighbor >= 0:
                 edges_a.append(pass_index)
@@ -255,6 +258,8 @@ def _find_longest_path(
     min_distance = distance_sum.copy()
     predecessor = np.full(pass_count, -1, dtype=np.int32)
 
+    # Each entry's predecessor lookup needs path_length/distance_sum already
+    # finalized for earlier timesteps.
     for pass_index in range(pass_count):
         prev_key = (
             int(passes["timestep"][pass_index]) - 1,

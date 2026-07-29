@@ -26,19 +26,18 @@ try:
 except NameError:
     REPO_ROOT = Path.cwd().parent
 RESULT_PATH = REPO_ROOT / "examples" / "data" / "ssa_r2048.h5"
-RPO_PATH = REPO_ROOT / "data" / "rpos_selected.npz"
-CONTEXT_FRACTION = 2.1
+CONTEXT_MULTIPLE = 2.1
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 
 # %%
 # Load the fixture and pick the best event.
-_, trajectory, events = load_results(RESULT_PATH)
+metadata, trajectory, events = load_results(RESULT_PATH)
 event = select_event_by_rank(events)
-rpo = load_rpos(RPO_PATH)[event.rpo_index]
+rpo = load_rpos(REPO_ROOT / metadata.rpo_file)[event.rpo_index]
 
 duration = event.end_timestep - event.start_timestep
-context = int(duration * CONTEXT_FRACTION)
+context = int(duration * CONTEXT_MULTIPLE)
 plot_start = max(0, event.start_timestep - context)
 plot_end = min(len(trajectory), event.end_timestep + context)
 

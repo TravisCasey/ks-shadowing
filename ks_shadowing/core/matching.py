@@ -40,14 +40,17 @@ def match_events(
     Parameters
     ----------
     ssa_events : list[ShadowingEvent]
-        Events from SSA detection, sorted by ``start_timestep`` per RPO.
+        Events from SSA detection.
     pha_events : list[ShadowingEvent]
-        Events from PHA detection, sorted by ``start_timestep`` per RPO.
+        Events from PHA detection.
 
     Returns
     -------
     list[MatchedEvent]
-        All matched pairs with their intersection and union lengths.
+        All matched pairs with their intersection and union lengths, in the
+        order encountered while iterating ``ssa_events`` (outer loop) and,
+        for each, ``pha_events`` restricted to the same ``rpo_index`` (inner
+        loop).
     """
     pha_by_rpo: dict[int, list[ShadowingEvent]] = defaultdict(list)
     for event in pha_events:

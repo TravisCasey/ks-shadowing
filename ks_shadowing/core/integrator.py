@@ -26,8 +26,13 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-# Spatial domain size for the Kuramoto-Sivashinsky equation.
 DOMAIN_SIZE = 22.0
+"""Spatial domain size for the Kuramoto-Sivashinsky equation, denoted ``L``.
+
+The only domain size considered in this project; used to convert Fourier
+wavenumbers to physical units (e.g., in
+:meth:`~ks_shadowing.core.trajectory.KSTrajectory.to_comoving`).
+"""
 # Number of complex Fourier modes (0, modes 1-15, Nyquist).
 _COMPLEX_MODES = 17
 # Number of Fourier coefficients in the interleaved format used by the C library:

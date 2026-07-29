@@ -64,7 +64,8 @@ def _extract_shadowing_events(  # noqa: PLR0913
     resolution : int
         Spatial resolution; shift dimension wraps modulo ``resolution``.
     threshold : float
-        Maximum :math:`L_2` distance for a grid entry to count as a close pass.
+        Grid entries with :math:`L_2` distance strictly below ``threshold``
+        count as close passes.
     min_duration : int
         Minimum event duration in timesteps.
 
@@ -118,7 +119,8 @@ def _collect_close_passes(
         Number of rows in the RPO trajectory; ``rpo_phase`` wraps modulo
         ``period``.
     threshold : float
-        Maximum :math:`L_2` distance for close passes.
+        :math:`L_2` distances strictly below ``threshold`` are collected as
+        close passes.
 
     Returns
     -------
@@ -129,7 +131,7 @@ def _collect_close_passes(
     chunks: list[NDArray] = []
 
     for phase, chunk_start, dist_sq in dist_sq_generator:
-        step_index, shift_index = np.asarray(dist_sq < threshold_sq).nonzero()
+        step_index, shift_index = (dist_sq < threshold_sq).nonzero()
         if len(step_index) == 0:
             continue
 
@@ -202,31 +204,33 @@ def _find_connected_components(  # noqa: PLR0912
     edges_a: list[int] = []
     edges_b: list[int] = []
 
+    # Each pass's edges depend on the label grids left behind by earlier
+    # passes in sorted (timestep, rpo_phase, shift) order.
     for pass_index in range(pass_count):
-        t = int(timesteps[pass_index])
+        timestep = int(timesteps[pass_index])
         rpo_phase = int(rpo_phases[pass_index])
-        s = int(shifts[pass_index])
+        shift = int(shifts[pass_index])
 
-        if t != current_timestep:
-            if t > current_timestep + 1:
+        if timestep != current_timestep:
+            if timestep > current_timestep + 1:
                 labels_prev.fill(-1)
                 labels_curr.fill(-1)
             else:
                 labels_prev, labels_curr = labels_curr, labels_prev
                 labels_curr.fill(-1)
-            current_timestep = t
+            current_timestep = timestep
 
-        labels_curr[rpo_phase, s] = pass_index
+        labels_curr[rpo_phase, shift] = pass_index
 
-        if t > 0:
+        if timestep > 0:
             for dphase, ds in prev_slice_offsets:
-                neighbor = labels_prev[(rpo_phase + dphase) % period, (s + ds) % resolution]
+                neighbor = labels_prev[(rpo_phase + dphase) % period, (shift + ds) % resolution]
                 if neighbor >= 0:
                     edges_a.append(pass_index)
                     edges_b.append(neighbor)
 
         for dphase, ds in curr_slice_offsets:
-            neighbor = labels_curr[(rpo_phase + dphase) % period, (s + ds) % resolution]
+            neighbor = labels_curr[(rpo_phase + dphase) % period, (shift + ds) % resolution]
             if neighbor >= 0:
                 edges_a.append(pass_index)
                 edges_b.append(neighbor)
@@ -235,14 +239,14 @@ def _find_connected_components(  # noqa: PLR0912
         # slice, phase 0 at the same timestep has already been processed.
         if rpo_phase == period - 1:
             for ds in (-1, 0, 1):
-                neighbor = labels_curr[0, (s + ds) % resolution]
+                neighbor = labels_curr[0, (shift + ds) % resolution]
                 if neighbor >= 0:
                     edges_a.append(pass_index)
                     edges_b.append(neighbor)
 
         # Wraparound in shift: when at the last shift column for this
         # (timestep, rpo_phase), shift 0 has already been processed.
-        if s == resolution - 1:
+        if shift == resolution - 1:
             neighbor = labels_curr[rpo_phase, 0]
             if neighbor >= 0:
                 edges_a.append(pass_index)
@@ -305,6 +309,8 @@ def _find_longest_path(
     min_distance = distance_sum.copy()
     predecessor = np.full(pass_count, -1, dtype=np.int32)
 
+    # Each entry's best predecessor lookup needs path_length/distance_sum
+    # already finalized for earlier timesteps.
     for pass_index in range(pass_count):
         pass_timestep = int(passes["timestep"][pass_index])
         pass_rpo_phase = int(passes["rpo_phase"][pass_index])
