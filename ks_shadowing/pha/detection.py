@@ -517,7 +517,7 @@ def _compute_rpo_diagram_pairs(  # noqa: PLR0913
     Derives each RPO's downsample stride from ``trajectory_dt`` before
     integrating it. Each pair carries ``max_derivative_order + 1`` diagram
     sequences, one per derivative order ``0..max_derivative_order``.
-    Returned pairs are sorted by RPO period descending so that the
+    Returned pairs are sorted by RPO ``time_steps`` descending so that the
     longest-running RPOs are dispatched first.
     """
     diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]] = []
