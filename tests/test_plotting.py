@@ -55,7 +55,6 @@ def test_align_rpo_matches_trajectory_at_best_event() -> None:
     """At the lowest-mean-distance event in the SSA fixture, each row of
     the aligned RPO panel is close (in L2 per row) to the corresponding
     trajectory row."""
-    pytest.skip("fixture predates the sign-convention fix")
     if not FIXTURE_SSA.exists():
         pytest.skip(f"SSA fixture not present: {FIXTURE_SSA}")
     if not RPO_FILE.exists():
