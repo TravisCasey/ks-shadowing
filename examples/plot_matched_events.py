@@ -42,14 +42,19 @@ plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 # %%
 # Load the SSA reference and match each PHA run against it.
 _, ssa_trajectory, ssa_events = load_results(SSA_PATH)
+dt = ssa_trajectory.dt
 
 matched_runs = []
 for pha_path in PHA_PATHS:
     pha_metadata, pha_trajectory, pha_events = load_results(pha_path)
     assert_same_trajectory(ssa_trajectory, pha_trajectory)
     matches = match_events(ssa_events, pha_events)
-    ssa_lengths = np.array([m.ssa_event.end_timestep - m.ssa_event.start_timestep for m in matches])
-    pha_lengths = np.array([m.pha_event.end_timestep - m.pha_event.start_timestep for m in matches])
+    ssa_lengths = (
+        np.array([m.ssa_event.end_timestep - m.ssa_event.start_timestep for m in matches]) * dt
+    )
+    pha_lengths = (
+        np.array([m.pha_event.end_timestep - m.pha_event.start_timestep for m in matches]) * dt
+    )
     iou = np.array([m.intersection_length / m.union_length for m in matches])
     matched_runs.append((pha_metadata, ssa_lengths, pha_lengths, iou))
 
@@ -80,11 +85,11 @@ for ax, tag, (pha_metadata, ssa_lengths, pha_lengths, iou) in zip(
     ax.plot([0, limit], [0, limit], color="0.5", linestyle="--", linewidth=0.8, zorder=0)
     ax.set_title(tag, loc="left")
     ax.set_title(f"delay {pha_metadata.delay}, max order {pha_metadata.max_derivative_order}")
-    ax.set_xlabel("SSA event length (timesteps)")
+    ax.set_xlabel("SSA event length (time units)")
     ax.set_xlim(0, limit)
     ax.set_ylim(0, limit)
     ax.set_aspect("equal")
     ax.annotate(f"{len(iou)} matched pairs", xy=(0.03, 0.97), xycoords="axes fraction", va="top")
-axes[0].set_ylabel("PHA event length (timesteps)")
+axes[0].set_ylabel("PHA event length (time units)")
 figure.colorbar(scatter, ax=axes, label="Overlap (IoU)", pad=0.02)
 plt.show()

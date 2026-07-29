@@ -79,8 +79,8 @@ for ax, (tag, name, field, x_values, event_start) in zip(axes, panels, strict=Tr
     ax.set_ylabel("$x$")
     ax.axvline(event_start, color="black", linestyle="--", linewidth=1.0)
     ax.axvline(event_start + duration * dt, color="black", linestyle="--", linewidth=1.0)
-axes[0].set_xlabel("Time")
-axes[1].set_xlabel("Time relative to event start")
+axes[0].set_xlabel("Time (time units)")
+axes[1].set_xlabel("Time relative to event start (time units)")
 figure.colorbar(mesh, ax=axes, label="$u(x, t)$", pad=0.02)
 
 plt.show()

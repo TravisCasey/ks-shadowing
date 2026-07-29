@@ -28,8 +28,8 @@ high-order redundancy: at high ``k`` the added orders increasingly measure the
 same thing, so they reinforce one another rather than contributing independent
 evidence. Extra orders begin to indicate shadowing against the wrong orbit. The
 companion :ref:`mechanism example
-<sphx_glr_auto_examples_plot_derivative_mechanism.py>` shows that scale inflation
-and redundancy directly.
+<sphx_glr_auto_examples_plot_derivative_mechanism.py>` shows the scale inflation
+and the redundancy directly.
 """
 
 from pathlib import Path

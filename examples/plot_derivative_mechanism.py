@@ -12,16 +12,17 @@ while keeping the phase count and runtime low.
 
 Panel (a): scale. Differentiating a field multiplies Fourier mode ``q`` by
 ``(i q)^order``, so each added order inflates the Wasserstein magnitude it
-produces. Across these windows the per-order scale grows roughly fivefold from
-order 0 to order 5. PHA averages the per-order matrices with *equal* weight, so
-order 5 alone accounts for about 45% of that unweighted mean of scales; a
-high-order run is effectively dominated by its largest order. That is a
-statement about the averaging step, not a literal detection vote but it is
-exactly the kind of scale imbalance that would let extra orders stop helping.
+produces. Across these windows the per-order scale grows by roughly a factor
+of six from order 0 to order 5. PHA averages the per-order matrices with
+*equal* weight, so order 5 alone accounts for about 45% of that unweighted
+mean of scales; a high-order run is effectively dominated by its largest
+order. That is a statement about the averaging step, not a literal detection
+vote, but it is exactly the kind of scale imbalance that would prevent extra
+orders from improving results.
 
 Panel (b): redundancy. The high orders are also measuring nearly the same
 thing. Rank-correlating each order's isolated per-timestep distance across the
-pooled windows, orders 3-5 line up almost perfectly with one another (Spearman
+pooled windows, orders 3-5 line up closely with one another (Spearman
 around 0.85) while order 0 stands apart (around 0.3 against the rest). So the
 added high orders are not contributing independent evidence; they re-measure
 one signal at heavier weight. That is the source of the correct-RPO attribution

@@ -18,9 +18,9 @@ gentler -- at ``k = 5`` precision holds near 0.75 against the raw 0.73, F1 near
 lift the peak, which both sweeps reach around ``k = 2``-``3``.
 
 Every quantity plotted here is agreement with the SSA reference, not absolute
-correctness: the SSA detector is the yardstick, not ground truth. Prior
-analysis found that rescaling the orders does not beat simply capping the sweep
-at two or three derivative orders. It slows the high-order erosion the
+correctness: the SSA detector is the yardstick, not ground truth. Rescaling
+the orders does not beat simply capping the sweep at two or three derivative
+orders. It slows the high-order erosion the
 :ref:`saturation example <sphx_glr_auto_examples_plot_derivative_saturation.py>`
 shows, without removing it.
 """
