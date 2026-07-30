@@ -12,5 +12,8 @@ target_link_libraries(hera2py PRIVATE project_options)
 set_target_properties(hera2py PROPERTIES
     OUTPUT_NAME "hera2py"
     PREFIX "lib"
+    # macOS defaults SHARED libraries to .dylib; the ctypes loaders and the
+    # hatch build hook both address these by an explicit libNAME.so filename.
+    SUFFIX ".so"
     INTERPROCEDURAL_OPTIMIZATION TRUE
 )

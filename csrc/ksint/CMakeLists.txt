@@ -22,5 +22,8 @@ target_compile_options(ks2py PRIVATE -ffast-math)
 set_target_properties(ks2py PROPERTIES
     OUTPUT_NAME "ks2py"
     PREFIX "lib"
+    # macOS defaults SHARED libraries to .dylib; the ctypes loaders and the
+    # hatch build hook both address these by an explicit libNAME.so filename.
+    SUFFIX ".so"
     INTERPROCEDURAL_OPTIMIZATION TRUE
 )
