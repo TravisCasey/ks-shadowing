@@ -1,0 +1,212 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest
+            python: "3.13"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libfftw3-dev libeigen3-dev libboost-dev
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake pkg-config fftw eigen boost
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Sync
+        run: uv sync --locked --dev --python ${{ matrix.python }}
+
+      - name: Test
+        run: uv run --no-sync pytest
+
+  parallel:
+    name: parallel equivalence (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libfftw3-dev libeigen3-dev libboost-dev
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake pkg-config fftw eigen boost
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Sync
+        run: uv sync --locked --dev
+
+      # Covers parallel dispatch paths, which the test suite deliberately omits.
+      - name: Compare parallel against sequential detection
+        run: uv run --no-sync python .github/scripts/parallel_equivalence.py
+
+  lint:
+    name: lint (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libfftw3-dev libeigen3-dev libboost-dev
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Sync
+        run: uv sync --locked --dev
+
+      - name: Verify lockfile is current
+        run: uv lock --check
+
+      - name: Ruff check
+        run: uv run --no-sync ruff check .
+
+      - name: Ruff format
+        run: uv run --no-sync ruff format --check .
+
+      - name: Type check
+        run: uv run --no-sync ty check
+
+  lint-cpp:
+    name: lint (c++)
+    # Image is pinned rather than 'latest' because it transitively pins the
+    # clang-format and clang-tidy versions. With WarningsAsErrors: '*' in
+    # .clang-tidy, a version bump can newly fail the build.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libfftw3-dev libeigen3-dev \
+            libboost-dev clang-format clang-tidy
+
+      - name: Record tool versions
+        run: |
+          clang-format --version
+          clang-tidy --version
+
+      - name: Clang-format
+        run: |
+          clang-format --dry-run --Werror \
+            csrc/ksint/*.cpp csrc/ksint/*.hpp \
+            csrc/hera/hera2py.cpp csrc/unionfind/unionfind2py.cpp
+
+      # clang-tidy needs compile_commands.json, so configure (but do not build).
+      - name: Configure for compile_commands.json
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Clang-tidy
+        run: |
+          clang-tidy -p build \
+            csrc/ksint/ksint.cpp csrc/ksint/ksint2py.cpp \
+            csrc/hera/hera2py.cpp csrc/unionfind/unionfind2py.cpp
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libfftw3-dev libeigen3-dev libboost-dev
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Sync
+        run: uv sync --locked --dev
+
+      - name: Build docs
+        run: uv run --no-sync sphinx-build -W docs docs/_build/html
+
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libfftw3-dev libeigen3-dev libboost-dev
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Build sdist
+        run: uv build --sdist
+
+      # Install the sdist into a clean environment and run the suite that ships
+      # inside it.
+      #
+      # Uses the pytest entrypoint (not `python -m pytest`, which would prepend
+      # the working directory) together with --import-mode=importlib, so the
+      # extracted source tree stays off sys.path and `ks_shadowing` resolves to
+      # the installed package with its compiled libraries.
+      - name: Install from sdist and run its test suite
+        run: |
+          mkdir -p /tmp/sdist
+          tar -xzf dist/*.tar.gz -C /tmp/sdist --strip-components=1
+          uv venv /tmp/sdist-venv
+          VIRTUAL_ENV=/tmp/sdist-venv uv pip install dist/*.tar.gz pytest
+          cd /tmp/sdist && /tmp/sdist-venv/bin/pytest --import-mode=importlib
