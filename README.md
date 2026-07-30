@@ -59,12 +59,18 @@ See the sphinx-gallery examples directory for plotting and analysis of detected 
 # Install with dev dependencies
 uv sync --dev
 
+# Rebuild C++ extensions after changes under csrc/ (plain uv sync --dev does not rebuild)
+uv sync --dev --reinstall-package ks-shadowing
+
 # Run tests
 uv run pytest
 
 # Linting and formatting
 uv run ruff check .
 uv run ruff format .
+
+# C++ style and lint configuration: .clang-format and .clang-tidy (project files
+# under csrc/, excluding the csrc/hera/upstream submodule)
 
 # Type checking
 uv run ty check
