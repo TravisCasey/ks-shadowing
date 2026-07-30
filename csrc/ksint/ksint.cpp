@@ -125,11 +125,12 @@ KS::FFTWorkspace KS::makeWorkspace(int N) {
   ws.nonlinear_buffer = FFTWBuffer<fftw_complex>{static_cast<fftw_complex *>(
       fftw_malloc(sizeof(fftw_complex) * (N / 2 + 1)))};
 
+  // FFTW_ESTIMATE ensures reproducibility.
   ws.forward_plan = FFTWPlan{fftw_plan_dft_r2c_1d(
-      N, ws.real_buffer.get(), ws.nonlinear_buffer.get(), FFTW_MEASURE)};
+      N, ws.real_buffer.get(), ws.nonlinear_buffer.get(), FFTW_ESTIMATE)};
   ws.inverse_plan = FFTWPlan{
       fftw_plan_dft_c2r_1d(N, ws.complex_buffer.get(), ws.real_buffer.get(),
-                           FFTW_MEASURE | FFTW_PRESERVE_INPUT)};
+                           FFTW_ESTIMATE | FFTW_PRESERVE_INPUT)};
 
   return ws;
 }
