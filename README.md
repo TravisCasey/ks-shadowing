@@ -29,6 +29,13 @@ If you already cloned without `--recurse-submodules`:
 git submodule update --init --recursive
 ```
 
+## How to cite
+
+If you use this software, cite it via its Zenodo DOI:
+[10.5281/zenodo.21695318](https://doi.org/10.5281/zenodo.21695318)
+(full metadata in `CITATION.cff`). The gallery fixtures and RPO data are
+archived separately: [10.5281/zenodo.21695334](https://doi.org/10.5281/zenodo.21695334).
+
 ## RPO Data
 
 RPO data files are in the `data/` directory. All RPOs are for domain size L=22.
