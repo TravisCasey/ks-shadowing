@@ -288,7 +288,7 @@ def _compute_rpo_trajectory_pairs(
     return pairs
 
 
-def _detect_from_pairs(  # noqa: PLR0913
+def _detect_from_pairs(  # noqa: PLR0913, PLR0917
     trajectory: KSTrajectory,
     rpo_trajectory_pairs: list[tuple[RPO, KSTrajectory]],
     threshold: float,

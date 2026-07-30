@@ -3,7 +3,7 @@ name = "ks-shadowing"
 version = "1.0.0"
 description = "Shadowing detection for Kuramoto-Sivashinsky equation"
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.15"
 license = "MIT"
 authors = [
     {name = "Travis Casey", email = "travis.w.casey@outlook.com"},
@@ -13,14 +13,15 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
     "h5py>=3.16.0",
     "numpy>=2.4.1",
-    "scipy>=1.16.0",
-    "tqdm>=4.0.0",
+    "scipy>=1.16.1",
+    "tqdm>=4.66.0",
 ]
 
 [project.urls]
@@ -84,9 +85,9 @@ addopts = "-v --tb=short --strict-markers"
 dev = [
     "furo>=2025.12.19",
     "matplotlib>=3.10.8",
-    "pytest>=9.0.2",
-    "ruff>=0.14.11",
+    "pytest>=9.1.1",
+    "ruff>=0.16.0",
     "sphinx>=9.1.0",
-    "sphinx-gallery>=0.18.0",
-    "ty>=0.0.11",
+    "sphinx-gallery>=0.21.0",
+    "ty>=0.0.65",
 ]

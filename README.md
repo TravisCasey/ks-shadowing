@@ -11,7 +11,7 @@ Two detection methods are implemented:
 
 ## Installation
 
-Requires Python 3.12 or 3.13, CMake, and the following system libraries:
+Requires Python 3.12, 3.13, or 3.14, CMake, and the following system libraries:
 
 - **FFTW3** -- Fast Fourier Transform (for the KS integrator)
 - **Eigen3** -- Linear algebra (for the KS integrator)

@@ -9,10 +9,11 @@ Checks: >
   -modernize-return-braced-init-list,
   -readability-identifier-length,
   -readability-magic-numbers,
-  -readability-implicit-bool-conversion
+  -readability-implicit-bool-conversion,
+  -readability-math-missing-parentheses
 
 HeaderFilterRegex: 'csrc/(ksint|hera|unionfind)/[^/]+\.hpp$'
 
-WarningsAsErrors: ''
+WarningsAsErrors: '*'
 
 FormatStyle: file

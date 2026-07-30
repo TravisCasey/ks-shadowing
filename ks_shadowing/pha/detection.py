@@ -138,7 +138,7 @@ def _compute_order_scales(
     return scales
 
 
-def _prepare_diagrams_and_scales(  # noqa: PLR0913
+def _prepare_diagrams_and_scales(  # noqa: PLR0913, PLR0917
     trajectory: KSTrajectory,
     rpos: Sequence[RPO],
     delay: int,
@@ -504,7 +504,7 @@ def auto_detect(  # noqa: PLR0913
     )
 
 
-def _compute_rpo_diagram_pairs(  # noqa: PLR0913
+def _compute_rpo_diagram_pairs(  # noqa: PLR0913, PLR0917
     rpos: Sequence[RPO],
     resolution: int,
     chunk_size: int,
@@ -534,7 +534,7 @@ def _compute_rpo_diagram_pairs(  # noqa: PLR0913
     return diagram_pairs
 
 
-def _detect_from_diagrams(  # noqa: PLR0913
+def _detect_from_diagrams(  # noqa: PLR0913, PLR0917
     trajectory_diagrams_per_order: list[KSPersistenceTrajectory],
     rpo_diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]],
     delay: int,
@@ -560,7 +560,7 @@ def _detect_from_diagrams(  # noqa: PLR0913
     return events
 
 
-def _min_distances_from_diagrams(  # noqa: PLR0913
+def _min_distances_from_diagrams(  # noqa: PLR0913, PLR0917
     trajectory_diagrams_per_order: list[KSPersistenceTrajectory],
     rpo_diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]],
     delay: int,
@@ -594,7 +594,7 @@ def _min_distances_from_diagrams(  # noqa: PLR0913
     return min_distances
 
 
-def _stream_distance_matrices(  # noqa: PLR0913
+def _stream_distance_matrices(  # noqa: PLR0913, PLR0917
     trajectory_diagrams_per_order: list[KSPersistenceTrajectory],
     rpo_diagram_pairs: list[tuple[RPO, list[KSPersistenceTrajectory]]],
     delay: int,

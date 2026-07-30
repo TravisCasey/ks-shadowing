@@ -33,7 +33,7 @@ _CLOSE_PASS_DTYPE = np.dtype(
 )
 
 
-def _extract_shadowing_events(  # noqa: PLR0913
+def _extract_shadowing_events(  # noqa: PLR0913, PLR0917
     dist_sq_generator: Iterator[tuple[int, int, NDArray[np.float64]]],
     rpo_index: int,
     period: int,
