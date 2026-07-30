@@ -31,10 +31,12 @@ git submodule update --init --recursive
 
 ## How to cite
 
-If you use this software, cite it via its Zenodo DOI:
-[10.5281/zenodo.21695318](https://doi.org/10.5281/zenodo.21695318)
-(full metadata in `CITATION.cff`). The gallery fixtures and RPO data are
-archived separately: [10.5281/zenodo.21695334](https://doi.org/10.5281/zenodo.21695334).
+To cite the exact code behind a result, use the **version DOI**. For v1.0.0
+that is [10.5281/zenodo.21695319](https://doi.org/10.5281/zenodo.21695319)
+(full metadata in `CITATION.cff`). To cite the software as an ongoing project,
+use the **concept DOI**
+[10.5281/zenodo.21695318](https://doi.org/10.5281/zenodo.21695318), which
+always resolves to the newest release.
 
 ## RPO Data
 
