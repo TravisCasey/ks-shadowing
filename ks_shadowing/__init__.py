@@ -17,7 +17,6 @@ from ks_shadowing.plotting import (
     align_rpo_to_window,
     assert_same_trajectory,
     events_to_union_mask,
-    select_event_by_rank,
 )
 
 __all__: list[str] = [
@@ -37,7 +36,6 @@ __all__: list[str] = [
     "match_events",
     "pha",
     "save_results",
-    "select_event_by_rank",
     "shift_distances_sq",
     "ssa",
 ]

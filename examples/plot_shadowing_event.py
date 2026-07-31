@@ -5,7 +5,7 @@ Shadowing event: trajectory vs. RPO
 A two-panel comparison of one shadowing event: the chaotic trajectory window on
 top, the RPO field spatially aligned to it on the bottom. Black dashed lines
 mark the event boundaries. When the trajectory shadows the RPO, the two panels
-show the same field evolving in time.
+show a nearly identical field evolving in time.
 """
 
 from pathlib import Path
@@ -18,7 +18,6 @@ from ks_shadowing import (
     align_rpo_to_window,
     load_results,
     load_rpos,
-    select_event_by_rank,
 )
 
 try:
@@ -26,14 +25,14 @@ try:
 except NameError:
     REPO_ROOT = Path.cwd().parent
 RESULT_PATH = REPO_ROOT / "examples" / "data" / "ssa_r2048.h5"
-CONTEXT_MULTIPLE = 2.1
+CONTEXT_MULTIPLE = 1.7
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 
 # %%
-# Load the fixture and pick the best event.
+# Load the fixture and pick the longest event.
 metadata, trajectory, events = load_results(RESULT_PATH)
-event = select_event_by_rank(events)
+event = max(events, key=lambda candidate: candidate.end_timestep - candidate.start_timestep)
 rpo = load_rpos(REPO_ROOT / metadata.rpo_file)[event.rpo_index]
 
 duration = event.end_timestep - event.start_timestep
@@ -57,7 +56,7 @@ vmax = float(max(np.abs(trajectory_physical).max(), np.abs(aligned_rpo).max()))
 # %%
 # Render. The trajectory panel keeps absolute time; the RPO panel uses
 # event-relative time. Both spans are equal, so the panels stay aligned.
-figure, axes = plt.subplots(2, 1, figsize=(7.0, 4.6), sharey=True)
+figure, axes = plt.subplots(2, 1, figsize=(7.0, 4.0), sharey=True)
 
 panels = (
     ("(a)", "Chaotic trajectory", trajectory_physical, times, event.start_timestep * dt),

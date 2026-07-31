@@ -12,11 +12,7 @@ import pytest
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.results import load_results
 from ks_shadowing.core.rpo import load_rpos
-from ks_shadowing.plotting import (
-    align_rpo_to_window,
-    events_to_union_mask,
-    select_event_by_rank,
-)
+from ks_shadowing.plotting import align_rpo_to_window, events_to_union_mask
 
 FIXTURE_SSA = Path(__file__).resolve().parent.parent / "examples/data/ssa_r2048.h5"
 RPO_FILE = Path(__file__).resolve().parent.parent / "data/rpos_selected.npz"
@@ -62,7 +58,7 @@ def test_align_rpo_matches_trajectory_at_best_event() -> None:
 
     _, trajectory, events = load_results(FIXTURE_SSA)
     assert events, "fixture must contain at least one event"
-    event = select_event_by_rank(events)
+    event = min(events, key=lambda event: event.mean_distance)
 
     rpos = load_rpos(RPO_FILE)
     rpo = rpos[event.rpo_index]

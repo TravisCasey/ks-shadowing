@@ -41,47 +41,6 @@ def events_to_union_mask(events: list[ShadowingEvent], num_timesteps: int) -> ND
     return mask
 
 
-def select_event_by_rank(
-    events: list[ShadowingEvent],
-    rank: int = 0,
-    key: str = "mean_distance",
-) -> ShadowingEvent:
-    """Pick the rank-th event after sorting by a numeric field, ascending.
-
-    With the default ``key="mean_distance"``, ``rank=0`` returns the
-    best-matching event (smallest mean distance).
-
-    Parameters
-    ----------
-    events : list[ShadowingEvent]
-        Events to choose from. Must be non-empty.
-    rank : int, optional
-        Zero-based rank into the sorted list. Default 0.
-    key : str, optional
-        Name of a numeric :class:`~ks_shadowing.core.event.ShadowingEvent`
-        attribute to sort by. Default ``"mean_distance"``.
-
-    Returns
-    -------
-    ShadowingEvent
-        The rank-th event after sorting.
-
-    Raises
-    ------
-    IndexError
-        If ``rank`` is out of range for ``events``.
-    AttributeError
-        If ``key`` is not an attribute of
-        :class:`~ks_shadowing.core.event.ShadowingEvent`.
-    """
-    if not events:
-        raise IndexError("cannot select from empty event list")
-    sorted_events = sorted(events, key=lambda event: getattr(event, key))
-    if rank < 0 or rank >= len(sorted_events):
-        raise IndexError(f"rank {rank} is out of range for {len(sorted_events)} events")
-    return sorted_events[rank]
-
-
 def assert_same_trajectory(traj_a: KSTrajectory, traj_b: KSTrajectory) -> None:
     """Raise ``ValueError`` if two trajectories are not bit-identical.
 
