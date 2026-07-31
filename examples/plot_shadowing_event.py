@@ -6,6 +6,11 @@ A two-panel comparison of one shadowing event: the chaotic trajectory window on
 top, the RPO field spatially aligned to it on the bottom. Black dashed lines
 mark the event boundaries. When the trajectory shadows the RPO, the two panels
 show a nearly identical field evolving in time.
+
+The event shown is the one that shadows its RPO for the most orbital periods.
+The
+:ref:`distance-matrix example <sphx_glr_auto_examples_plot_shadowing_matrices.py>`
+selects the same event.
 """
 
 from pathlib import Path
@@ -15,6 +20,7 @@ import numpy as np
 
 from ks_shadowing import (
     DOMAIN_SIZE,
+    KSTrajectory,
     align_rpo_to_window,
     load_results,
     load_rpos,
@@ -30,10 +36,24 @@ CONTEXT_MULTIPLE = 1.7
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 
 # %%
-# Load the fixture and pick the longest event.
+# Load the fixture and pick the event covering the most RPO periods. Each RPO's
+# period in trajectory rows is the length of its per-RPO trajectory, built at
+# the sampling the detection run used.
 metadata, trajectory, events = load_results(RESULT_PATH)
-event = max(events, key=lambda candidate: candidate.end_timestep - candidate.start_timestep)
-rpo = load_rpos(REPO_ROOT / metadata.rpo_file)[event.rpo_index]
+rpos = load_rpos(REPO_ROOT / metadata.rpo_file)
+rpo_periods = [
+    KSTrajectory.from_rpo(
+        candidate_rpo, trajectory.resolution, metadata.downsample, metadata.native
+    ).num_timesteps
+    for candidate_rpo in rpos
+]
+event = max(
+    events,
+    key=lambda candidate: (
+        (candidate.end_timestep - candidate.start_timestep) / rpo_periods[candidate.rpo_index]
+    ),
+)
+rpo = rpos[event.rpo_index]
 
 duration = event.end_timestep - event.start_timestep
 context = int(duration * CONTEXT_MULTIPLE)
@@ -56,7 +76,7 @@ vmax = float(max(np.abs(trajectory_physical).max(), np.abs(aligned_rpo).max()))
 # %%
 # Render. The trajectory panel keeps absolute time; the RPO panel uses
 # event-relative time. Both spans are equal, so the panels stay aligned.
-figure, axes = plt.subplots(2, 1, figsize=(7.0, 4.0), sharey=True)
+figure, axes = plt.subplots(2, 1, figsize=(7.0, 3.7), sharey=True)
 
 panels = (
     ("(a)", "Chaotic trajectory", trajectory_physical, times, event.start_timestep * dt),
@@ -78,8 +98,8 @@ for ax, (tag, name, field, x_values, event_start) in zip(axes, panels, strict=Tr
     ax.set_ylabel("$x$")
     ax.axvline(event_start, color="black", linestyle="--", linewidth=1.0)
     ax.axvline(event_start + duration * dt, color="black", linestyle="--", linewidth=1.0)
-axes[0].set_xlabel("Time (time units)")
-axes[1].set_xlabel("Time relative to event start (time units)")
+axes[0].set_xlabel("Time")
+axes[1].set_xlabel("Time relative to event start")
 figure.colorbar(mesh, ax=axes, label="$u(x, t)$", pad=0.02)
 
 plt.show()
