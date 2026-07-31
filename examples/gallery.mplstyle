@@ -30,3 +30,6 @@ lines.markersize: 3.5
 lines.markeredgewidth: 0.0
 
 savefig.dpi: 300
+pdf.fonttype: 42
+ps.fonttype: 42
+svg.fonttype: none
