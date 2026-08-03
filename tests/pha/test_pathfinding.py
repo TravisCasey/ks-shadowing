@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
+from ks_shadowing.pha import connected_components
 from ks_shadowing.pha.pathfinding import _extract_shadowing_events
 
 
@@ -76,3 +77,40 @@ def test_no_events_above_threshold() -> None:
     matrix = np.full((10, 5), 10.0, dtype=np.float64)
     events = _extract_shadowing_events(matrix, rpo_index=0, threshold=1.0, min_duration=1)
     assert events == []
+
+
+def test_connected_components_labels_in_caller_order() -> None:
+    """``connected_components`` returns one label per close pass in the order
+    given, grouping diagonal neighbors and wrapping across ``phase=0`` while
+    leaving cells two phases apart in separate components."""
+    period = 6
+    # Two diagonal runs: one crossing the phase wrap, one isolated two phases
+    # away from it. Given in an order that is not sorted by (timestep, phase).
+    timesteps = np.array([3, 0, 1, 2, 0], dtype=np.int64)
+    phases = np.array([1, period - 1, 0, 1, 3], dtype=np.int64)
+
+    labels = connected_components(timesteps, phases, period)
+
+    assert labels.dtype == np.int32
+    assert np.unique(labels).tolist() == [0, 1]
+    assert labels[0] == labels[1] == labels[2] == labels[3]
+    assert labels[4] != labels[0]
+
+
+def test_connected_components_permutation_invariance() -> None:
+    """Permuting the close passes permutes the labels without changing the
+    partition they induce."""
+    rng = np.random.default_rng(0)
+    period = 9
+    timesteps, phases = np.nonzero(rng.random((20, period)) < 0.3)
+
+    labels = connected_components(timesteps, phases, period)
+    permutation = rng.permutation(timesteps.size)
+    permuted = connected_components(timesteps[permutation], phases[permutation], period)
+
+    def partition(assignment: NDArray[np.int32]) -> set[frozenset[int]]:
+        return {
+            frozenset(np.flatnonzero(assignment == label).tolist()) for label in set(assignment)
+        }
+
+    assert partition(labels) == partition(permuted[np.argsort(permutation)])

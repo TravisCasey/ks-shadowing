@@ -123,6 +123,67 @@ def _collect_close_passes(
     return passes
 
 
+def connected_components(
+    timesteps: NDArray[np.int64],
+    phases: NDArray[np.int64],
+    period: int,
+) -> NDArray[np.int32]:
+    """Group close passes into 8-connected components over the phase cylinder.
+
+    Two close passes are adjacent if their ``(timestep, phase)`` coordinates
+    differ by at most 1 in each dimension, with wraparound in the phase
+    dimension. This is the grouping stage of PHA detection, exposed so that
+    callers can inspect it directly: a
+    :class:`~ks_shadowing.core.event.ShadowingEvent` records only the longest
+    valid path through its component, so the component it came from cannot be
+    recovered from a detection result.
+
+    The inputs are the coordinates of the entries of a distance matrix that
+    fall below a detection threshold, in the form
+    ``np.nonzero(distances < threshold)`` returns them.
+
+    Parameters
+    ----------
+    timesteps : NDArray[np.int64], shape (num_passes,)
+        Trajectory timestep index of each close pass.
+    phases : NDArray[np.int64], shape (num_passes,)
+        RPO phase index of each close pass, in ``[0, period)``.
+    period : int
+        RPO period; phase wraps modulo ``period``.
+
+    Returns
+    -------
+    NDArray[np.int32], shape (num_passes,)
+        Component label of each close pass, in the order the passes were
+        given. Labels are contiguous in ``[0, num_components)`` but otherwise
+        carry no meaning.
+
+    Raises
+    ------
+    ValueError
+        If ``timesteps`` and ``phases`` have different lengths, or any phase
+        falls outside ``[0, period)``.
+    """
+    timesteps = np.asarray(timesteps)
+    phases = np.asarray(phases)
+    if len(timesteps) != len(phases):
+        raise ValueError(
+            f"timesteps and phases must have the same length, "
+            f"got {len(timesteps)} and {len(phases)}"
+        )
+    if len(timesteps) == 0:
+        return np.empty(0, dtype=np.int32)
+    if phases.min() < 0 or phases.max() >= period:
+        raise ValueError(
+            f"phases must lie in [0, {period}), got range [{phases.min()}, {phases.max()}]"
+        )
+
+    # Union-find roots are pass indices, so they are neither contiguous nor
+    # meaningful; densify them for callers who want to index by label.
+    _, dense_labels = np.unique(_label_close_passes(timesteps, phases, period), return_inverse=True)
+    return dense_labels.astype(np.int32)
+
+
 def _find_connected_components(
     close_passes: NDArray,
     period: int,
@@ -144,17 +205,39 @@ def _find_connected_components(
     list[NDArray]
         One ``_CLOSE_PASS_DTYPE`` structured array per connected component.
     """
-    pass_count = len(close_passes)
-    if pass_count == 0:
+    if len(close_passes) == 0:
         return []
+
+    # The labeller sorts internally and undoes it; this sort canonicalizes the
+    # order the partition below sees, so tie-breaking between candidate paths
+    # of equal length and equal mean distance in ``_find_longest_path`` depends
+    # only on the cell set, never on caller order.
+    sort_order = np.lexsort((close_passes["phase"], close_passes["timestep"]))
+    close_passes = close_passes[sort_order]
+
+    component_labels = _label_close_passes(close_passes["timestep"], close_passes["phase"], period)
+
+    # Partition passes by component root.
+    group_order = np.argsort(component_labels)
+    sorted_labels = component_labels[group_order]
+    splits = np.where(np.diff(sorted_labels) != 0)[0] + 1
+    return [close_passes[group] for group in np.split(group_order, splits)]
+
+
+def _label_close_passes(
+    timesteps: NDArray,
+    phases: NDArray,
+    period: int,
+) -> NDArray[np.int32]:
+    """Assign each close pass the union-find root of its 8-connected component."""
+    pass_count = len(timesteps)
 
     # Sort by ``(timestep, phase)`` so that every backward neighbor has been
     # processed when we visit a cell. ``np.lexsort`` uses the last key as
-    # primary.
-    sort_order = np.lexsort((close_passes["phase"], close_passes["timestep"]))
-    close_passes = close_passes[sort_order]
-    timesteps = close_passes["timestep"]
-    phases = close_passes["phase"]
+    # primary, and is the identity on input that is already in this order.
+    sort_order = np.lexsort((phases, timesteps))
+    timesteps = timesteps[sort_order]
+    phases = phases[sort_order]
 
     # Two rolling rows suffice since passes are processed in timestep order and
     # only the previous row can contain backward neighbors. ``-1`` is an empty
@@ -208,11 +291,10 @@ def _find_connected_components(
         np.array(edges_b, dtype=np.int32),
     )
 
-    # Partition passes by component root.
-    group_order = np.argsort(component_labels)
-    sorted_labels = component_labels[group_order]
-    splits = np.where(np.diff(sorted_labels) != 0)[0] + 1
-    return [close_passes[group] for group in np.split(group_order, splits)]
+    # Labels are indexed by sorted position; restore the caller's order.
+    labels = np.empty_like(component_labels)
+    labels[sort_order] = component_labels
+    return labels
 
 
 def _find_longest_path(

@@ -72,3 +72,9 @@ pha.wasserstein
 
 .. automodule:: ks_shadowing.pha.wasserstein
    :members:
+
+pha.pathfinding
+---------------
+
+.. automodule:: ks_shadowing.pha.pathfinding
+   :members:
