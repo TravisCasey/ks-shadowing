@@ -34,7 +34,10 @@ not sufficiently close or sufficiently long to be their own events.
 The
 :ref:`persistence-diagram example <sphx_glr_auto_examples_plot_shadowing_diagrams.py>`
 shows this same event once more, as the persistence pairs whose Wasserstein
-distances panel (d) holds.
+distances panel (d) holds. The
+:ref:`event-extraction example <sphx_glr_auto_examples_plot_shadowing_paths.py>`
+takes the step after panel (d), thresholding a matrix of this kind and searching
+it for the paths that become events.
 """
 
 from pathlib import Path

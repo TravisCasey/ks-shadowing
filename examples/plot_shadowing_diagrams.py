@@ -29,7 +29,10 @@ No spatial alignment is applied in either panel. The sublevel-set persistence
 diagram of a periodic field is invariant to spatial translation, so neither the
 RPO's drift nor the event's per-timestep spatial shift moves any point in this
 figure. That invariance is what leaves the distance matrix of the companion
-example without a shift axis.
+example without a shift axis. The
+:ref:`event-extraction example <sphx_glr_auto_examples_plot_shadowing_paths.py>`
+picks the story up one step later, where Wasserstein distances like these are
+thresholded and searched for the paths that become events.
 """
 
 from pathlib import Path

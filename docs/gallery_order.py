@@ -9,6 +9,7 @@ EXAMPLE_ORDER = [
     "plot_shadowing_event.py",
     "plot_shadowing_matrices.py",
     "plot_shadowing_diagrams.py",
+    "plot_shadowing_paths.py",
     "plot_event_histogram.py",
     "plot_matched_events.py",
     "plot_coverage_vs_embedding.py",
