@@ -10,7 +10,9 @@ show a nearly identical field evolving in time.
 The event shown is the one that shadows its RPO for the most orbital periods.
 The
 :ref:`distance-matrix example <sphx_glr_auto_examples_plot_shadowing_matrices.py>`
-selects the same event.
+and the
+:ref:`persistence-diagram example <sphx_glr_auto_examples_plot_shadowing_diagrams.py>`
+select the same event.
 """
 
 from pathlib import Path

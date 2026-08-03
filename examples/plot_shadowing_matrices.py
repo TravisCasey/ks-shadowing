@@ -30,6 +30,11 @@ no shift axis because persistence quotients out the spatial symmetry. Reducing
 the shift axis is what makes the two commensurable. Both use a logarithmic color
 scale. The fainter streaks elsewhere in the window are near recurrences, though
 not sufficiently close or sufficiently long to be their own events.
+
+The
+:ref:`persistence-diagram example <sphx_glr_auto_examples_plot_shadowing_diagrams.py>`
+shows this same event once more, as the persistence pairs whose Wasserstein
+distances panel (d) holds.
 """
 
 from pathlib import Path
