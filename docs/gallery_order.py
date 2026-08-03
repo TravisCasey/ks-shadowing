@@ -13,6 +13,7 @@ EXAMPLE_ORDER = [
     "plot_event_histogram.py",
     "plot_matched_events.py",
     "plot_coverage_vs_embedding.py",
+    "plot_disagreement_mechanism.py",
     "plot_derivative_spectrum.py",
     "plot_derivative_saturation.py",
     "plot_derivative_mechanism.py",
