@@ -41,7 +41,7 @@ plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 
 # %%
 # Load the SSA reference and match each PHA run against it.
-_, ssa_trajectory, ssa_events = load_results(SSA_PATH)
+ssa_metadata, ssa_trajectory, ssa_events = load_results(SSA_PATH)
 dt = ssa_trajectory.dt
 
 matched_runs = []
@@ -59,15 +59,20 @@ for pha_path in PHA_PATHS:
     matched_runs.append((pha_metadata, ssa_lengths, pha_lengths, iou))
 
 # %%
-# Render. Both detectors discard events shorter than their ``min_duration``
-# timesteps, which is why the lower-left corner of each panel is empty.
-# High-IoU points draw last so overplotting does not bury them; the shared
-# limits and diagonal make the two panels directly comparable.
-figure, axes = plt.subplots(1, 2, figsize=(7.0, 3.9), sharey=True)
+# Render. Axes start at the run's ``min_duration``. High-IoU points draw last
+# so overplotting does not bury them; the shared limits and diagonal make the
+# two panels directly comparable.
+figure, axes = plt.subplots(2, 1, figsize=(3.4, 7.4), sharex=True)
 
-limit = 1.02 * max(
+shortest = dt * min(
+    ssa_metadata.min_duration,
+    *(pha_metadata.min_duration for pha_metadata, *_ in matched_runs),
+)
+longest = max(
     max(ssa_lengths.max(), pha_lengths.max()) for _, ssa_lengths, pha_lengths, _ in matched_runs
 )
+pad = 0.03 * (longest - shortest)
+low, high = shortest - pad, longest + pad
 for ax, tag, (pha_metadata, ssa_lengths, pha_lengths, iou) in zip(
     axes, ("(a)", "(b)"), matched_runs, strict=True
 ):
@@ -82,14 +87,20 @@ for ax, tag, (pha_metadata, ssa_lengths, pha_lengths, iou) in zip(
         s=6,
         linewidths=0,
     )
-    ax.plot([0, limit], [0, limit], color="0.5", linestyle="--", linewidth=0.8, zorder=0)
+    ax.plot([low, high], [low, high], color="0.5", linestyle="--", linewidth=0.8, zorder=0)
     ax.set_title(tag, loc="left")
     ax.set_title(f"delay {pha_metadata.delay}, max order {pha_metadata.max_derivative_order}")
-    ax.set_xlabel("SSA event length (time units)")
-    ax.set_xlim(0, limit)
-    ax.set_ylim(0, limit)
+    ax.set_ylabel("PHA event length (time units)")
+    ax.set_xlim(low, high)
+    ax.set_ylim(low, high)
     ax.set_aspect("equal")
-    ax.annotate(f"{len(iou)} matched pairs", xy=(0.03, 0.97), xycoords="axes fraction", va="top")
-axes[0].set_ylabel("PHA event length (time units)")
-figure.colorbar(scatter, ax=axes, label="Overlap (IoU)", pad=0.02)
+    ax.annotate(
+        f"{len(iou)} matched pairs",
+        xy=(0.97, 0.97),
+        xycoords="axes fraction",
+        ha="right",
+        va="top",
+    )
+axes[1].set_xlabel("SSA event length (time units)")
+figure.colorbar(scatter, ax=axes, orientation="horizontal", label="Overlap (IoU)", pad=0.02)
 plt.show()
