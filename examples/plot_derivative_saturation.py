@@ -5,25 +5,21 @@ Derivative embedding saturates against the SSA reference
 Running PHA with ``max_derivative_order = k`` averages the persistence-diagram
 Wasserstein distances over spatial-derivative orders ``0..k`` before reducing
 over phases. The ``pha_r2048_d1_o{0..5}`` files are that sweep,
-``max_derivative_order`` 0 through 5, and scoring them against the SSA mask
-shows directly what each added order buys us. Short version: not much past max
-order 2, and eventually some harm.
+``max_derivative_order`` 0 through 5, and scoring them against SSA shows
+directly what each contributes: not much past max order 2, and eventually some
+harm.
 
-Precision (panel a) is the line to trust. A fixed quantile (typically 0.4)
-of all timesteps is flagged as shadowing some RPO, but longest-path selection
-and the minimum event duration mean fewer than that fraction end up covered by
-events. Precision -- of the timesteps PHA flags, the fraction SSA also flags --
-normalizes against PHA's own coverage, so it is unaffected by that disparity. It
-falls monotonically with every added order: the extra orders detect shadowing
-where SSA sees nothing.
+Panel (a) scores the (RPO, timestep) cell grid rather than the shadowing flag,
+so a run that flags the right timestep against the wrong orbit is penalized for
+it; the :ref:`agreement example
+<sphx_glr_auto_examples_plot_coverage_vs_embedding.py>` defines the measure.
+Precision falls monotonically with each added order, as the extra orders flag
+cells SSA does not. Recall climbs steeply from order 0 to order 1, peaks at
+``k = 2`` and declines afterward, so F1 peaks at ``k = 2`` as well.
 
-Recall, and therefore the F1 score, is less clear, as recall is normalized by
-the fixed SSA coverage instead. An increase in coverage, which does occur in
-the first few orders, inflates this measure.
-
-Panel (b) is the more telling consequence. Restricted to the timesteps
-every run agrees are shadowing, attribution to the correct RPO peaks at
-``k = 2`` and erodes afterward. This is the detection-level signature of
+Panel (b) isolates why: restricted to the timesteps every run agrees are
+shadowing, attribution to the correct RPO peaks at ``k = 2`` and erodes
+afterward. This is the detection-level signature of
 high-order redundancy: at high ``k`` the added orders increasingly measure the
 same thing, so they reinforce one another rather than contributing independent
 evidence. Extra orders begin to indicate shadowing against the wrong orbit. The
@@ -60,7 +56,8 @@ METRIC_STYLES: dict[str, dict[str, Any]] = {
 }
 
 # %%
-# SSA reference: union mask plus per-RPO masks over the full trajectory.
+# SSA reference: per-RPO cell grid, plus the union mask the fixed common
+# set in panel (b) is built from.
 metadata, trajectory, ssa_events = load_results(SSA_PATH)
 num_timesteps = trajectory.num_timesteps
 num_rpos = len(load_rpos(REPO_ROOT / metadata.rpo_file))
@@ -70,7 +67,7 @@ for event in ssa_events:
     ssa_rpo[event.rpo_index, event.start_timestep : event.end_timestep] = True
 
 # %%
-# Per derivative count: PHA union mask plus per-RPO masks, built the same way.
+# Per derivative count: PHA cell grid plus union mask, built the same way.
 pha_masks: list[NDArray[np.bool_]] = []
 pha_rpo_masks: list[NDArray[np.bool_]] = []
 for path in PHA_PATHS:
@@ -84,13 +81,16 @@ for path in PHA_PATHS:
 
 
 # %%
-# Agreement of each PHA union mask with the SSA mask (SSA as reference).
-def _agreement(pha_mask: NDArray[np.bool_]) -> tuple[float, float, float]:
-    intersection = float((pha_mask & ssa_mask).sum())
-    precision = intersection / pha_mask.sum()
-    recall = intersection / ssa_mask.sum()
-    f1 = 2 * precision * recall / (precision + recall)
-    return precision, recall, f1
+# Agreement of each PHA cell grid with the SSA grid (SSA as reference).
+def _agreement(pha_rpo_mask: NDArray[np.bool_]) -> tuple[float, float, float]:
+    true_positives = float((ssa_rpo & pha_rpo_mask).sum())
+    false_positives = float((~ssa_rpo & pha_rpo_mask).sum())
+    false_negatives = float((ssa_rpo & ~pha_rpo_mask).sum())
+    return (
+        true_positives / (true_positives + false_positives),
+        true_positives / (true_positives + false_negatives),
+        2 * true_positives / (2 * true_positives + false_positives + false_negatives),
+    )
 
 
 # %%
@@ -107,7 +107,7 @@ def _attribution(rpo: NDArray[np.bool_]) -> float:
     return float(match.sum()) / float(common.sum())
 
 
-agreement = np.array([_agreement(pha_mask) for pha_mask in pha_masks])
+agreement = np.array([_agreement(rpo_mask) for rpo_mask in pha_rpo_masks])
 precision, recall, f1 = agreement.T
 attribution = np.array([_attribution(rpo) for rpo in pha_rpo_masks])
 
@@ -121,7 +121,7 @@ for name, values in (("Precision", precision), ("F1", f1), ("Recall", recall)):
     ax_agreement.plot(orders, values, label=name, **METRIC_STYLES[name])
 ax_agreement.set_title("(a)", loc="left")
 ax_agreement.set_xlabel("Max derivative order")
-ax_agreement.set_ylabel("Agreement with SSA mask")
+ax_agreement.set_ylabel("Agreement with SSA grid")
 ax_agreement.set_xticks(orders)
 ax_agreement.legend(loc="lower right")
 

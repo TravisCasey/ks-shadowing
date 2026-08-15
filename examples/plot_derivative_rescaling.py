@@ -8,14 +8,16 @@ together. The ``pha_r2048_d1_o{0..5}_rescaled.h5`` files repeat the
 ``max_derivative_order`` 0 through 5 sweep with that option on; the
 ``pha_r2048_d1_o{0..5}.h5`` files are the raw sweep with it off.
 
-Scored against the SSA mask, the two sweeps track each other closely. At
-``k = 0`` they are identical, since a single order has nothing to rescale
-against. Through ``k = 2`` the rescaled precision, F1, and correct-RPO
-attribution differ from the raw curves only in the third decimal. The sweeps
-separate only at high order: from ``k = 3`` onward rescaling makes the decline
-gentler -- at ``k = 5`` precision holds near 0.75 against the raw 0.73, F1 near
-0.70 against 0.66, and attribution near 0.97 against 0.96 -- but it does not
-lift the peak, which both sweeps reach around ``k = 2``-``3``.
+Agreement is scored over the (RPO, timestep) cell grid, so a run that flags the
+right timestep against the wrong orbit is penalized; the
+:ref:`agreement example
+<sphx_glr_auto_examples_plot_coverage_vs_embedding.py>` defines the measure.
+
+The two sweeps track each other closely. At ``k = 0`` they are identical;
+through ``k = 2`` the rescaled precision, F1, and correct-RPO attribution differ
+from the raw curves only at the third decimal. The sweeps separate only at high
+order: from ``k = 3`` onward rescaling makes the decline gentler, but it does
+not lift the peak, which both sweeps reach at ``k = 2``.
 
 Every quantity plotted here is agreement with the SSA reference, not absolute
 correctness: the SSA detector is the yardstick, not ground truth. Rescaling
@@ -61,7 +63,8 @@ RESCALED_STYLE: dict[str, Any] = {
 }
 
 # %%
-# SSA reference: union mask plus per-RPO masks over the full trajectory.
+# SSA reference: per-RPO cell grid, plus the union mask the fixed common
+# set in panel (c) is built from.
 metadata, trajectory, ssa_events = load_results(SSA_PATH)
 num_timesteps = trajectory.num_timesteps
 num_rpos = len(load_rpos(REPO_ROOT / metadata.rpo_file))
@@ -72,7 +75,7 @@ for event in ssa_events:
 
 
 # %%
-# Per derivative count: PHA union mask plus per-RPO masks, for one sweep.
+# Per derivative count: PHA cell grid plus union mask, for one sweep.
 def _load_sweep(
     paths: list[Path],
 ) -> tuple[list[NDArray[np.bool_]], list[NDArray[np.bool_]]]:
@@ -94,13 +97,16 @@ rescaled_masks, rescaled_rpo_masks = _load_sweep(RESCALED_PATHS)
 
 
 # %%
-# Agreement of each PHA union mask with the SSA mask (SSA as reference).
-def _agreement(pha_mask: NDArray[np.bool_]) -> tuple[float, float, float]:
-    intersection = float((pha_mask & ssa_mask).sum())
-    precision = intersection / pha_mask.sum()
-    recall = intersection / ssa_mask.sum()
-    f1 = 2 * precision * recall / (precision + recall)
-    return precision, recall, f1
+# Agreement of each PHA cell grid with the SSA grid (SSA as reference).
+def _agreement(pha_rpo_mask: NDArray[np.bool_]) -> tuple[float, float, float]:
+    true_positives = float((ssa_rpo & pha_rpo_mask).sum())
+    false_positives = float((~ssa_rpo & pha_rpo_mask).sum())
+    false_negatives = float((ssa_rpo & ~pha_rpo_mask).sum())
+    return (
+        true_positives / (true_positives + false_positives),
+        true_positives / (true_positives + false_negatives),
+        2 * true_positives / (2 * true_positives + false_positives + false_negatives),
+    )
 
 
 # %%
@@ -117,8 +123,8 @@ def _attribution(rpo: NDArray[np.bool_]) -> float:
     return float(match.sum()) / float(common.sum())
 
 
-raw_agreement = np.array([_agreement(m) for m in raw_masks])
-rescaled_agreement = np.array([_agreement(m) for m in rescaled_masks])
+raw_agreement = np.array([_agreement(m) for m in raw_rpo_masks])
+rescaled_agreement = np.array([_agreement(m) for m in rescaled_rpo_masks])
 raw_precision, raw_recall, raw_f1 = raw_agreement.T
 rescaled_precision, rescaled_recall, rescaled_f1 = rescaled_agreement.T
 
@@ -153,7 +159,7 @@ axes["attribution"].plot(orders, raw_attribution, color="black", marker="o")
 axes["attribution"].plot(orders, rescaled_attribution, color="black", **RESCALED_STYLE, marker="o")
 
 axes["agreement"].set_title("(a)", loc="left")
-axes["agreement"].set_ylabel("Agreement with SSA mask")
+axes["agreement"].set_ylabel("Agreement with SSA grid")
 axes["difference"].set_title("(b)", loc="left")
 axes["difference"].set_ylabel("Rescaled $-$ raw")
 axes["attribution"].set_title("(c)", loc="left")

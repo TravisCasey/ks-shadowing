@@ -1,20 +1,31 @@
-"""
-Coverage agreement along each embedding axis
-============================================
+r"""
+Detection agreement along each embedding axis
+=============================================
 
-At each trajectory timestep, each detection method reports a binary shadowing
-flag (union across RPOs). ``F_agree`` is the fraction of timesteps where SSA
-and PHA report the same flag; ``F_disagree`` splits into ``F_ssa_only`` (SSA
-shadowing, PHA not) and ``F_pha_only`` (the reverse). All three sum to 1.
+Both methods label every (RPO, timestep) cell of a ``(num_rpos, num_timesteps)``
+grid: cell ``(r, i)`` is set when that method reports an event against RPO ``r``
+covering timestep ``i``. Comparing the two grids cell by cell gives ``TP``
+(cells both methods set), ``FP`` (only PHA) and ``FN`` (only SSA), from which
+
+.. math::
+
+   \mathrm{precision} = \frac{TP}{TP + FP}, \qquad
+   \mathrm{recall} = \frac{TP}{TP + FN}, \qquad
+   F_1 = \frac{2\,TP}{2\,TP + FP + FN}.
+
+Counts are pooled across all RPOs before the ratio is taken, so that each orbit
+contributes in proportion to how often it is active.
 
 The two embedding axes are presented independently: delays greater than 1 are
-used only at max order 0. The left column sweeps ``delay`` at max order 0;
-the right column sweeps ``max_derivative_order`` at delay 1. The top row is
-``F_agree``; the bottom row decomposes the disagreement into its two channels
-per axis. The delay-axis crossover in panel (c) motivates the ``delay = 8``
-operating point; the derivative axis additionally gets the richer
-precision/recall treatment in the
-:ref:`saturation example <sphx_glr_auto_examples_plot_derivative_saturation.py>`.
+used only at max order 0. The left column sweeps ``delay`` at max order 0; the
+right column sweeps ``max_derivative_order`` at delay 1. The top row is
+:math:`F_1`; the bottom row is the precision and recall it is built from.
+Precision falls monotonically along both sweeps as PHA reports more, while
+recall rises and then turns over once the extra reports stop landing on SSA
+events. :math:`F_1` peaks past the point where the two curves cross, at a
+broad plateau spanning roughly ``delay`` 8 to 11 and at a sharp maximum at
+``max_derivative_order = 2``. The rest of the gallery uses ``delay = 8`` as a
+representative point within the plateau.
 """
 
 import re
@@ -26,9 +37,10 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ks_shadowing import (
+    ShadowingEvent,
     assert_same_trajectory,
-    events_to_union_mask,
     load_results,
+    load_rpos,
 )
 
 try:
@@ -41,40 +53,46 @@ DELAY_PATTERN = re.compile(r"^pha_r2048_d(\d+)_o0\.h5$")
 ORDER_PATHS = [DATA_DIR / f"pha_r2048_d1_o{order}.h5" for order in range(6)]
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
-# The F_agree curves use open markers so the top row reads differently from
-# the solid black filled-marker "SSA only" channel in the disagreement row
-# below (the line itself stays solid; dash patterns get messy between markers).
-AGREE_STYLE: dict[str, Any] = {
-    "color": "black",
-    "marker": "o",
-    "markerfacecolor": "none",
-    "markeredgewidth": 0.8,
-}
-CHANNEL_STYLES: dict[str, dict[str, Any]] = {
-    "SSA only": {"color": "black", "marker": "o"},
-    "PHA only": {
-        "color": "0.55",
-        "marker": "o",
-        "markerfacecolor": "none",
-        "markeredgewidth": 0.8,
-    },
+# One fixed color and marker per agreement metric, shared with the saturation
+# and rescaling figures (Tol bright palette).
+METRIC_STYLES: dict[str, dict[str, Any]] = {
+    "Precision": {"color": "#4477AA", "marker": "o"},
+    "F1": {"color": "#EE6677", "marker": "s"},
+    "Recall": {"color": "#CCBB44", "marker": "^"},
 }
 
 # %%
-# Build the SSA coverage mask once.
-_, ssa_trajectory, ssa_events = load_results(SSA_PATH)
-ssa_mask = events_to_union_mask(ssa_events, ssa_trajectory.num_timesteps)
+# Build the SSA reference grid once.
+ssa_metadata, ssa_trajectory, ssa_events = load_results(SSA_PATH)
+num_timesteps = ssa_trajectory.num_timesteps
+num_rpos = len(load_rpos(REPO_ROOT / ssa_metadata.rpo_file))
 
 
-def _coverage_fractions(pha_path: Path) -> tuple[float, float, float]:
-    """Return (F_agree, F_ssa_only, F_pha_only) for one PHA result file."""
+def _per_rpo_mask(events: list[ShadowingEvent]) -> NDArray[np.bool_]:
+    """Return the ``(num_rpos, num_timesteps)`` coverage grid of ``events``."""
+    mask = np.zeros((num_rpos, num_timesteps), dtype=bool)
+    for event in events:
+        mask[event.rpo_index, event.start_timestep : event.end_timestep] = True
+    return mask
+
+
+ssa_mask = _per_rpo_mask(ssa_events)
+
+
+def _scores(pha_path: Path) -> tuple[float, float, float]:
+    """Return (precision, recall, F1) for one PHA result file."""
     _, pha_trajectory, pha_events = load_results(pha_path)
     assert_same_trajectory(ssa_trajectory, pha_trajectory)
-    pha_mask = events_to_union_mask(pha_events, ssa_trajectory.num_timesteps)
-    f_agree = float((ssa_mask == pha_mask).mean())
-    f_ssa_only = float((ssa_mask & ~pha_mask).mean())
-    f_pha_only = float((~ssa_mask & pha_mask).mean())
-    return f_agree, f_ssa_only, f_pha_only
+    pha_mask = _per_rpo_mask(pha_events)
+
+    true_positives = float((ssa_mask & pha_mask).sum())
+    false_positives = float((~ssa_mask & pha_mask).sum())
+    false_negatives = float((ssa_mask & ~pha_mask).sum())
+    return (
+        true_positives / (true_positives + false_positives),
+        true_positives / (true_positives + false_negatives),
+        2 * true_positives / (2 * true_positives + false_positives + false_negatives),
+    )
 
 
 # %%
@@ -84,54 +102,53 @@ for pha_path in DATA_DIR.glob("pha_r2048_d*_o0.h5"):
     match = DELAY_PATTERN.match(pha_path.name)
     if match is None:
         continue
-    f_agree, f_ssa_only, f_pha_only = _coverage_fractions(pha_path)
-    delay_rows.append((int(match.group(1)), f_agree, f_ssa_only, f_pha_only))
+    delay_rows.append((int(match.group(1)), *_scores(pha_path)))
 delay_rows.sort()
 delays = np.array([row[0] for row in delay_rows])
-delay_fractions: NDArray[np.float64] = np.array([row[1:] for row in delay_rows])
+delay_scores: NDArray[np.float64] = np.array([row[1:] for row in delay_rows])
 
 # %%
 # Derivative axis: the delay-1 sweep, one point per max order.
 orders = list(range(len(ORDER_PATHS)))
-order_fractions: NDArray[np.float64] = np.array([_coverage_fractions(path) for path in ORDER_PATHS])
+order_scores: NDArray[np.float64] = np.array([_scores(path) for path in ORDER_PATHS])
 
 # %%
-# Render: one column per embedding axis, F_agree on top and the two
-# disagreement channels below, each row on a shared scale.
+# Render: one column per embedding axis, F1 on top and the precision and
+# recall it is built from below, each row on a shared scale.
 figure, axes = plt.subplot_mosaic(
-    [["delay", "order"], ["disagree_delay", "disagree_order"]],
-    figsize=(3.4, 4.4),
+    [["delay", "order"], ["parts_delay", "parts_order"]],
+    figsize=(3.4, 4),
 )
 axes["order"].sharey(axes["delay"])
-axes["disagree_delay"].sharex(axes["delay"])
-axes["disagree_order"].sharex(axes["order"])
-axes["disagree_order"].sharey(axes["disagree_delay"])
+axes["parts_delay"].sharex(axes["delay"])
+axes["parts_order"].sharex(axes["order"])
+axes["parts_order"].sharey(axes["parts_delay"])
 
-axes["delay"].plot(delays, delay_fractions[:, 0], **AGREE_STYLE)
+axes["delay"].plot(delays, delay_scores[:, 2], **METRIC_STYLES["F1"])
 axes["delay"].set_title("(a)", loc="left")
 axes["delay"].set_title("max order 0")
-axes["delay"].set_ylabel(r"$F_{\mathrm{agree}}$")
+axes["delay"].set_ylabel(r"$F_1$")
 axes["delay"].tick_params(labelbottom=False)
 
-axes["order"].plot(orders, order_fractions[:, 0], **AGREE_STYLE)
+axes["order"].plot(orders, order_scores[:, 2], **METRIC_STYLES["F1"])
 axes["order"].set_title("(b)", loc="left")
 axes["order"].set_title("delay 1")
 axes["order"].set_xticks(orders)
 axes["order"].tick_params(labelleft=False, labelbottom=False)
 
-for panel, x_values, fractions in (
-    ("disagree_delay", delays, delay_fractions),
-    ("disagree_order", orders, order_fractions),
+for panel, x_values, scores in (
+    ("parts_delay", delays, delay_scores),
+    ("parts_order", orders, order_scores),
 ):
-    for channel, column in (("SSA only", 1), ("PHA only", 2)):
-        axes[panel].plot(x_values, fractions[:, column], label=channel, **CHANNEL_STYLES[channel])
+    for metric, column in (("Precision", 0), ("Recall", 1)):
+        axes[panel].plot(x_values, scores[:, column], label=metric, **METRIC_STYLES[metric])
 
-axes["disagree_delay"].set_title("(c)", loc="left")
-axes["disagree_delay"].set_ylabel(r"$F_{\mathrm{disagree}}$")
-axes["disagree_delay"].set_xlabel("PHA delay")
-axes["disagree_delay"].legend()
-axes["disagree_order"].set_title("(d)", loc="left")
-axes["disagree_order"].set_xlabel("Max derivative order")
-axes["disagree_order"].tick_params(labelleft=False)
+axes["parts_delay"].set_title("(c)", loc="left")
+axes["parts_delay"].set_ylabel("Precision, recall")
+axes["parts_delay"].set_xlabel("PHA delay")
+axes["parts_delay"].legend()
+axes["parts_order"].set_title("(d)", loc="left")
+axes["parts_order"].set_xlabel("Max derivative order")
+axes["parts_order"].tick_params(labelleft=False)
 
 plt.show()

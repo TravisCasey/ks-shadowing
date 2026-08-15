@@ -2,12 +2,12 @@
 Anatomy of SSA/PHA disagreement
 ================================
 
-The :ref:`coverage example <sphx_glr_auto_examples_plot_coverage_vs_embedding.py>`
-measures how often the two detection methods disagree; this figure investigates
-why. Each column examines one gap: a stretch of timesteps inside one method's
-event that the other method, matched against the same RPO, leaves uncovered. The
-left column depcits an SSA event with a PHA gap, the right column a PHA event
-with an SSA gap.
+The :ref:`agreement example <sphx_glr_auto_examples_plot_coverage_vs_embedding.py>`
+scores how closely the two detection methods agree; this figure investigates
+where they do not. Each column examines one gap: a stretch of timesteps inside
+one method's event that the other method, matched against the same RPO, leaves
+uncovered. The left column depcits an SSA event with a PHA gap, the right column
+a PHA event with an SSA gap.
 
 The top row follows each method's distance along the event's phase track,
 normalized by that method's own detection threshold; the gray band marks the
