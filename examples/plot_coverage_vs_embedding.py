@@ -108,8 +108,9 @@ delays = np.array([row[0] for row in delay_rows])
 delay_scores: NDArray[np.float64] = np.array([row[1:] for row in delay_rows])
 
 # %%
-# Derivative axis: the delay-1 sweep, one point per max order.
-orders = list(range(len(ORDER_PATHS)))
+# Derivative axis: the w = 1 sweep, one point per lambda. ORDER_PATHS is indexed
+# by max_derivative_order, so lambda is that index plus one.
+lambdas = [order + 1 for order in range(len(ORDER_PATHS))]
 order_scores: NDArray[np.float64] = np.array([_scores(path) for path in ORDER_PATHS])
 
 # %%
@@ -126,29 +127,27 @@ axes["parts_order"].sharey(axes["parts_delay"])
 
 axes["delay"].plot(delays, delay_scores[:, 2], **METRIC_STYLES["F1"])
 axes["delay"].set_title("(a)", loc="left")
-axes["delay"].set_title("max order 0")
 axes["delay"].set_ylabel(r"$F_1$")
 axes["delay"].tick_params(labelbottom=False)
 
-axes["order"].plot(orders, order_scores[:, 2], **METRIC_STYLES["F1"])
+axes["order"].plot(lambdas, order_scores[:, 2], **METRIC_STYLES["F1"])
 axes["order"].set_title("(b)", loc="left")
-axes["order"].set_title("delay 1")
-axes["order"].set_xticks(orders)
+axes["order"].set_xticks(lambdas)
 axes["order"].tick_params(labelleft=False, labelbottom=False)
 
 for panel, x_values, scores in (
     ("parts_delay", delays, delay_scores),
-    ("parts_order", orders, order_scores),
+    ("parts_order", lambdas, order_scores),
 ):
     for metric, column in (("Precision", 0), ("Recall", 1)):
         axes[panel].plot(x_values, scores[:, column], label=metric, **METRIC_STYLES[metric])
 
 axes["parts_delay"].set_title("(c)", loc="left")
 axes["parts_delay"].set_ylabel("Precision, recall")
-axes["parts_delay"].set_xlabel("PHA delay")
+axes["parts_delay"].set_xlabel(r"Delay window $w$")
 axes["parts_delay"].legend()
 axes["parts_order"].set_title("(d)", loc="left")
-axes["parts_order"].set_xlabel("Max derivative order")
+axes["parts_order"].set_xlabel(r"Derivative orders $\lambda$")
 axes["parts_order"].tick_params(labelleft=False)
 
 plt.show()

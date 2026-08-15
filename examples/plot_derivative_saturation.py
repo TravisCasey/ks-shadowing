@@ -1,26 +1,29 @@
-"""
+r"""
 Derivative embedding saturates against the SSA reference
 ========================================================
 
-Running PHA with ``max_derivative_order = k`` averages the persistence-diagram
-Wasserstein distances over spatial-derivative orders ``0..k`` before reducing
-over phases. The ``pha_r2048_d1_o{0..5}`` files are that sweep,
-``max_derivative_order`` 0 through 5, and scoring them against SSA shows
-directly what each contributes: not much past max order 2, and eventually some
-harm.
+Running PHA over :math:`\lambda` derivative orders averages the
+persistence-diagram Wasserstein distances over spatial-derivative orders
+:math:`0` to :math:`\lambda - 1` before reducing over phases, so
+:math:`\lambda = 1` uses the field alone. In the code this is
+``max_derivative_order``, one less than :math:`\lambda`. The
+``pha_r2048_d1_o{0..5}`` files are that sweep, :math:`\lambda = 1` through
+:math:`6`, and scoring them against SSA shows directly what each added order
+contributes: not much past :math:`\lambda = 3`, and eventually some harm.
 
 Panel (a) scores the (RPO, timestep) cell grid rather than the shadowing flag,
 so a run that flags the right timestep against the wrong orbit is penalized for
 it; the :ref:`agreement example
 <sphx_glr_auto_examples_plot_coverage_vs_embedding.py>` defines the measure.
-Precision falls monotonically with each added order, as the extra orders flag
-cells SSA does not. Recall climbs steeply from order 0 to order 1, peaks at
-``k = 2`` and declines afterward, so F1 peaks at ``k = 2`` as well.
+Precision falls monotonically with every added order, as the extra orders flag
+cells SSA does not. Recall climbs steeply from :math:`\lambda = 1` to
+:math:`\lambda = 2`, peaks at :math:`\lambda = 3` and declines afterward, so
+F1 peaks at :math:`\lambda = 3` as well.
 
 Panel (b) isolates why: restricted to the timesteps every run agrees are
-shadowing, attribution to the correct RPO peaks at ``k = 2`` and erodes
-afterward. This is the detection-level signature of
-high-order redundancy: at high ``k`` the added orders increasingly measure the
+shadowing, attribution to the correct RPO peaks at :math:`\lambda = 3` and
+erodes afterward. This is the detection-level signature of high-order
+redundancy: at high :math:`\lambda` the added orders increasingly measure the
 same thing, so they reinforce one another rather than contributing independent
 evidence. Extra orders begin to indicate shadowing against the wrong orbit. The
 companion :ref:`mechanism example
@@ -43,8 +46,8 @@ except NameError:
     REPO_ROOT = Path.cwd().parent
 DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
-PHA_PATHS = [DATA_DIR / f"pha_r2048_d1_o{k}.h5" for k in range(6)]
-MAX_ORDERS = range(6)
+PHA_PATHS = [DATA_DIR / f"pha_r2048_d1_o{order}.h5" for order in range(6)]
+LAMBDAS = range(1, 7)
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 # One fixed color and marker per agreement metric, shared with the rescaling
@@ -114,21 +117,21 @@ attribution = np.array([_attribution(rpo) for rpo in pha_rpo_masks])
 # %%
 # Render: the effect (a) and its consequence (b). Both panels use data-tight
 # vertical limits; the agreement axis does not start at zero.
-orders = list(MAX_ORDERS)
+lambdas = list(LAMBDAS)
 figure, (ax_agreement, ax_attribution) = plt.subplots(2, 1, figsize=(3.4, 4.6))
 
 for name, values in (("Precision", precision), ("F1", f1), ("Recall", recall)):
-    ax_agreement.plot(orders, values, label=name, **METRIC_STYLES[name])
+    ax_agreement.plot(lambdas, values, label=name, **METRIC_STYLES[name])
 ax_agreement.set_title("(a)", loc="left")
-ax_agreement.set_xlabel("Max derivative order")
+ax_agreement.set_xlabel(r"Derivative orders $\lambda$")
 ax_agreement.set_ylabel("Agreement with SSA grid")
-ax_agreement.set_xticks(orders)
+ax_agreement.set_xticks(lambdas)
 ax_agreement.legend(loc="lower right")
 
-ax_attribution.plot(orders, attribution, color="black", marker="o")
+ax_attribution.plot(lambdas, attribution, color="black", marker="o")
 ax_attribution.set_title("(b)", loc="left")
-ax_attribution.set_xlabel("Max derivative order")
+ax_attribution.set_xlabel(r"Derivative orders $\lambda$")
 ax_attribution.set_ylabel("Per-RPO attribution vs. SSA")
-ax_attribution.set_xticks(orders)
+ax_attribution.set_xticks(lambdas)
 
 plt.show()

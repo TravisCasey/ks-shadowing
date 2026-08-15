@@ -1,4 +1,4 @@
-"""
+r"""
 Matched events: SSA vs. PHA
 ============================
 
@@ -10,10 +10,13 @@ diagonal mark events the two methods agree on in duration; high IoU (yellow)
 means the windows themselves overlap heavily, low IoU (purple) means they
 barely intersect.
 
-One panel per embedding axis: the delay-axis setting (delay 8, max order 0)
-and the derivative-axis setting (delay 1, max order 2), each matched against
-the same SSA run. The two embedding axes are shown independently: delays
-greater than 1 are used only at max order 0.
+One panel per embedding axis: the delay-axis setting (:math:`w = 8`,
+:math:`\lambda = 1`) and the derivative-axis setting (:math:`w = 1`,
+:math:`\lambda = 3`), each matched against the same SSA run. :math:`w` is the
+delay window and :math:`\lambda` the number of derivative orders averaged over,
+one more than the ``max_derivative_order`` the filenames carry. The two
+embedding axes are shown independently: :math:`w > 1` is used only at
+:math:`\lambda = 1`.
 """
 
 from pathlib import Path
@@ -89,7 +92,10 @@ for ax, tag, (pha_metadata, ssa_lengths, pha_lengths, iou) in zip(
     )
     ax.plot([low, high], [low, high], color="0.5", linestyle="--", linewidth=0.8, zorder=0)
     ax.set_title(tag, loc="left")
-    ax.set_title(f"delay {pha_metadata.delay}, max order {pha_metadata.max_derivative_order}")
+    ax.set_title(
+        rf"$w = {pha_metadata.delay}$, "
+        rf"$\lambda = {pha_metadata.max_derivative_order + 1}$"
+    )
     ax.set_ylabel("PHA event length (time units)")
     ax.set_xlim(low, high)
     ax.set_ylim(low, high)

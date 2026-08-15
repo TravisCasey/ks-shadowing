@@ -254,7 +254,13 @@ def _proxy(color: str, marker: str, size: float, alpha: float = 1.0) -> Line2D:
 # is asymmetric by design, giving each column's failing metric its own
 # decomposition. The dotted line in the trace panel marks the peak timestep
 # the field panel shows.
+#
+# This figure is populated across three cells. Sphinx-Gallery scrapes and then
+# closes every open figure at the end of each cell, so the two cells that leave
+# this one incomplete defer the scrape. The marker only takes effect inside a
+# cell's code, not in its leading comment block.
 figure, axes = plt.subplots(3, 2, figsize=(7.0, 5.8), height_ratios=(1.0, 1.0, 1.35))
+# sphinx_gallery_defer_figures
 space = np.linspace(0.0, DOMAIN_SIZE, resolution, endpoint=False)
 
 for column_index, column in enumerate(columns):
@@ -304,6 +310,7 @@ axes[1, 0].legend()
 # %%
 # Panel (e): persistence diagrams at every timestep of the left column's gap.
 ax = axes[2, 0]
+# sphinx_gallery_defer_figures
 left_column = columns[0]
 all_points = np.vstack(left_column["trajectory_diagrams"] + left_column["rpo_diagrams"])
 low = all_points.min()

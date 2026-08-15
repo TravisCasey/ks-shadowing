@@ -1,14 +1,16 @@
-"""
+r"""
 Event duration distributions: SSA vs. PHA
 ==========================================
 
-Per-bin event counts for SSA and three PHA settings on the same trajectory --
-no embedding (delay 1, max order 0), the delay-axis setting (delay 8, max
-order 0), and the derivative-axis setting (delay 1, max order 2) -- plotted
-as step histograms over a shared duration grid in trajectory-time units. The
-log count axis keeps both the peak and the long tail readable. The two
-embedding axes are shown independently: delays greater than 1 are used only
-at max order 0.
+Per-bin event counts for SSA and three PHA settings on the same trajectory: no
+embedding (:math:`w = 1`, :math:`\lambda = 1`), the delay-axis setting
+(:math:`w = 8`, :math:`\lambda = 1`), and the derivative-axis setting
+(:math:`w = 1`, :math:`\lambda = 3`). Each is plotted as step histograms over a
+shared duration grid in trajectory-time units. :math:`w` is the delay window
+and :math:`\lambda` the number of derivative orders averaged over, one more
+than the ``max_derivative_order`` the filenames carry. The log count axis keeps
+both the peak and the long tail readable. The two embedding axes are shown
+independently: :math:`w > 1` is used only at :math:`\lambda = 1`.
 """
 
 from pathlib import Path
@@ -77,14 +79,14 @@ for pha_metadata, pha_durations in pha_runs:
     max_order = pha_metadata.max_derivative_order
     # The unembedded baseline takes the recessive dashed style: dashes vanish
     # where curves overlap, and the baseline is the one curve that stands
-    # clear of the cluster. The delay-8 run shares the baseline's max-order-0
-    # color and the max-order-2 run shares its delay-1 setting, so the dashes
+    # clear of the cluster. The w = 8 run shares the baseline's lambda = 1
+    # color and the lambda = 3 run shares its w = 1 setting, so the dashes
     # are what separate the baseline from each; the embedded runs stay solid.
     if pha_metadata.delay > 1:
-        setting = f"delay {pha_metadata.delay}"
+        setting = rf"$w = {pha_metadata.delay}$"
         linestyle = "-"
     elif max_order > 0:
-        setting = f"max order {max_order}"
+        setting = rf"$\lambda = {max_order + 1}$"
         linestyle = "-"
     else:
         setting = "no embedding"
