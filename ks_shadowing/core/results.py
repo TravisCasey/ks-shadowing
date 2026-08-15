@@ -60,7 +60,8 @@ class DetectionMetadata:
         ``threshold`` was supplied manually.
     delay : int
         Time-delay embedding window size for PHA. ``1`` (default) means no
-        temporal embedding. Recorded as ``1`` for SSA results.
+        temporal embedding. Recorded as ``1`` for SSA results. Windows are
+        attributed to their center timesteps.
     max_derivative_order : int
         Highest spatial-derivative order used for PHA. ``0`` (default) means
         only the field itself. Recorded as ``0`` for SSA results.

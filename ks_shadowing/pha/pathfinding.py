@@ -48,6 +48,10 @@ def _extract_shadowing_events(
     carry zero-filled ``shifts``; PHA reconstructs spatial shifts post-hoc via
     ``_compute_event_shifts`` in ``pha/shifts.py``.
 
+    Event indices are in embedded-matrix coordinates; the detection caller
+    relabels them to window-center trajectory timesteps and phases via
+    ``_center_events``.
+
     Parameters
     ----------
     distance_matrix : NDArray[np.float64], shape (num_timesteps, period)

@@ -19,15 +19,18 @@ PHA has two embedding parameters, written throughout the gallery as:
   0, 1 and 2.
 
 Both stages average rather than sum, so a distance stays on the scale of a
-single-snapshot Wasserstein value whatever the setting:
+single-snapshot Wasserstein value whatever the setting. Writing
+:math:`c = \lfloor (w-1)/2 \rfloor` for the window-centering offset:
 
 .. math::
 
    D_{w,\lambda}(i, j) = \frac{1}{w\lambda} \sum_{l=0}^{w-1}
-   \sum_{m=0}^{\lambda-1} W_m\bigl(i + l,\ (j + l) \bmod J\bigr),
+   \sum_{m=0}^{\lambda-1} W_m\bigl(i + l - c,\ (j + l - c) \bmod J\bigr),
 
-where :math:`W_m` is the order-:math:`m` Wasserstein matrix and :math:`J` the
-RPO period.
+where :math:`W_m` is the order-:math:`m` Wasserstein matrix, :math:`J` the
+RPO period, and :math:`T` the trajectory length in timesteps. The window mean
+is attributed to its center, so :math:`D_{w,\lambda}(i, j)` is defined for
+:math:`c \le i \le T - 1 - \lfloor w/2 \rfloor`.
 
 These map onto the API and the fixture filenames as:
 

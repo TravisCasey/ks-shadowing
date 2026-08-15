@@ -20,7 +20,8 @@ distances are averaged into the ``(timestep, phase)`` score. The optional
 ``rescale_orders`` flag divides each order's distances by a per-order median
 scale before that mean. ``delay`` controls
 temporal aggregation: ``delay`` consecutive Wasserstein distances along the
-diagonal of the per-RPO matrix are averaged. ``max_derivative_order`` defaults
+diagonal of the per-RPO matrix are averaged, attributed to the window's center
+timestep. ``max_derivative_order`` defaults
 to ``0`` and ``delay`` to ``1`` (no embedding); they compose freely.
 
 Wasserstein distances are computed via the
@@ -33,7 +34,7 @@ to the shared buffers instead of receiving a copy per task.
 
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from multiprocessing.shared_memory import SharedMemory
 
 import numpy as np
@@ -229,11 +230,11 @@ def detect(  # noqa: PLR0913
         is automated via :func:`~ks_shadowing.pha.detection.auto_detect`.
     delay : int, optional
         Time-delay embedding window size. Mean Wasserstein distance is taken
-        across ``delay`` consecutive timesteps. ``1`` (default) applies no
-        temporal embedding. Event ``start_timestep``/``end_timestep`` index the
-        trajectory directly: delay-embedded row ``i`` averages original
-        timesteps ``i`` through ``i + delay - 1``, so the trailing ``delay - 1``
-        timesteps cannot start an event.
+        across ``delay`` consecutive timesteps, attributed to the window's
+        center timestep and phase (offset ``(delay - 1) // 2`` from the window
+        start). ``1`` (default) applies no temporal embedding. Events cannot
+        start before timestep ``(delay - 1) // 2`` nor extend past
+        ``num_timesteps - delay // 2``.
     max_derivative_order : int, optional
         Highest spatial-derivative order to include in the persistence-diagram
         comparison. Persistence diagrams of orders ``0..max_derivative_order``
@@ -321,8 +322,9 @@ def compute_min_distances(  # noqa: PLR0913
     Useful for shadowing threshold selection by quantile; see
     :func:`auto_detect`.
 
-    Due to the time-delay embedding, the final ``delay - 1`` timesteps have
-    insufficient future data and are returned as infinity.
+    Due to the time-delay embedding, the leading ``(delay - 1) // 2`` and
+    trailing ``delay // 2`` timesteps have no centered window and are
+    returned as infinity.
 
     Parameters
     ----------
@@ -334,8 +336,8 @@ def compute_min_distances(  # noqa: PLR0913
         ``trajectory.dt`` and the RPO's own native timestep.
     delay : int, optional
         Time-delay embedding window size. Mean Wasserstein distance is
-        taken across ``delay`` consecutive timesteps. ``1`` (default)
-        applies no temporal embedding.
+        taken across ``delay`` consecutive timesteps, attributed to the window's
+        center timestep. ``1`` (default) applies no temporal embedding.
     max_derivative_order : int, optional
         Highest spatial-derivative order to include in the persistence-diagram
         comparison. Persistence diagrams of orders ``0..max_derivative_order``
@@ -426,8 +428,8 @@ def auto_detect(  # noqa: PLR0913
         threshold. Default is 0.4.
     delay : int, optional
         Time-delay embedding window size. Mean Wasserstein distance is
-        taken across ``delay`` consecutive timesteps. ``1`` (default)
-        applies no temporal embedding.
+        taken across ``delay`` consecutive timesteps, attributed to the window's
+        center timestep. ``1`` (default) applies no temporal embedding.
     max_derivative_order : int, optional
         Highest spatial-derivative order to include in the persistence-diagram
         comparison. Persistence diagrams of orders ``0..max_derivative_order``
@@ -555,7 +557,11 @@ def _detect_from_diagrams(  # noqa: PLR0913, PLR0917
         order_scales,
     ):
         events.extend(
-            _extract_shadowing_events(distance_matrix, rpo_index, threshold, min_duration)
+            _center_events(
+                _extract_shadowing_events(distance_matrix, rpo_index, threshold, min_duration),
+                delay,
+                distance_matrix.shape[1],
+            )
         )
     return events
 
@@ -571,11 +577,13 @@ def _min_distances_from_diagrams(  # noqa: PLR0913, PLR0917
     """Compute per-timestep minimum distances given trajectory and RPO diagrams
     in persistence form.
 
-    Timesteps for which no RPO supplies a finite distance (always the final
-    ``delay - 1`` timesteps due to the embedding) are returned as infinity.
+    Timesteps for which no RPO supplies a finite distance (always the leading
+    ``(delay - 1) // 2`` and trailing ``delay // 2`` timesteps due to the
+    centered embedding) are returned as infinity.
     """
     num_timesteps = len(trajectory_diagrams_per_order[0])
     min_distances = np.full(num_timesteps, np.inf, dtype=np.float64)
+    offset = (delay - 1) // 2
 
     for _, distance_matrix in _stream_distance_matrices(
         trajectory_diagrams_per_order,
@@ -587,9 +595,8 @@ def _min_distances_from_diagrams(  # noqa: PLR0913, PLR0917
     ):
         embedded_length = distance_matrix.shape[0]
         rpo_column_min = distance_matrix.min(axis=1)
-        min_distances[:embedded_length] = np.minimum(
-            min_distances[:embedded_length], rpo_column_min
-        )
+        window = slice(offset, offset + embedded_length)
+        min_distances[window] = np.minimum(min_distances[window], rpo_column_min)
 
     return min_distances
 
@@ -823,6 +830,12 @@ def _apply_delay_embedding(
     increases the effective dimensionality of the comparison by considering
     consecutive timesteps rather than single snapshots.
 
+    Row ``i`` of the returned matrix aggregates input rows ``i`` through
+    ``i + delay - 1``; callers attribute it to the window center
+    ``i + (delay - 1) // 2`` via ``_delay_center_offset``. For even ``delay``
+    the true center falls between samples and the floor convention leaves a
+    residual attribution bias of at most half a timestep.
+
     Parameters
     ----------
     wasserstein_matrix : NDArray[np.float64], shape (I, J)
@@ -855,6 +868,33 @@ def _apply_delay_embedding(
         delayed += wasserstein_matrix[offset : offset + delayed_timesteps][:, column_indices]
 
     return delayed / delay
+
+
+def _center_events(
+    events: list[ShadowingEvent],
+    delay: int,
+    period: int,
+) -> list[ShadowingEvent]:
+    """Relabel events from embedded-matrix indices to window-center indices.
+
+    Embedded cell ``(i, j)`` averages the raw pairs ``(i + l, (j + l) %
+    period)`` for ``l`` in ``0..delay - 1``; the window's mean is attributed
+    to its center pair, so ``start_timestep``/``end_timestep`` shift by
+    ``(delay - 1) // 2`` and ``start_phase`` by the same offset modulo
+    ``period``. Identity at ``delay = 1``.
+    """
+    offset = (delay - 1) // 2
+    if offset == 0:
+        return events
+    return [
+        replace(
+            event,
+            start_timestep=event.start_timestep + offset,
+            end_timestep=event.end_timestep + offset,
+            start_phase=(event.start_phase + offset) % period,
+        )
+        for event in events
+    ]
 
 
 def _attach_shifts(
