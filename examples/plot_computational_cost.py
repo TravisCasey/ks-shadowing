@@ -175,9 +175,10 @@ for resolution in pha_resolutions:
         zorder=3,
     )
 
+cluster_delays = sorted(pha_runtimes[0][REFERENCE_RESOLUTION])
 cluster_top = max(pha_runtimes[0][REFERENCE_RESOLUTION].values()) / SECONDS_PER_MINUTE
 ax_runtime.annotate(
-    "delays 1-17",
+    f"odd delays {cluster_delays[0]}-{cluster_delays[-1]}",
     xy=(REFERENCE_RESOLUTION, cluster_top),
     xytext=(-4, 10),
     textcoords="offset points",

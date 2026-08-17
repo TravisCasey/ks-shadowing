@@ -15,7 +15,7 @@
 #   - 8 SSA:                  ssa_r{256,512,768,1024,1280,1536,1792,2048}.h5
 #   - 6 PHA derivative sweep: pha_r2048_d1_o{0..5}.h5
 #   - 6 PHA rescaled twins:   pha_r2048_d1_o{0..5}_rescaled.h5
-#   - 16 PHA delay axis:      pha_r2048_d{2..17}_o0.h5
+#   - 16 PHA delay axis:      pha_r2048_d{3,5,...,33}_o0.h5
 #   - 7 PHA cross-resolution: pha_r{256,512,768,1024,1280,1536,1792}_d8_o0.h5
 #
 # N_JOBS can be overridden via the environment; defaults to -1 (all CPUs).
@@ -53,23 +53,10 @@ uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 1 --max-derivative
 uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 1 --max-derivative-order 4 --rescale-orders --output "${DATA_DIR}/pha_r2048_d1_o4_rescaled.h5"
 uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 1 --max-derivative-order 5 --rescale-orders --output "${DATA_DIR}/pha_r2048_d1_o5_rescaled.h5"
 
-# pha_r2048_d{2..17}_o0
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 2 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d2_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 3 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d3_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 4 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d4_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 5 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d5_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 6 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d6_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 7 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d7_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 8 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d8_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 9 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d9_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 10 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d10_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 11 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d11_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 12 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d12_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 13 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d13_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 14 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d14_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 15 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d15_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 16 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d16_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d17_o0.h5"
+# pha_r2048_d{3,5,...,33}_o0
+for delay in 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33; do
+  uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay "${delay}" --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d${delay}_o0.h5"
+done
 
 # pha_r{256..1792}_d8_o0
 uv run ks-detect "${pha_common[@]}" --resolution 256 --delay 8 --max-derivative-order 0 --output "${DATA_DIR}/pha_r256_d8_o0.h5"

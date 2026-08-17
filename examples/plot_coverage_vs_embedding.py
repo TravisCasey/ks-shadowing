@@ -20,12 +20,14 @@ The two embedding axes are presented independently: delays greater than 1 are
 used only at max order 0. The left column sweeps ``delay`` at max order 0; the
 right column sweeps ``max_derivative_order`` at delay 1. The top row is
 :math:`F_1`; the bottom row is the precision and recall it is built from.
-Precision falls monotonically along both sweeps as PHA reports more, while
-recall rises and then turns over once the extra reports stop landing on SSA
-events. :math:`F_1` peaks past the point where the two curves cross, at a
-broad plateau spanning roughly ``delay`` 8 to 11 and at a sharp maximum at
-``max_derivative_order = 2``. The rest of the gallery uses ``delay = 8`` as a
-representative point within the plateau.
+Along the delay axis, precision falls from its ``delay = 1`` value to a minimum
+around ``delay`` 9 to 11, partially recovers, then falls again toward the end of
+the sweep. Recall rises steeply from ``delay = 1`` and saturates. :math:`F_1`
+inherits recall's early rise, then flattens into a broad maximum spanning
+roughly ``delay`` 21 to 27 before declining toward ``delay = 33``. Along the
+derivative axis, :math:`F_1` has a sharp maximum at
+``max_derivative_order = 2``. The rest of the gallery uses ``delay = 9`` as its
+delay-axis setting.
 """
 
 import re
@@ -145,6 +147,7 @@ for panel, x_values, scores in (
 axes["parts_delay"].set_title("(c)", loc="left")
 axes["parts_delay"].set_ylabel("Precision, recall")
 axes["parts_delay"].set_xlabel(r"Delay window $w$")
+axes["parts_delay"].set_xticks((1, 9, 17, 25, 33))
 axes["parts_delay"].legend()
 axes["parts_order"].set_title("(d)", loc="left")
 axes["parts_order"].set_xlabel(r"Derivative orders $\lambda$")

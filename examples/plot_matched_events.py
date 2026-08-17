@@ -10,7 +10,7 @@ diagonal mark events the two methods agree on in duration; high IoU (yellow)
 means the windows themselves overlap heavily, low IoU (purple) means they
 barely intersect.
 
-One panel per embedding axis: the delay-axis setting (:math:`w = 8`,
+One panel per embedding axis: the delay-axis setting (:math:`w = 9`,
 :math:`\lambda = 1`) and the derivative-axis setting (:math:`w = 1`,
 :math:`\lambda = 3`), each matched against the same SSA run. :math:`w` is the
 delay window and :math:`\lambda` the number of derivative orders averaged over,
@@ -36,7 +36,7 @@ except NameError:
     REPO_ROOT = Path.cwd().parent
 SSA_PATH = REPO_ROOT / "examples" / "data" / "ssa_r2048.h5"
 PHA_PATHS = [
-    REPO_ROOT / "examples" / "data" / "pha_r2048_d8_o0.h5",  # delay axis
+    REPO_ROOT / "examples" / "data" / "pha_r2048_d9_o0.h5",  # delay axis
     REPO_ROOT / "examples" / "data" / "pha_r2048_d1_o2.h5",  # derivative axis
 ]
 
