@@ -832,9 +832,9 @@ def _apply_delay_embedding(
 
     Row ``i`` of the returned matrix aggregates input rows ``i`` through
     ``i + delay - 1``; callers attribute it to the window center
-    ``i + (delay - 1) // 2`` via ``_delay_center_offset``. For even ``delay``
-    the true center falls between samples and the floor convention leaves a
-    residual attribution bias of at most half a timestep.
+    ``i + (delay - 1) // 2``. For even ``delay`` the true center falls
+    between samples and the floor convention leaves a residual attribution
+    bias of at most half a timestep.
 
     Parameters
     ----------
