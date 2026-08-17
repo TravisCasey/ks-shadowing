@@ -26,7 +26,7 @@ the sweep. Recall rises steeply from ``delay = 1`` and saturates. :math:`F_1`
 inherits recall's early rise, then flattens into a broad maximum spanning
 roughly ``delay`` 21 to 27 before declining toward ``delay = 33``. Along the
 derivative axis, :math:`F_1` has a sharp maximum at
-``max_derivative_order = 2``. The rest of the gallery uses ``delay = 9`` as its
+``max_derivative_order = 2``. The rest of the gallery uses ``delay = 25`` as its
 delay-axis setting.
 """
 

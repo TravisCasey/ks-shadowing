@@ -11,7 +11,7 @@ derivative cost (panel c) at :math:`w = 1`.
 
 Panel (a): wall-clock detection time against the spatial resolution the
 trajectory is loaded at, for SSA and PHA at :math:`\lambda = 1` (the fixtures
-outside resolution 2048 are :math:`w = 8` runs). SSA evaluates L2 distances in
+outside resolution 2048 are :math:`w = 25` runs). SSA evaluates L2 distances in
 physical space, so its cost grows with resolution; PHA computes Wasserstein
 distances between persistence diagrams, whose cost is dominated by trajectory
 length rather than grid size, so its curve stays nearly flat. The full
