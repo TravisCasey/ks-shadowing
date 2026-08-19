@@ -26,22 +26,53 @@ def test_adjacent_ranges_dont_overlap() -> None:
 
 
 def test_partial_overlap_arithmetic() -> None:
-    """Partially overlapping ``[0, 10)`` and ``[5, 15)`` produce a single
-    match with ``intersection_length=5`` and ``union_length=15``."""
+    """Partially overlapping ``[0, 10)`` and ``[5, 15)`` produce a single match
+    with composite lengths 10, intersection 5, and union 15."""
     matches = match_events([_event(0, 0, 10)], [_event(0, 5, 15)])
     assert len(matches) == 1
-    assert matches[0].intersection_length == 5
-    assert matches[0].union_length == 15
+    match = matches[0]
+    assert match.ssa_length == 10
+    assert match.pha_length == 10
+    assert match.intersection_length == 5
+    assert match.union_length == 15
 
 
-def test_one_to_many_within_rpo_and_isolated_across_rpos() -> None:
-    """One SSA event matches multiple PHA events on the same RPO; events on
-    different RPOs do not match each other."""
+def test_grouping_isolation_and_gap_arithmetic() -> None:
+    """Overlapping events on one RPO group into a single match, events on other
+    RPOs form separate matches sorted by RPO, and a gap in one side's coverage
+    counts toward the union but not the intersection."""
     ssa = [_event(0, 0, 30), _event(1, 0, 10)]
-    pha = [_event(0, 5, 10), _event(0, 20, 25), _event(2, 0, 10)]
+    pha = [_event(0, 5, 10), _event(0, 20, 25), _event(2, 0, 10), _event(1, 2, 8)]
 
     matches = match_events(ssa, pha)
     assert len(matches) == 2
-    assert all(match.ssa_event is ssa[0] for match in matches)
-    matched_pha_ids = {id(match.pha_event) for match in matches}
-    assert matched_pha_ids == {id(pha[0]), id(pha[1])}
+    first, second = matches
+
+    assert [id(event) for event in first.ssa_events] == [id(ssa[0])]
+    assert [id(event) for event in first.pha_events] == [id(pha[0]), id(pha[1])]
+    assert first.ssa_length == 30
+    assert first.pha_length == 10
+    assert first.intersection_length == 10
+    assert first.union_length == 30
+
+    assert [id(event) for event in second.ssa_events] == [id(ssa[1])]
+    assert [id(event) for event in second.pha_events] == [id(pha[3])]
+    assert second.intersection_length == 6
+    assert second.union_length == 10
+
+
+def test_transitive_chaining() -> None:
+    """A PHA event overlapping two SSA events chains all overlapping events on
+    the RPO into a single match with composite arithmetic over both sides."""
+    ssa = [_event(0, 0, 10), _event(0, 20, 30)]
+    pha = [_event(0, 0, 5), _event(0, 8, 22)]
+
+    matches = match_events(ssa, pha)
+    assert len(matches) == 1
+    match = matches[0]
+    assert [id(event) for event in match.ssa_events] == [id(ssa[0]), id(ssa[1])]
+    assert [id(event) for event in match.pha_events] == [id(pha[0]), id(pha[1])]
+    assert match.ssa_length == 20
+    assert match.pha_length == 19
+    assert match.intersection_length == 9
+    assert match.union_length == 30

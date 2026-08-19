@@ -4,7 +4,7 @@ from ks_shadowing import pha, ssa
 from ks_shadowing.core import INTEGRATION_DT
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.integrator import DOMAIN_SIZE
-from ks_shadowing.core.matching import MatchedEvent, match_events
+from ks_shadowing.core.matching import EventMatch, match_events
 from ks_shadowing.core.results import (
     DetectionMetadata,
     DetectionResult,
@@ -25,8 +25,8 @@ __all__: list[str] = [
     "RPO",
     "DetectionMetadata",
     "DetectionResult",
+    "EventMatch",
     "KSTrajectory",
-    "MatchedEvent",
     "ShadowingEvent",
     "align_rpo_to_window",
     "assert_same_trajectory",
