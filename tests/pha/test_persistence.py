@@ -5,28 +5,28 @@ import numpy as np
 from ks_shadowing.core.trajectory import KSTrajectory
 from ks_shadowing.pha.persistence import (
     KSPersistenceTrajectory,
-    _zeroth_persistence_diagram_periodic,
+    _persistence_diagram_periodic,
 )
 
 
-def test_zeroth_diagram_cos_two_minima() -> None:
-    """``_zeroth_persistence_diagram_periodic`` on a discretized
-    :math:`\\cos(2x)` returns one persistence pair ``(-1, 1)``."""
+def test_diagram_cos_two_minima() -> None:
+    """``_persistence_diagram_periodic`` on a discretized :math:`\\cos(2x)`
+    returns one finite pair ``(-1, 1)`` and essential births ``(-1, 1)``."""
     x = np.linspace(0, 2 * np.pi, 64, endpoint=False)
     field = np.cos(2 * x)
-    diagram = _zeroth_persistence_diagram_periodic(field)
-    assert diagram.shape == (1, 2)
-    np.testing.assert_allclose(diagram[0, 0], -1.0, atol=1e-6)
-    np.testing.assert_allclose(diagram[0, 1], 1.0, atol=1e-6)
+    finite_pairs, essential_births = _persistence_diagram_periodic(field)
+    assert finite_pairs.shape == (1, 2)
+    np.testing.assert_allclose(finite_pairs[0], [-1.0, 1.0], atol=1e-6)
+    np.testing.assert_allclose(essential_births, [-1.0, 1.0], atol=1e-6)
 
 
-def test_zeroth_diagram_pair_count_scales() -> None:
-    """A field with :math:`n` local minima produces :math:`n - 1` finite-death
-    pairs (the essential class is excluded)."""
+def test_diagram_pair_count_scales() -> None:
+    """A field with :math:`n` local minima produces :math:`n - 1` finite
+    pairs."""
     x = np.linspace(0, 2 * np.pi, 128, endpoint=False)
     field = np.sin(5 * x)
-    diagram = _zeroth_persistence_diagram_periodic(field)
-    assert len(diagram) == 4
+    finite_pairs, _ = _persistence_diagram_periodic(field)
+    assert len(finite_pairs) == 4
 
 
 def test_chunked_diagrams_match_unchunked(rng: np.random.Generator) -> None:
@@ -42,6 +42,7 @@ def test_chunked_diagrams_match_unchunked(rng: np.random.Generator) -> None:
     assert len(default.diagrams) == len(chunked.diagrams)
     for a, b in zip(default.diagrams, chunked.diagrams, strict=True):
         np.testing.assert_array_equal(a, b)
+    np.testing.assert_array_equal(default.essential_births, chunked.essential_births)
 
 
 def test_from_trajectory_higher_order_differs(rng: np.random.Generator) -> None:

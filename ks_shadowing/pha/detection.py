@@ -2,9 +2,11 @@
 
 Detects shadowing between a Kuramoto-Sivashinsky trajectory and a collection of
 relative periodic orbits (RPOs) by comparing persistence diagrams. Each point
-of the trajectory and each phase of each RPO is reduced to a zeroth persistence
-diagram of its physical-space field; Wasserstein distances between these
-diagrams populate a 2D ``(trajectory timestep, RPO phase)`` grid per RPO.
+of the trajectory and each phase of each RPO is reduced to the sublevel-set
+persistence diagram of its physical-space field (finite :math:`H_0` pairs
+plus the essential :math:`H_0` and :math:`H_1` births); Wasserstein distances
+between these diagrams populate a 2D ``(trajectory timestep, RPO phase)`` grid
+per RPO.
 Event detection over this grid is delegated to
 :mod:`~ks_shadowing.pha.pathfinding`.
 
@@ -104,13 +106,9 @@ def _compute_order_scales(
 
     scales = np.empty(num_orders, dtype=np.float64)
     for order_index in range(num_orders):
-        sampled_trajectory = KSPersistenceTrajectory(
-            diagrams=[
-                trajectory_diagrams_per_order[order_index].diagrams[t] for t in timestep_sample
-            ],
-            dt=trajectory_diagrams_per_order[order_index].dt,
-        )
-        flat_diagrams, offsets = sampled_trajectory._flatten()
+        flat_diagrams, offsets, essential_births = trajectory_diagrams_per_order[order_index][
+            timestep_sample
+        ]._flatten()
 
         pooled_values: list[NDArray[np.float64]] = []
         for _, phase_diagrams_per_order in rpo_diagram_pairs:
@@ -124,7 +122,11 @@ def _compute_order_scales(
             for phase_index in phase_sample:
                 pooled_values.append(
                     _wasserstein_column(
-                        flat_diagrams, offsets, phase_diagrams.diagrams[phase_index]
+                        flat_diagrams,
+                        offsets,
+                        essential_births,
+                        phase_diagrams.diagrams[phase_index],
+                        phase_diagrams.essential_births[phase_index],
                     )
                 )
 
@@ -208,12 +210,13 @@ def detect(  # noqa: PLR0913
 ) -> DetectionResult:
     """Detect shadowing events between ``trajectory`` and ``rpos``.
 
-    Computes zeroth persistence diagrams for every trajectory timestep and every
-    RPO phase, then, for each RPO, builds the ``(num_timesteps, period)``
-    Wasserstein distance matrix, applies a time-delay embedding of window
-    ``delay``, and extracts shadowing events. Spatial shifts for closest
-    physical-space shadowing are reconstructed post-hoc with
-    ``_compute_event_shifts``.
+    Computes the sublevel-set persistence diagram (finite :math:`H_0` pairs plus
+    the essential :math:`H_0` and :math:`H_1` births) for every trajectory
+    timestep and every RPO phase, then, for each RPO, builds the
+    ``(num_timesteps, period)`` Wasserstein distance matrix, applies a
+    time-delay embedding of window ``delay``, and extracts shadowing events.
+    Spatial shifts for closest physical-space shadowing are reconstructed
+    post-hoc with ``_compute_event_shifts``.
 
     Parameters
     ----------
@@ -661,7 +664,7 @@ def _stream_distance_matrices(  # noqa: PLR0913, PLR0917
                 wasserstein_matrix = np.zeros((num_timesteps, num_phases), dtype=np.float64)
 
                 for order_index in range(num_orders):
-                    flat_diagrams, offsets = flat_offsets_per_order[order_index]
+                    flat_diagrams, offsets, essential_births = flat_offsets_per_order[order_index]
                     phase_diagrams = phase_diagrams_per_order[order_index]
 
                     column_inputs: Iterable[tuple[int, NDArray[np.float64]]] = enumerate(
@@ -677,7 +680,13 @@ def _stream_distance_matrices(  # noqa: PLR0913, PLR0917
 
                     for phase_index, diagram in column_inputs:
                         wasserstein_matrix[:, phase_index] += (
-                            _wasserstein_column(flat_diagrams, offsets, diagram)
+                            _wasserstein_column(
+                                flat_diagrams,
+                                offsets,
+                                essential_births,
+                                diagram,
+                                phase_diagrams.essential_births[phase_index],
+                            )
                             / order_scales[order_index]
                         )
 
@@ -687,9 +696,9 @@ def _stream_distance_matrices(  # noqa: PLR0913, PLR0917
                 yield rpo.index, _apply_delay_embedding(wasserstein_matrix, delay)
         return
 
-    # Parallel branch: open one shared-memory pair per order; workers attach to
-    # all of them and return the per-phase mean across orders as a single (T,)
-    # column. Cross-process bandwidth stays linear in T.
+    # Parallel branch: open three shared-memory blocks per order (finite pairs,
+    # offsets, essential births); workers attach to all of them and return the
+    # per-phase mean across orders as a single (T,) column.
     with (
         ExitStack() as stack,
         _forkserver_pool(n_workers) as pool,
@@ -704,11 +713,13 @@ def _stream_distance_matrices(  # noqa: PLR0913, PLR0917
             (
                 stack.enter_context(_shared_memory_view(flat)),
                 stack.enter_context(_shared_memory_view(offsets)),
+                stack.enter_context(_shared_memory_view(births)),
             )
-            for flat, offsets in flat_offsets_per_order
+            for flat, offsets, births in flat_offsets_per_order
         ]
-        diagrams_shm_names = tuple(diagrams_shm.name for diagrams_shm, _ in shm_blocks)
-        offsets_shm_names = tuple(offsets_shm.name for _, offsets_shm in shm_blocks)
+        diagrams_shm_names = tuple(diagrams_shm.name for diagrams_shm, _, _ in shm_blocks)
+        offsets_shm_names = tuple(offsets_shm.name for _, offsets_shm, _ in shm_blocks)
+        essential_births_shm_names = tuple(births_shm.name for _, _, births_shm in shm_blocks)
 
         for rpo, phase_diagrams_per_order in rpo_diagram_pairs:
             num_phases = len(phase_diagrams_per_order[0])
@@ -719,9 +730,14 @@ def _stream_distance_matrices(  # noqa: PLR0913, PLR0917
                     phase_index=phase_index,
                     diagrams_shm_names=diagrams_shm_names,
                     offsets_shm_names=offsets_shm_names,
+                    essential_births_shm_names=essential_births_shm_names,
                     num_timesteps=num_timesteps,
                     rpo_diagrams=tuple(
                         phase_diagrams_per_order[order_index].diagrams[phase_index]
+                        for order_index in range(num_orders)
+                    ),
+                    rpo_essential_births=tuple(
+                        phase_diagrams_per_order[order_index].essential_births[phase_index]
                         for order_index in range(num_orders)
                     ),
                     order_scales=tuple(float(scale) for scale in order_scales),
@@ -754,15 +770,22 @@ class _WassersteinColumnInputs:
         dispatcher can reassemble the distance matrix from unordered results.
     diagrams_shm_names : tuple[str, ...]
         One shared-memory block name per derivative order, holding flattened
-        trajectory persistence diagrams.
+        trajectory finite pairs.
     offsets_shm_names : tuple[str, ...]
         One shared-memory block name per derivative order, holding trajectory
         diagram offsets. Same length as ``diagrams_shm_names``.
+    essential_births_shm_names : tuple[str, ...]
+        One shared-memory block name per derivative order, holding the
+        trajectory's ``(num_timesteps, 2)`` essential births. Same length as
+        ``diagrams_shm_names``.
     num_timesteps : int
         Number of timesteps in the trajectory in shared memory.
     rpo_diagrams : tuple[NDArray[np.float64], ...]
-        Persistence diagrams of this RPO phase, one per derivative order.
-        Same length as ``diagrams_shm_names``.
+        Finite pairs of this RPO phase, one per derivative order. Same length
+        as ``diagrams_shm_names``.
+    rpo_essential_births : tuple[NDArray[np.float64], ...]
+        Essential births of this RPO phase, one ``(2,)`` array per derivative
+        order. Same length as ``diagrams_shm_names``.
     order_scales : tuple[float, ...]
         Per-order scale each order's Wasserstein column is divided by before the
         mean across orders. Same length as ``diagrams_shm_names``.
@@ -771,8 +794,10 @@ class _WassersteinColumnInputs:
     phase_index: int
     diagrams_shm_names: tuple[str, ...]
     offsets_shm_names: tuple[str, ...]
+    essential_births_shm_names: tuple[str, ...]
     num_timesteps: int
     rpo_diagrams: tuple[NDArray[np.float64], ...]
+    rpo_essential_births: tuple[NDArray[np.float64], ...]
     order_scales: tuple[float, ...]
 
 
@@ -782,17 +807,19 @@ def _compute_wasserstein_column(
     """Compute the per-phase mean Wasserstein column across derivative orders.
 
     Opens the per-order :class:`~multiprocessing.shared_memory.SharedMemory`
-    blocks holding flattened trajectory persistence diagrams, computes one
-    Wasserstein column per order via ``_wasserstein_column``, divides each by its
-    per-order scale in ``inputs.order_scales``, and returns the mean across
-    orders. Performing the reduction on the worker keeps cross-process bandwidth
-    linear in ``num_timesteps``, not ``num_timesteps * len(diagrams_shm_names)``.
+    blocks holding flattened trajectory finite pairs and essential births,
+    computes one Wasserstein column per order via ``_wasserstein_column``,
+    divides each by its per-order scale in ``inputs.order_scales``, and
+    returns the mean across orders. Performing the reduction on the worker
+    keeps cross-process bandwidth linear in ``num_timesteps``, not
+    ``num_timesteps * len(diagrams_shm_names)``.
     """
     num_orders = len(inputs.diagrams_shm_names)
     column = np.zeros(inputs.num_timesteps, dtype=np.float64)
 
     diagrams_shms = [SharedMemory(name=name) for name in inputs.diagrams_shm_names]
     offsets_shms = [SharedMemory(name=name) for name in inputs.offsets_shm_names]
+    births_shms = [SharedMemory(name=name) for name in inputs.essential_births_shm_names]
     try:
         for order_index in range(num_orders):
             offsets = np.ndarray(
@@ -805,14 +832,23 @@ def _compute_wasserstein_column(
                 dtype=np.float64,
                 buffer=diagrams_shms[order_index].buf,
             )
+            trajectory_births = np.ndarray(
+                (inputs.num_timesteps, 2),
+                dtype=np.float64,
+                buffer=births_shms[order_index].buf,
+            )
             column += (
-                _wasserstein_column(trajectory_diagrams, offsets, inputs.rpo_diagrams[order_index])
+                _wasserstein_column(
+                    trajectory_diagrams,
+                    offsets,
+                    trajectory_births,
+                    inputs.rpo_diagrams[order_index],
+                    inputs.rpo_essential_births[order_index],
+                )
                 / inputs.order_scales[order_index]
             )
     finally:
-        for shm in diagrams_shms:
-            shm.close()
-        for shm in offsets_shms:
+        for shm in (*diagrams_shms, *offsets_shms, *births_shms):
             shm.close()
 
     column /= num_orders

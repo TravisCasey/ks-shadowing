@@ -4,8 +4,8 @@ Event duration distributions: SSA vs. PHA
 
 Per-bin event counts for SSA and three PHA settings on the same trajectory: no
 embedding (:math:`w = 1`, :math:`\lambda = 1`), the delay-axis setting
-(:math:`w = 25`, :math:`\lambda = 1`), and the derivative-axis setting
-(:math:`w = 1`, :math:`\lambda = 3`). Each is plotted as step histograms over a
+(:math:`w = 17`, :math:`\lambda = 1`), and the derivative-axis setting
+(:math:`w = 1`, :math:`\lambda = 2`). Each is plotted as step histograms over a
 shared duration grid in trajectory-time units. :math:`w` is the delay window
 and :math:`\lambda` the number of derivative orders averaged over, one more
 than the ``max_derivative_order`` the filenames carry. The log count axis keeps
@@ -33,8 +33,8 @@ DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
 PHA_PATHS = [
     DATA_DIR / "pha_r2048_d1_o0.h5",  # no embedding
-    DATA_DIR / "pha_r2048_d25_o0.h5",  # delay axis
-    DATA_DIR / "pha_r2048_d1_o2.h5",  # derivative axis
+    DATA_DIR / "pha_r2048_d17_o0.h5",  # delay axis
+    DATA_DIR / "pha_r2048_d1_o1.h5",  # derivative axis
 ]
 BIN_WIDTH_TIMESTEPS = 2
 
@@ -79,8 +79,8 @@ for pha_metadata, pha_durations in pha_runs:
     max_order = pha_metadata.max_derivative_order
     # The unembedded baseline takes the recessive dashed style: dashes vanish
     # where curves overlap, and the baseline is the one curve that stands
-    # clear of the cluster. The w = 25 run shares the baseline's lambda = 1
-    # color and the lambda = 3 run shares its w = 1 setting, so the dashes
+    # clear of the cluster. The w = 17 run shares the baseline's lambda = 1
+    # color and the lambda = 2 run shares its w = 1 setting, so the dashes
     # are what separate the baseline from each; the embedded runs stay solid.
     if pha_metadata.delay > 1:
         setting = rf"$w = {pha_metadata.delay}$"

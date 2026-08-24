@@ -15,9 +15,9 @@ index. Events with no overlapping partner on the same RPO appear in the
 PHA-only events and a strip below the horizontal axis for SSA-only events,
 jittered within the strip for visibility.
 
-One panel per embedding axis: the delay-axis setting (:math:`w = 25`,
+One panel per embedding axis: the delay-axis setting (:math:`w = 17`,
 :math:`\lambda = 1`) and the derivative-axis setting (:math:`w = 1`,
-:math:`\lambda = 3`), each matched against the same SSA run. :math:`w` is the
+:math:`\lambda = 2`), each matched against the same SSA run. :math:`w` is the
 delay window and :math:`\lambda` the number of derivative orders averaged over,
 one more than the ``max_derivative_order`` the filenames carry. The two
 embedding axes are shown independently: :math:`w > 1` is used only at
@@ -41,8 +41,8 @@ except NameError:
     REPO_ROOT = Path.cwd().parent
 SSA_PATH = REPO_ROOT / "examples" / "data" / "ssa_r2048.h5"
 PHA_PATHS = [
-    REPO_ROOT / "examples" / "data" / "pha_r2048_d25_o0.h5",  # delay axis
-    REPO_ROOT / "examples" / "data" / "pha_r2048_d1_o2.h5",  # derivative axis
+    REPO_ROOT / "examples" / "data" / "pha_r2048_d17_o0.h5",  # delay axis
+    REPO_ROOT / "examples" / "data" / "pha_r2048_d1_o1.h5",  # derivative axis
 ]
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
@@ -81,9 +81,9 @@ for pha_path in PHA_PATHS:
 
 # %%
 # Render. Axis ranges are fixture-tuned: the largest match reaches composite
-# lengths near (85, 89) time units, so shared square limits to 92 hold every
+# lengths near (63, 66) time units, so shared square limits to 70 hold every
 # point with the diagonal in view. High-Jaccard points draw last.
-HIGH = 92.0
+HIGH = 70.0
 
 shortest = dt * min(
     ssa_metadata.min_duration,

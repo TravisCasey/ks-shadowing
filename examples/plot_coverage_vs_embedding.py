@@ -20,13 +20,13 @@ The two embedding axes are presented independently: delays greater than 1 are
 used only at max order 0. The left column sweeps ``delay`` at max order 0; the
 right column sweeps ``max_derivative_order`` at delay 1. The top row is
 :math:`F_1`; the bottom row is the precision and recall it is built from.
-Along the delay axis, precision falls from its ``delay = 1`` value to a minimum
-around ``delay`` 9 to 11, partially recovers, then falls again toward the end of
-the sweep. Recall rises steeply from ``delay = 1`` and saturates. :math:`F_1`
-inherits recall's early rise, then flattens into a broad maximum spanning
-roughly ``delay`` 21 to 27 before declining toward ``delay = 33``. Along the
+Along the delay axis, precision falls from its ``delay = 1`` value to a shallow
+minimum around ``delay = 13``, ticks up only marginally by ``delay = 15``, then
+falls again toward the end of the sweep. Recall rises steeply from ``delay = 1``
+and saturates. :math:`F_1` inherits recall's early rise, then peaks narrowly
+around ``delay`` 15 to 21 before declining toward ``delay = 33``. Along the
 derivative axis, :math:`F_1` has a sharp maximum at
-``max_derivative_order = 2``. The rest of the gallery uses ``delay = 25`` as its
+``max_derivative_order = 1``. The rest of the gallery uses ``delay = 17`` as its
 delay-axis setting.
 """
 

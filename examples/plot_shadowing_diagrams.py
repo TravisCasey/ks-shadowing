@@ -25,6 +25,13 @@ the
 :ref:`distance-matrix example <sphx_glr_auto_examples_plot_shadowing_matrices.py>`
 select.
 
+Each diagram also has two essential classes that never die: the connected
+component born at the field's minimum and the loop born when the maximum closes
+the periodic domain. They are drawn on the dashed line marked infinity above the
+finite pairs, at their births: filled markers for the minimum (the essential
+:math:`H_0` class), open markers for the maximum (the essential :math:`H_1`
+class).
+
 No spatial alignment is applied in either panel. The sublevel-set persistence
 diagram of a periodic field is invariant to spatial translation, so neither the
 RPO's drift nor the event's per-timestep spatial shift moves any point in this
@@ -64,6 +71,8 @@ RPO_COLOR = "#EE6677"
 TRAJECTORY_SIZE = 34.0
 RPO_SIZE = 11.0
 AXIS_PAD = 0.05
+INFINITY_GAP = 0.15
+OPEN_LINEWIDTH = 0.6
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 
@@ -133,20 +142,39 @@ def _cloud(
     return np.vstack(diagrams), np.repeat(step_alphas, counts)
 
 
+def _essential_births(
+    births: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    # Two essential classes per timestep, both at infinite death; only the
+    # births are positioned, on the shared infinity line drawn at render time.
+    # Column 0 is the H0 birth (minimum), column 1 the H1 birth (maximum).
+    return births[:, 0], births[:, 1], step_alphas
+
+
 panels = []
 for tag, name, window_persistence, phase in (
     ("(a)", "During the event", event_persistence, event.start_phase),
     ("(b)", "Event-free window", control_persistence, control_phase),
 ):
     phases = (phase + window_steps) % period
-    rpo_window_diagrams = [rpo_persistence.diagrams[index] for index in phases]
+    rpo_window = rpo_persistence[phases]
     panels.append(
         (
             tag,
             name,
             (
                 (*_cloud(window_persistence.diagrams), TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE, 2),
-                (*_cloud(rpo_window_diagrams), RPO_COLOR, "^", RPO_SIZE, 3),
+                (*_cloud(rpo_window.diagrams), RPO_COLOR, "^", RPO_SIZE, 3),
+            ),
+            (
+                (
+                    *_essential_births(window_persistence.essential_births),
+                    TRAJECTORY_COLOR,
+                    "o",
+                    TRAJECTORY_SIZE,
+                    2,
+                ),
+                (*_essential_births(rpo_window.essential_births), RPO_COLOR, "^", RPO_SIZE, 3),
             ),
         )
     )
@@ -155,8 +183,8 @@ for tag, name, window_persistence, phase in (
 # %%
 # Legend proxies. Per-point opacity is baked into the face colors, so an
 # automatic legend would draw its entries at the first point's opacity.
-def _proxy(color: str, marker: str, size: float, alpha: float = 1.0) -> Line2D:
-    return Line2D(
+def _proxy(color: str, marker: str, size: float, alpha: float = 1.0, filled: bool = True) -> Line2D:
+    proxy = Line2D(
         [],
         [],
         linestyle="none",
@@ -165,46 +193,80 @@ def _proxy(color: str, marker: str, size: float, alpha: float = 1.0) -> Line2D:
         alpha=alpha,
         markersize=float(np.sqrt(size)),
     )
+    if not filled:
+        proxy.set_markerfacecolor("none")
+        proxy.set_markeredgewidth(OPEN_LINEWIDTH)
+    return proxy
 
 
 # %%
-# Render. Equal aspect makes distance from the diagonal read as persistence, so
-# each panel is about as tall as it is wide and the two stack into a tall column
-# figure. The limits follow the birth and death ranges separately: every pair
-# lies above the diagonal, so squaring the box off both ranges together would
-# leave most of each panel empty. Both panels share limits, so a position means
-# the same thing in each.
-figure, axes = plt.subplots(2, 1, figsize=(3.4, 6.6), sharex=True, sharey=True)
+# Render.
+figure, axes = plt.subplots(2, 1, figsize=(3.4, 4.85), sharex=True, sharey=True)
 
-all_points = np.vstack([points for _, _, series in panels for points, *_ in series])
+all_points = np.vstack([points for _, _, series, _ in panels for points, *_ in series])
 birth_low, death_low = all_points.min(axis=0)
 birth_high, death_high = all_points.max(axis=0)
+all_births = np.concatenate(
+    [
+        all_points[:, 0],
+        *(minima for _, _, _, series in panels for minima, *_ in series),
+        *(maxima for _, _, _, series in panels for _, maxima, *_ in series),
+    ]
+)
 pad = AXIS_PAD * max(birth_high - birth_low, death_high - death_low)
-diagonal = (min(birth_low, death_low) - pad, max(birth_high, death_high) + pad)
+infinity = death_high + INFINITY_GAP * (death_high - death_low)
 
-for ax, (tag, name, series) in zip(axes, panels, strict=True):
-    ax.plot(diagonal, diagonal, color="0.7", linewidth=0.6, zorder=1)
-    for points, alphas, color, marker, size, zorder in series:
-        # The opacity varies per point, so it goes into the face colors rather
-        # than through ``alpha``, which takes one value for the whole collection.
-        face_colors = np.tile(to_rgba(color), (alphas.size, 1))
-        face_colors[:, 3] = alphas
+
+def _scatter(  # noqa: PLR0913, PLR0917
+    ax: plt.Axes,
+    x: NDArray[np.float64],
+    y: NDArray[np.float64],
+    alphas: NDArray[np.float64],
+    color: str,
+    marker: str,
+    size: float,
+    zorder: int,
+    filled: bool = True,
+) -> None:
+    colors = np.tile(to_rgba(color), (alphas.size, 1))
+    colors[:, 3] = alphas
+    if filled:
+        ax.scatter(x, y, s=size, marker=marker, c=colors, linewidths=0.0, zorder=zorder)
+    else:
         ax.scatter(
-            points[:, 0],
-            points[:, 1],
+            x,
+            y,
             s=size,
             marker=marker,
-            c=face_colors,
-            linewidths=0.0,
+            facecolors="none",
+            edgecolors=colors.tolist(),
+            linewidths=OPEN_LINEWIDTH,
             zorder=zorder,
         )
+
+
+for ax, (tag, name, finite_series, essential_series) in zip(axes, panels, strict=True):
+    ax.axline((0.0, 0.0), slope=1.0, color="0.7", linewidth=0.6, zorder=1)
+    ax.axhline(infinity, color="0.7", linewidth=0.6, linestyle="--", zorder=1)
+    for points, alphas, color, marker, size, zorder in finite_series:
+        _scatter(ax, points[:, 0], points[:, 1], alphas, color, marker, size, zorder)
+    for minima, maxima, alphas, color, marker, size, zorder in essential_series:
+        line = np.full(minima.shape, infinity)
+        _scatter(ax, minima, line, alphas, color, marker, size, zorder)
+        _scatter(ax, maxima, line, alphas, color, marker, size, zorder, filled=False)
     ax.set_aspect("equal")
     ax.set_title(tag, loc="left")
     ax.set_title(name)
     ax.set_ylabel("Death")
 
-axes[0].set_xlim(birth_low - pad, birth_high + pad)
-axes[0].set_ylim(death_low - pad, death_high + pad)
+axes[0].set_xlim(all_births.min() - pad, all_births.max() + pad)
+axes[0].set_ylim(death_low - pad, infinity + pad)
+
+finite_ticks = [
+    tick for tick in axes[0].get_yticks() if death_low - pad <= tick <= death_high + pad
+]
+axes[0].set_yticks([*finite_ticks, infinity])
+axes[0].set_yticklabels([*(f"{tick:g}" for tick in finite_ticks), r"$\infty$"])
 axes[-1].set_xlabel("Birth")
 
 # The third entry is the opacity ramp itself, drawn as three circles so the time
@@ -217,10 +279,24 @@ axes[0].legend(
             _proxy(TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE, alpha)
             for alpha in (ALPHA_FLOOR, 0.5 * (1.0 + ALPHA_FLOOR), 1.0)
         ),
+        (
+            _proxy(TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE),
+            _proxy(TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE, filled=False),
+        ),
     ],
-    ["Chaotic trajectory", f"RPO {event.rpo_index}", "Window start to end"],
+    [
+        "Chaotic trajectory",
+        f"RPO {event.rpo_index}",
+        "Window start to end",
+        "Essential $H_0$ (min), $H_1$ (max)",
+    ],
     handler_map={tuple: HandlerTuple(ndivide=None, pad=0.4)},
-    loc="upper right",
+    loc="lower right",
+    fontsize=6,
+    handlelength=1.5,
+    handletextpad=0.4,
+    borderpad=0.25,
+    labelspacing=0.25,
 )
 
 plt.show()

@@ -32,6 +32,20 @@ RPO period, and :math:`T` the trajectory length in timesteps. The window mean
 is attributed to its center, so :math:`D_{w,\lambda}(i, j)` is defined for
 :math:`c \le i \le T - 1 - \lfloor w/2 \rfloor`.
 
+Each entry of :math:`W_m` is the :math:`W_2` distance between full
+sublevel-set persistence diagrams. A diagram holds the finite :math:`H_0`
+pairs plus two essential classes with infinite death: the component born as the
+state minimum and the loop born at the field maximum. Infinite points cannot be
+matched to the diagonal, so the essential classes of two diagrams pair with each
+other at cost equal to their birth difference, and
+
+.. math::
+
+   W_2^2 = W_{\mathrm{fin}}^2 + (\min u - \min u')^2 + (\max u - \max u')^2,
+
+where :math:`W_{\mathrm{fin}}` is the :math:`W_2` matching of the finite
+pairs alone.
+
 These map onto the API and the fixture filenames as:
 
 - :math:`w` is the ``delay`` parameter, and appears in filenames as ``d{w}``.

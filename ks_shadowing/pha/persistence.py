@@ -15,11 +15,11 @@ from ks_shadowing.core.trajectory import KSTrajectory
 class KSPersistenceTrajectory:
     """A Kuramoto-Sivashinsky trajectory in the space of persistence diagrams.
 
-    Each element of ``diagrams`` is a ``(num_pairs, 2)`` array containing birth
-    and death pairs of the sublevel-set zeroth persistence diagram of each point
-    in physical space of a trajectory with constant timestep ``dt``. The
-    diagonal points and the single essential class (having infinite death) are
-    not included.
+    Each timestep of a trajectory with constant timestep ``dt`` is represented
+    by the sublevel-set persistence diagram of its physical-space field. The
+    finite :math:`H_0` pairs of timestep ``i`` are ``diagrams[i]``; the two
+    essential classes, which have infinite death, are recorded by their births
+    in ``essential_births[i]``. Diagonal points are not included.
 
     Prefer
     :meth:`~ks_shadowing.pha.persistence.KSPersistenceTrajectory.from_trajectory`
@@ -29,15 +29,33 @@ class KSPersistenceTrajectory:
     Attributes
     ----------
     diagrams : list[NDArray[np.float64]]
-        One persistence diagram per timestep. Each diagram has shape
-        ``(num_pairs, 2)`` of ``(birth, death)`` pairs with ``birth < death``.
-        The essential class (infinite death) is excluded.
+        One finite diagram per timestep. Each has shape ``(num_pairs, 2)`` of
+        ``(birth, death)`` pairs with ``birth < death``.
+    essential_births : NDArray[np.float64], shape (len(diagrams), 2)
+        Births of the two essential classes per timestep: column 0 is the
+        essential :math:`H_0` class (the field minimum), column 1 the
+        essential :math:`H_1` class (the field maximum). Both have infinite
+        death, so in a Wasserstein matching each pairs with its counterpart
+        in the other diagram at cost equal to the birth difference.
     dt : float
         The constant timestep of the trajectory between diagrams.
+
+    Raises
+    ------
+    ValueError
+        If ``essential_births`` does not have shape ``(len(diagrams), 2)``.
     """
 
     diagrams: list[NDArray[np.float64]]
+    essential_births: NDArray[np.float64]
     dt: float
+
+    def __post_init__(self) -> None:
+        expected = (len(self.diagrams), 2)
+        if self.essential_births.shape != expected:
+            raise ValueError(
+                f"essential_births must have shape {expected}, got {self.essential_births.shape}"
+            )
 
     @classmethod
     def from_trajectory(
@@ -62,8 +80,8 @@ class KSPersistenceTrajectory:
             :data:`~ks_shadowing.core.DEFAULT_CHUNK_SIZE`.
         order : int, optional
             Spatial-derivative order applied in Fourier space before the
-            inverse FFT. The zeroth persistence diagram is then computed on
-            the resulting field. ``0`` (default) leaves the field unchanged;
+            inverse FFT. The persistence diagram is then computed on the
+            resulting field. ``0`` (default) leaves the field unchanged;
             higher orders compute :math:`\partial^{n} u / \partial x^{n}`
             first. Must be non-negative.
 
@@ -93,25 +111,65 @@ class KSPersistenceTrajectory:
             )
 
         diagrams: list[NDArray[np.float64]] = []
+        essential_births: list[NDArray[np.float64]] = []
         for _, physical_chunk in source.chunks_physical(chunk_size):
-            diagrams.extend(_zeroth_persistence_diagram_periodic(field) for field in physical_chunk)
+            for field in physical_chunk:
+                finite_pairs, births = _persistence_diagram_periodic(field)
+                diagrams.append(finite_pairs)
+                essential_births.append(births)
 
-        return cls(diagrams, source.dt)
+        return cls(
+            diagrams,
+            np.array(essential_births, dtype=np.float64).reshape(len(diagrams), 2),
+            source.dt,
+        )
 
     def __len__(self) -> int:
         """Number of persistence diagrams in the trajectory."""
         return len(self.diagrams)
 
     def __iter__(self) -> Iterator[NDArray[np.float64]]:
-        """Iterate over persistence diagrams in trajectory order."""
+        """Iterate over the finite pairs of each timestep, in trajectory order."""
         return iter(self.diagrams)
 
-    def _flatten(self) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
-        """Flatten ``self.diagrams`` into a single flat array with an additional
-        offset array for the batched Hera API.
+    def __getitem__(self, key: slice | NDArray[np.int64]) -> Self:
+        """Select timesteps.
 
-        This is the expected format for the ``diagrams_a`` and ``offsets_a``
-        arguments to the ``_wasserstein_column`` function.
+        Parameters
+        ----------
+        key : slice | NDArray[np.int64]
+            Timestep slice or 1D integer index array.
+
+        Returns
+        -------
+        Self
+            New persistence trajectory holding the selected timesteps'
+            diagrams and essential births, at the same ``dt``.
+
+        Raises
+        ------
+        TypeError
+            If ``key`` is neither a slice nor an integer array.
+        """
+        if isinstance(key, slice):
+            return type(self)(self.diagrams[key], self.essential_births[key], self.dt)
+        if isinstance(key, np.ndarray) and np.issubdtype(key.dtype, np.integer):
+            return type(self)(
+                [self.diagrams[index] for index in key.tolist()],
+                self.essential_births[key],
+                self.dt,
+            )
+        raise TypeError("KSPersistenceTrajectory indices must be slices or integer arrays")
+
+    def _flatten(
+        self,
+    ) -> tuple[NDArray[np.float64], NDArray[np.int64], NDArray[np.float64]]:
+        """Flatten ``self.diagrams`` into a single flat array with an additional
+        offset array for the batched Hera API, alongside the essential births.
+
+        This is the expected format for the ``diagrams_a``, ``offsets_a``, and
+        ``essential_births_a`` arguments to the ``_wasserstein_column``
+        function.
 
         Returns
         -------
@@ -123,32 +181,40 @@ class KSPersistenceTrajectory:
             entry is equal to ``flat_diagrams.shape[0]``. If
             ``length_i = diagrams[i].shape[0]``, then
             ``offsets[i + 1] - offsets[i] = length_i``.
+        essential_births : NDArray[np.float64], shape (len(self.diagrams), 2)
+            ``self.essential_births``, contiguous.
         """
+        essential_births = np.ascontiguousarray(self.essential_births, dtype=np.float64)
         if not self.diagrams:
-            return np.zeros((0, 2), dtype=np.float64), np.zeros(1, dtype=np.int64)
+            return np.zeros((0, 2), dtype=np.float64), np.zeros(1, dtype=np.int64), essential_births
 
         lengths = np.array([diagram.shape[0] for diagram in self.diagrams], dtype=np.int64)
         offsets = np.zeros(len(self.diagrams) + 1, dtype=np.int64)
         offsets[1:] = np.cumsum(lengths)
 
         if offsets[-1] == 0:
-            return np.zeros((0, 2), dtype=np.float64), offsets
+            return np.zeros((0, 2), dtype=np.float64), offsets, essential_births
 
         nonempty = [diagram for diagram in self.diagrams if diagram.shape[0] > 0]
         flat_diagrams = np.vstack(nonempty).astype(np.float64, copy=False)
 
-        return np.ascontiguousarray(flat_diagrams), offsets
+        return np.ascontiguousarray(flat_diagrams), offsets, essential_births
 
 
-def _zeroth_persistence_diagram_periodic(field: NDArray[np.float64]) -> NDArray[np.float64]:
-    r"""Compute sublevel-set persistence diagram for a 1D periodic field.
+def _persistence_diagram_periodic(
+    field: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    r"""Compute the sublevel-set persistence diagram of a 1D periodic field.
 
-    Computes :math:`H_0` sublevel-set persistence on a circle (1D periodic
-    domain). Each local minimum of the discrete field births a connected
-    component in the sublevel set :math:`\{x : f(x) \le t\}`. When two
-    components merge (at an entry between two distinct minima), the younger
-    component dies. The resulting diagram is invariant to spatial translations
-    of ``field``.
+    Computes sublevel-set persistence on a circle (1D periodic domain). Each
+    local minimum of the discrete field births a connected component in the
+    sublevel set :math:`\{x : f(x) \le t\}`. When two components merge (at an
+    entry between two distinct minima), the younger component dies, giving a
+    finite :math:`H_0` pair. Two classes never die: the component born at the
+    global minimum (essential :math:`H_0`), and the loop born when the global
+    maximum closes the circle (essential :math:`H_1`). :math:`H_1` has no
+    finite classes, so these two births complete the diagram. The diagram is
+    invariant to spatial translations of ``field``.
 
     Parameters
     ----------
@@ -157,14 +223,20 @@ def _zeroth_persistence_diagram_periodic(field: NDArray[np.float64]) -> NDArray[
 
     Returns
     -------
-    NDArray[np.float64], shape (num_pairs, 2)
-        Persistence pairs ``(birth, death)`` with ``birth < death``. The single
-        essential class (infinite death) is excluded.
+    finite_pairs : NDArray[np.float64], shape (num_pairs, 2)
+        Finite :math:`H_0` pairs ``(birth, death)`` with ``birth < death``.
+    essential_births : NDArray[np.float64], shape (2,)
+        Births of the essential classes: ``[min(field), max(field)]`` for
+        :math:`H_0` and :math:`H_1` respectively. Both have infinite death.
+        ``[nan, nan]`` for an empty field.
     """
     if field.size == 0:
-        return np.empty((0, 2), dtype=np.float64)
+        return np.empty((0, 2), dtype=np.float64), np.full(2, np.nan, dtype=np.float64)
 
     ordered = np.argsort(field)
+    # The sweep adds vertices in ascending order: the first births the
+    # essential H0 class, the last closes the circle and births essential H1.
+    essential_births = np.array([field[ordered[0]], field[ordered[-1]]], dtype=np.float64)
 
     # Union-find data
     parent = list(range(field.size))
@@ -213,5 +285,5 @@ def _zeroth_persistence_diagram_periodic(field: NDArray[np.float64]) -> NDArray[
             parent[entry] = root_a
 
     if not pairs:
-        return np.empty((0, 2), dtype=np.float64)
-    return np.array(pairs, dtype=np.float64)
+        return np.empty((0, 2), dtype=np.float64), essential_births
+    return np.array(pairs, dtype=np.float64), essential_births

@@ -16,7 +16,7 @@
 #   - 6 PHA derivative sweep: pha_r2048_d1_o{0..5}.h5
 #   - 6 PHA rescaled twins:   pha_r2048_d1_o{0..5}_rescaled.h5
 #   - 16 PHA delay axis:      pha_r2048_d{3,5,...,33}_o0.h5
-#   - 7 PHA cross-resolution: pha_r{256,512,768,1024,1280,1536,1792}_d25_o0.h5
+#   - 7 PHA cross-resolution: pha_r{256,512,768,1024,1280,1536,1792}_d17_o0.h5
 #
 # N_JOBS can be overridden via the environment; defaults to -1 (all CPUs).
 
@@ -58,14 +58,14 @@ for delay in 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33; do
   uv run ks-detect "${pha_common[@]}" --resolution 2048 --delay "${delay}" --max-derivative-order 0 --output "${DATA_DIR}/pha_r2048_d${delay}_o0.h5"
 done
 
-# pha_r{256..1792}_d25_o0
-uv run ks-detect "${pha_common[@]}" --resolution 256 --delay 25 --max-derivative-order 0 --output "${DATA_DIR}/pha_r256_d25_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 512 --delay 25 --max-derivative-order 0 --output "${DATA_DIR}/pha_r512_d25_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 768 --delay 25 --max-derivative-order 0 --output "${DATA_DIR}/pha_r768_d25_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 1024 --delay 25 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1024_d25_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 1280 --delay 25 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1280_d25_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 1536 --delay 25 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1536_d25_o0.h5"
-uv run ks-detect "${pha_common[@]}" --resolution 1792 --delay 25 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1792_d25_o0.h5"
+# pha_r{256..1792}_d17_o0
+uv run ks-detect "${pha_common[@]}" --resolution 256 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r256_d17_o0.h5"
+uv run ks-detect "${pha_common[@]}" --resolution 512 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r512_d17_o0.h5"
+uv run ks-detect "${pha_common[@]}" --resolution 768 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r768_d17_o0.h5"
+uv run ks-detect "${pha_common[@]}" --resolution 1024 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1024_d17_o0.h5"
+uv run ks-detect "${pha_common[@]}" --resolution 1280 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1280_d17_o0.h5"
+uv run ks-detect "${pha_common[@]}" --resolution 1536 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1536_d17_o0.h5"
+uv run ks-detect "${pha_common[@]}" --resolution 1792 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1792_d17_o0.h5"
 
 # ssa_r{256..1792}
 uv run ks-detect "${ssa_common[@]}" --resolution 256 --output "${DATA_DIR}/ssa_r256.h5"

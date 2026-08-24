@@ -29,7 +29,8 @@ column the extrema sit in the right places with drifting values. The
 persistence pairs pull away from their RPO counterparts through the gap (e), so
 the Wasserstein distance exceeds the PHA threshold, yet the deviation has narrow
 support: its accumulated square rises in steps at the mismatched extrema and
-ends below the SSA threshold. In the right column the extrema hold the right
+ends just below twice the SSA threshold, a small fraction of the right
+column's total deviation (f). In the right column the extrema hold the right
 values in slightly shifted places.
 """
 
@@ -167,8 +168,8 @@ def _track_distances(
     wasserstein = np.array(
         [
             wasserstein_matrix(
-                KSPersistenceTrajectory([window_persistence.diagrams[index]], trajectory.dt),
-                KSPersistenceTrajectory([orbit_persistence.diagrams[phase]], trajectory.dt),
+                window_persistence[index : index + 1],
+                orbit_persistence[phase : phase + 1],
             )[0, 0]
             for index, phase in enumerate(phases)
         ]

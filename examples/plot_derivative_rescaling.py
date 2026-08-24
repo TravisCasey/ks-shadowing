@@ -20,7 +20,7 @@ identical; through :math:`\lambda = 3` the rescaled precision, F1, and
 correct-RPO attribution differ from the raw curves only at the third decimal.
 The sweeps separate only at high order: from :math:`\lambda = 4` onward
 rescaling makes the decline gentler, but it does not lift the peak, which both
-sweeps reach at :math:`\lambda = 3`.
+sweeps reach at :math:`\lambda = 2`.
 
 Every quantity plotted here is agreement with the SSA reference, not absolute
 correctness: the SSA detector is the yardstick, not ground truth. Rescaling

@@ -56,7 +56,7 @@ ZOOM_TIMESTEPS = 30
 MIN_CANDIDATE_PATH = 2
 # Which of this orbit's events to center the window on, by the trajectory
 # timestep it starts at.
-EVENT_START_TIMESTEP = 45747
+EVENT_START_TIMESTEP = 45748
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 # Tol bright red and blue, splitting close passes by whether their component

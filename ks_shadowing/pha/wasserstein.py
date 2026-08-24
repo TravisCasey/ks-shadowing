@@ -34,13 +34,15 @@ def _get_lib() -> CDLL:
     return lib
 
 
-def _wasserstein_column(
+def _wasserstein_column(  # noqa: PLR0913, PLR0917
     diagrams_a: NDArray[np.float64],
     offsets_a: NDArray[np.int64],
+    essential_births_a: NDArray[np.float64],
     diagram_b: NDArray[np.float64],
+    essential_births_b: NDArray[np.float64],
     delta: float = 0.01,
 ) -> NDArray[np.float64]:
-    """Compute Wasserstein distances from pre-flattened trajectory diagrams to
+    r"""Compute Wasserstein distances from pre-flattened trajectory diagrams to
     one RPO diagram.
 
     See ``KSPersistenceTrajectory._flatten`` to format a trajectory of
@@ -52,14 +54,18 @@ def _wasserstein_column(
     Parameters
     ----------
     diagrams_a : NDArray[np.float64], shape (offsets_a[-1], 2)
-        Concatenated persistence pairs (row-major) from a set of diagrams.
+        Concatenated finite pairs (row-major) from a set of diagrams.
     offsets_a : NDArray[np.int64], shape (num_diagrams + 1,)
         Cumulative offsets into ``diagrams_a`` for each diagram. The trailing
         sentinel ``offsets_a[-1]`` equals ``diagrams_a.shape[0]``.
-    diagram_b : NDArray[np.float64]
-        Single comparison diagram of persistence pairs (row-major).
+    essential_births_a : NDArray[np.float64], shape (num_diagrams, 2)
+        Essential births of each diagram in ``diagrams_a``.
+    diagram_b : NDArray[np.float64], shape (num_pairs_b, 2)
+        Single comparison diagram of finite pairs (row-major).
+    essential_births_b : NDArray[np.float64], shape (2,)
+        Essential births of ``diagram_b``.
     delta : float, optional
-        Relative error tolerance. Default is 0.01 (1%).
+        Relative error tolerance for the finite part. Default is 0.01 (1%).
 
     Returns
     -------
@@ -95,7 +101,8 @@ def _wasserstein_column(
     if ret != 0:
         raise RuntimeError("wasserstein_column_c failed")
 
-    return out
+    essential_sq = np.sum((essential_births_a - essential_births_b) ** 2, axis=1)
+    return np.sqrt(out**2 + essential_sq)
 
 
 def wasserstein_matrix(
@@ -107,7 +114,9 @@ def wasserstein_matrix(
 
     Entry ``(i, j)`` is the distance between diagram ``i`` of ``diagrams_a`` and
     diagram ``j`` of ``diagrams_b``. The result holds
-    ``len(diagrams_a) * len(diagrams_b)`` float64 entries.
+    ``len(diagrams_a) * len(diagrams_b)`` float64 entries. Each entry is the
+    distance between full diagrams: finite pairs plus the essential classes,
+    see ``_wasserstein_column``.
 
     Detection never materializes this matrix; it streams one column at a time
     and reduces as it goes, so
@@ -129,10 +138,17 @@ def wasserstein_matrix(
     NDArray[np.float64], shape (len(diagrams_a), len(diagrams_b))
         Wasserstein distance between each pair of diagrams.
     """
-    flat_diagrams, offsets = diagrams_a._flatten()
+    flat_diagrams, offsets, essential_births = diagrams_a._flatten()
 
     matrix = np.empty((len(diagrams_a), len(diagrams_b)), dtype=np.float64)
     for index, diagram in enumerate(diagrams_b):
-        matrix[:, index] = _wasserstein_column(flat_diagrams, offsets, diagram, delta)
+        matrix[:, index] = _wasserstein_column(
+            flat_diagrams,
+            offsets,
+            essential_births,
+            diagram,
+            diagrams_b.essential_births[index],
+            delta,
+        )
 
     return matrix

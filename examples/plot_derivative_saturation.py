@@ -9,7 +9,7 @@ persistence-diagram Wasserstein distances over spatial-derivative orders
 ``max_derivative_order``, one less than :math:`\lambda`. The
 ``pha_r2048_d1_o{0..5}`` files are that sweep, :math:`\lambda = 1` through
 :math:`6`, and scoring them against SSA shows directly what each added order
-contributes: not much past :math:`\lambda = 3`, and eventually some harm.
+contributes: not much past :math:`\lambda = 2`, and eventually some harm.
 
 Panel (a) scores the (RPO, timestep) cell grid rather than the shadowing flag,
 so a run that flags the right timestep against the wrong orbit is penalized for
@@ -17,11 +17,11 @@ it; the :ref:`agreement example
 <sphx_glr_auto_examples_plot_coverage_vs_embedding.py>` defines the measure.
 Precision falls monotonically with every added order, as the extra orders flag
 cells SSA does not. Recall climbs steeply from :math:`\lambda = 1` to
-:math:`\lambda = 2`, peaks at :math:`\lambda = 3` and declines afterward, so
-F1 peaks at :math:`\lambda = 3` as well.
+:math:`\lambda = 2`, then declines with every further order, so F1 peaks at
+:math:`\lambda = 2` as well.
 
 Panel (b) isolates why: restricted to the timesteps every run agrees are
-shadowing, attribution to the correct RPO peaks at :math:`\lambda = 3` and
+shadowing, attribution to the correct RPO peaks at :math:`\lambda = 2` and
 erodes afterward. This is the detection-level signature of high-order
 redundancy: at high :math:`\lambda` the added orders increasingly measure the
 same thing, so they reinforce one another rather than contributing independent
