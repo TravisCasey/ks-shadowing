@@ -17,17 +17,19 @@ Counts are pooled across all RPOs before the ratio is taken, so that each orbit
 contributes in proportion to how often it is active.
 
 The two embedding axes are presented independently: delays greater than 1 are
-used only at max order 0. The left column sweeps ``delay`` at max order 0; the
-right column sweeps ``max_derivative_order`` at delay 1. The top row is
-:math:`F_1`; the bottom row is the precision and recall it is built from.
-Along the delay axis, precision falls from its ``delay = 1`` value to a shallow
-minimum around ``delay = 13``, ticks up only marginally by ``delay = 15``, then
-falls again toward the end of the sweep. Recall rises steeply from ``delay = 1``
-and saturates. :math:`F_1` inherits recall's early rise, then peaks narrowly
-around ``delay`` 15 to 21 before declining toward ``delay = 33``. Along the
-derivative axis, :math:`F_1` has a sharp maximum at
-``max_derivative_order = 1``. The rest of the gallery uses ``delay = 17`` as its
-delay-axis setting.
+used only at max order 0, and the paper names them ``PHA--DELAY`` (delay
+embedding) and ``PHA--DERIV`` (spatial-derivative embedding); the column titles
+carry those names. The left column sweeps ``delay`` at max order 0; the right
+column sweeps ``max_derivative_order`` at delay 1. The top row is :math:`F_1`;
+the bottom row is the precision and recall it is built from. Along the delay
+axis, precision falls from its ``delay = 1`` value to a shallow minimum around
+``delay = 13``, ticks up only marginally by ``delay = 15``, then falls again
+toward the end of the sweep. Recall rises steeply from ``delay = 1`` and
+saturates. :math:`F_1` inherits recall's early rise, then peaks narrowly around
+``delay`` 15 to 21 before declining toward ``delay = 33``. Along the derivative
+axis, :math:`F_1` has a sharp maximum at ``max_derivative_order = 1``. Vertical
+guides mark the reference settings the rest of the gallery uses: :math:`w = 17`
+on the delay axis and :math:`\lambda = 2` on the derivative axis.
 """
 
 import re
@@ -53,6 +55,8 @@ DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
 DELAY_PATTERN = re.compile(r"^pha_r2048_d(\d+)_o0\.h5$")
 ORDER_PATHS = [DATA_DIR / f"pha_r2048_d1_o{order}.h5" for order in range(6)]
+REFERENCE_DELAY = 17
+REFERENCE_LAMBDA = 2
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 # One fixed color and marker per agreement metric, shared with the saturation
@@ -62,6 +66,8 @@ METRIC_STYLES: dict[str, dict[str, Any]] = {
     "F1": {"color": "#EE6677", "marker": "s"},
     "Recall": {"color": "#CCBB44", "marker": "^"},
 }
+PHA_DELAY = "PHA\u2013DELAY"
+PHA_DERIV = "PHA\u2013DERIV"
 
 # %%
 # Build the SSA reference grid once.
@@ -129,11 +135,13 @@ axes["parts_order"].sharey(axes["parts_delay"])
 
 axes["delay"].plot(delays, delay_scores[:, 2], **METRIC_STYLES["F1"])
 axes["delay"].set_title("(a)", loc="left")
+axes["delay"].set_title(PHA_DELAY, fontfamily="monospace")
 axes["delay"].set_ylabel(r"$F_1$")
 axes["delay"].tick_params(labelbottom=False)
 
 axes["order"].plot(lambdas, order_scores[:, 2], **METRIC_STYLES["F1"])
 axes["order"].set_title("(b)", loc="left")
+axes["order"].set_title(PHA_DERIV, fontfamily="monospace")
 axes["order"].set_xticks(lambdas)
 axes["order"].tick_params(labelleft=False, labelbottom=False)
 
@@ -150,7 +158,13 @@ axes["parts_delay"].set_xlabel(r"Delay window $w$")
 axes["parts_delay"].set_xticks((1, 9, 17, 25, 33))
 axes["parts_delay"].legend()
 axes["parts_order"].set_title("(d)", loc="left")
-axes["parts_order"].set_xlabel(r"Derivative orders $\lambda$")
+axes["parts_order"].set_xlabel(r"Embedding order $\lambda$")
 axes["parts_order"].tick_params(labelleft=False)
+
+# Vertical guides mark the reference settings, beneath the data.
+for panel in ("delay", "parts_delay"):
+    axes[panel].axvline(REFERENCE_DELAY, color="0.82", linewidth=0.8, zorder=0)
+for panel in ("order", "parts_order"):
+    axes[panel].axvline(REFERENCE_LAMBDA, color="0.82", linewidth=0.8, zorder=0)
 
 plt.show()

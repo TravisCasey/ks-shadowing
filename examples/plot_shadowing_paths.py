@@ -30,7 +30,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap, to_rgba
-from matplotlib.ticker import MaxNLocator
+from matplotlib.patches import ConnectionPatch
 
 from ks_shadowing import KSTrajectory, load_results, load_rpos
 from ks_shadowing.pha import KSPersistenceTrajectory, connected_components, wasserstein_matrix
@@ -184,8 +184,9 @@ zoom_cells = np.zeros((ZOOM_TIMESTEPS, phase_high - phase_low + 1), dtype=bool)
 zoom_cells[close_timesteps[in_zoom] - zoom_start, unwrapped_phases[in_zoom] - phase_low] = True
 
 # %%
-# Render. Panel (a) is stacked on panel (b).
-figure, axes = plt.subplots(2, 1, figsize=(3.4, 6.2))
+# Render. Panel (b) magnifies the boxed stretch of panel (a) beside it,
+# connected by two indicator lines.
+figure, axes = plt.subplots(1, 2, figsize=(3.4, 2.2), width_ratios=(1.5, 1.0))
 origin = window_start - event.start_timestep
 
 # Close passes are drawn as grid cells rather than as markers: at this scale a
@@ -240,11 +241,8 @@ for path_id in np.flatnonzero(path_lengths >= MIN_CANDIDATE_PATH):
         close_timesteps[visible] + origin,
         unwrapped_phases[visible],
         color=CANDIDATE_COLOR,
-        linewidth=0.9,
-        marker="o",
-        markersize=2.6,
-        markerfacecolor="white",
-        markeredgewidth=0.7,
+        linewidth=1.0,
+        solid_capstyle="round",
         zorder=3,
     )
 
@@ -253,24 +251,36 @@ axes[1].plot(
     event_timesteps[visible_event] + origin,
     event.start_phase + steps[visible_event],
     color=EVENT_COLOR,
-    linewidth=1.4,
-    marker="o",
-    markersize=2.8,
+    linewidth=1.6,
+    solid_capstyle="round",
     zorder=4,
 )
 axes[1].set_xlim(zoom_start + origin - 0.5, zoom_end + origin - 0.5)
 axes[1].set_ylim(phase_low - 0.5, phase_high + 0.5)
 axes[1].set_box_aspect(1.0)
-# Phases are whole numbers, so half-integer ticks would be meaningless.
-axes[1].yaxis.set_major_locator(MaxNLocator(integer=True))
+# The magnified panel is an inset: the box and indicator lines locate it, so
+# it carries no tick numbers of its own.
+axes[1].set_xticks([])
+axes[1].set_yticks([])
 
-for ax, tag, name in (
-    (axes[0], "(a)", "Close passes by component"),
-    (axes[1], "(b)", "One component, zoomed"),
-):
+# Indicator lines from the boxed stretch to the magnified panel.
+for box_phase, axes_fraction in ((phase_low - 0.5, 0.0), (phase_high + 0.5, 1.0)):
+    figure.add_artist(
+        ConnectionPatch(
+            xyA=(zoom_end + origin - 0.5, box_phase),
+            coordsA=axes[0].transData,
+            xyB=(0.0, axes_fraction),
+            coordsB=axes[1].transAxes,
+            color="0.5",
+            linewidth=0.6,
+        )
+    )
+
+# Tags only: the caption carries the panel descriptions at this size, and one
+# figure-level x-label serves both panels.
+for ax, tag in ((axes[0], "(a)"), (axes[1], "(b)")):
     ax.set_title(tag, loc="left")
-    ax.set_title(name)
-    ax.set_xlabel("Timestep relative to event start")
-    ax.set_ylabel("RPO phase")
+axes[0].set_ylabel("RPO phase")
+figure.supxlabel("Timestep relative to event start", fontsize=8)
 
 plt.show()

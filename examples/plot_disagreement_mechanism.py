@@ -3,35 +3,24 @@ Anatomy of SSA/PHA disagreement
 ================================
 
 The :ref:`agreement example <sphx_glr_auto_examples_plot_coverage_vs_embedding.py>`
-scores how closely the two detection methods agree; this figure investigates
-where they do not. Each column examines one gap: a stretch of timesteps inside
-one method's event that the other method, matched against the same RPO, leaves
-uncovered. The left column depcits an SSA event with a PHA gap, the right column
-a PHA event with an SSA gap.
+scores how closely the two detection methods agree; this figure shows the state
+of the system where they do not, one panel per direction of disagreement. Each
+panel overlays the trajectory and aligned-RPO fields at the timestep where the
+missing method's distance, normalized by its own threshold, peaks: panel (a)
+inside an SSA event not detected by PHA, panel (b) inside a PHA event not
+detected by SSA. Each example is chosen as the mismatch whose peak normalized
+distance is largest amongst all gaps of its kind.
 
-The top row follows each method's distance along the event's phase track,
-normalized by that method's own detection threshold; the gray band marks the
-gap. The middle row overlays the trajectory and aligned-RPO fields at the
-timestep where the missing method's normalized distance peaks (the dotted line
-in the top row).
-
-The bottom row dissects each column's failing metric. Panel (e) overlays the two
-fields' persistence diagrams at every timestep of the left column's gap, opacity
-rising from the gap's first timestep to its last as in the
-:ref:`persistence-diagram example <sphx_glr_auto_examples_plot_shadowing_diagrams.py>`.
-Panel (f) accumulates the squared deviation between the two fields across the
-domain at each column's peak timestep, in units of the squared SSA threshold,
-so each curve ends at the square of its column's SSA trace value.
-
-The columns fail in opposite ways, and the split is what sublevel-set
-persistence reads: extremum values, never extremum positions. In the left
-column the extrema sit in the right places with drifting values. The
-persistence pairs pull away from their RPO counterparts through the gap (e), so
-the Wasserstein distance exceeds the PHA threshold, yet the deviation has narrow
-support: its accumulated square rises in steps at the mismatched extrema and
-ends just below twice the SSA threshold, a small fraction of the right
-column's total deviation (f). In the right column the extrema hold the right
-values in slightly shifted places.
+The two panels fail in opposite ways, and the split is what sublevel-set
+persistence reads: extremum values, never extremum positions. In (a) the extrema
+lie in the right places with drifting values. The states nearly coincide, so the
+:math:`L_2` distance stays below the SSA threshold; but the persistence pairs
+track the extreme values, so the Wasserstein distance :math:`d_{W^2}` exceeds
+the PHA threshold and PHA declines the event that SSA detects. In (b) the
+extrema hold the right values under slight spatial shift. The persistence
+diagrams nearly coincide, so PHA detects shadowing; but the shifted peaks leave
+a pointwise deviation of broad support, so the :math:`L_2` distance exceeds the
+SSA threshold.
 """
 
 from collections import defaultdict
@@ -40,9 +29,6 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import to_rgba
-from matplotlib.legend_handler import HandlerTuple
-from matplotlib.lines import Line2D
 from numpy.typing import NDArray
 
 from ks_shadowing import (
@@ -68,19 +54,10 @@ PHA_PATH = REPO_ROOT / "examples" / "data" / "pha_r2048_d1_o0.h5"
 MIN_GAP_TIMESTEPS = 3
 # Timesteps of context shown on each side of the gap.
 CONTEXT_TIMESTEPS = 15
-# Black marks the trajectory and red the RPO in the field and diagram rows.
-# Marker areas and the opacity ramp follow the persistence-diagram example:
-# trajectory circles draw beneath the smaller RPO triangles, so a coincident
-# pair reads as a triangle inside a ring, and opacity rises from ALPHA_FLOOR at
-# the gap's first timestep to 1.0 at its last.
+# Black marks the trajectory and red the RPO, following the
+# persistence-diagram example.
 TRAJECTORY_COLOR = "black"
 RPO_COLOR = "#EE6677"
-TRAJECTORY_SIZE = 34.0
-RPO_SIZE = 11.0
-ALPHA_FLOOR = 0.25
-SSA_COLOR = "black"
-PHA_COLOR = "0.55"
-AXIS_PAD = 0.05
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 
@@ -183,8 +160,8 @@ def _track_distances(
 # peaks highest over the gap itself.
 columns: list[dict[str, Any]] = []
 for name, host_events, other_events, missing in (
-    ("SSA event, PHA gap", ssa_events, pha_events, "pha"),
-    ("PHA event, SSA gap", pha_events, ssa_events, "ssa"),
+    (r"$\mathtt{SSA}$ detects shadowing; $\mathtt{PHA}$ does not", ssa_events, pha_events, "pha"),
+    (r"$\mathtt{PHA}$ detects shadowing; $\mathtt{SSA}$ does not", pha_events, ssa_events, "ssa"),
 ):
     other_masks = _per_rpo_masks(other_events)
     candidates = [
@@ -205,9 +182,7 @@ for name, host_events, other_events, missing in (
     gap_start, gap_end = best_gap
     window_start = max(best_host.start_timestep, gap_start - CONTEXT_TIMESTEPS)
     window_end = min(best_host.end_timestep, gap_end + CONTEXT_TIMESTEPS)
-    ssa_normalized, pha_normalized, window_persistence, phases = _track_distances(
-        best_host, window_start, window_end
-    )
+    ssa_normalized, pha_normalized, _, _ = _track_distances(best_host, window_start, window_end)
     missing_normalized = pha_normalized if missing == "pha" else ssa_normalized
     gap_slice = slice(gap_start - window_start, gap_end - window_start)
     peak_index = gap_slice.start + int(np.argmax(missing_normalized[gap_slice]))
@@ -216,79 +191,21 @@ for name, host_events, other_events, missing in (
     columns.append(
         {
             "name": name,
-            "rpo_index": best_host.rpo_index,
-            "gap": (gap_start, gap_end),
-            "window_start": window_start,
-            "ssa_normalized": ssa_normalized,
-            "pha_normalized": pha_normalized,
-            "peak_timestep": peak_timestep,
             "trajectory_field": trajectory[peak_timestep : peak_timestep + 1].to_physical()[0],
             "rpo_field": align_rpo_to_window(
                 rpos[best_host.rpo_index], best_host, peak_timestep, peak_timestep + 1, trajectory
             )[0],
-            "trajectory_diagrams": window_persistence.diagrams[gap_slice],
-            "rpo_diagrams": [
-                rpo_persistence[best_host.rpo_index].diagrams[phase] for phase in phases[gap_slice]
-            ],
         }
     )
 
 
 # %%
-# Legend proxies for the diagram row. Per-point opacity is baked into the face
-# colors, so an automatic legend would draw its entries at the first point's
-# opacity.
-def _proxy(color: str, marker: str, size: float, alpha: float = 1.0) -> Line2D:
-    return Line2D(
-        [],
-        [],
-        linestyle="none",
-        marker=marker,
-        color=color,
-        alpha=alpha,
-        markersize=float(np.sqrt(size)),
-    )
-
-
-# %%
-# Render. The top two rows share their encoding across columns; the bottom row
-# is asymmetric by design, giving each column's failing metric its own
-# decomposition. The dotted line in the trace panel marks the peak timestep
-# the field panel shows.
-#
-# This figure is populated across three cells. Sphinx-Gallery scrapes and then
-# closes every open figure at the end of each cell, so the two cells that leave
-# this one incomplete defer the scrape. The marker only takes effect inside a
-# cell's code, not in its leading comment block.
-figure, axes = plt.subplots(3, 2, figsize=(7.0, 5.8), height_ratios=(1.0, 1.0, 1.35))
-# sphinx_gallery_defer_figures
+# Render. Each panel overlays the two fields at its column's peak timestep;
+# the shaded band is their pointwise deviation.
+figure, axes = plt.subplots(2, 1, figsize=(3.4, 3.1), sharex=True, sharey=True)
 space = np.linspace(0.0, DOMAIN_SIZE, resolution, endpoint=False)
 
-for column_index, column in enumerate(columns):
-    gap_start, gap_end = column["gap"]
-    times = (
-        np.arange(column["window_start"], column["window_start"] + len(column["ssa_normalized"]))
-        * trajectory.dt
-    )
-    peak_time = column["peak_timestep"] * trajectory.dt
-
-    ax = axes[0, column_index]
-    # Samples are points, so the band edges sit half a sample outside the
-    # gap's timesteps: every uncovered sample falls strictly inside the band
-    # and the covered samples flanking the gap strictly outside.
-    ax.axvspan(
-        (gap_start - 0.5) * trajectory.dt, (gap_end - 0.5) * trajectory.dt, color="0.92", zorder=0
-    )
-    ax.axhline(1.0, color="0.7", linewidth=0.6, linestyle="--")
-    ax.axvline(peak_time, color="0.3", linewidth=0.6, linestyle=":")
-    ax.plot(times, column["ssa_normalized"], color=SSA_COLOR, label="SSA")
-    ax.plot(times, column["pha_normalized"], color=PHA_COLOR, label="PHA")
-    ax.ticklabel_format(axis="x", useOffset=False)
-    ax.set_title(("(a)", "(b)")[column_index], loc="left")
-    ax.set_title(column["name"])
-    ax.set_xlabel("Time")
-
-    ax = axes[1, column_index]
+for ax, tag, column in zip(axes, ("(a)", "(b)"), columns, strict=True):
     ax.plot(space, column["trajectory_field"], color=TRAJECTORY_COLOR, label="Trajectory")
     ax.plot(space, column["rpo_field"], color=RPO_COLOR, linewidth=0.9, label="RPO")
     ax.fill_between(
@@ -299,86 +216,11 @@ for column_index, column in enumerate(columns):
         alpha=0.3,
         linewidth=0,
     )
-    ax.set_title(("(c)", "(d)")[column_index], loc="left")
-    ax.set_title(f"RPO {column['rpo_index']}, timestep {column['peak_timestep']}")
-    ax.set_xlabel("$x$")
+    ax.set_title(tag, loc="left")
+    ax.set_title(column["name"])
+    ax.set_ylabel("$u$")
 
-axes[0, 0].set_ylabel("Distance / threshold")
-axes[0, 0].legend()
-axes[1, 0].set_ylabel("$u$")
-axes[1, 0].legend()
-
-# %%
-# Panel (e): persistence diagrams at every timestep of the left column's gap.
-ax = axes[2, 0]
-# sphinx_gallery_defer_figures
-left_column = columns[0]
-all_points = np.vstack(left_column["trajectory_diagrams"] + left_column["rpo_diagrams"])
-low = all_points.min()
-high = all_points.max()
-pad = AXIS_PAD * (high - low)
-diagonal = (low - pad, high + pad)
-ax.plot(diagonal, diagonal, color="0.7", linewidth=0.6, zorder=1)
-gap_length = len(left_column["trajectory_diagrams"])
-step_alphas = ALPHA_FLOOR + (1.0 - ALPHA_FLOOR) * np.arange(gap_length) / max(gap_length - 1, 1)
-for diagrams, color, marker, size, zorder in (
-    (left_column["trajectory_diagrams"], TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE, 2),
-    (left_column["rpo_diagrams"], RPO_COLOR, "^", RPO_SIZE, 3),
-):
-    points = np.vstack(diagrams)
-    counts = np.array([diagram.shape[0] for diagram in diagrams], dtype=np.int64)
-    # The opacity varies per point, so it goes into the face colors rather
-    # than through ``alpha``, which takes one value for the collection.
-    face_colors = np.tile(to_rgba(color), (points.shape[0], 1))
-    face_colors[:, 3] = np.repeat(step_alphas, counts)
-    ax.scatter(
-        points[:, 0],
-        points[:, 1],
-        s=size,
-        marker=marker,
-        c=face_colors,
-        linewidths=0.0,
-        zorder=zorder,
-    )
-ax.set_xlim(diagonal)
-ax.set_ylim(diagonal)
-
-ax.set_aspect("equal")
-ax.set_anchor("W")
-ax.set_title("(e)", loc="left")
-ax.set_xlabel("Birth")
-ax.set_ylabel("Death")
-# The legend sits in the empty space to the panel's right.
-ax.legend(
-    [
-        _proxy(TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE),
-        _proxy(RPO_COLOR, "^", RPO_SIZE),
-        tuple(
-            _proxy(TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE, alpha)
-            for alpha in (ALPHA_FLOOR, 0.5 * (1.0 + ALPHA_FLOOR), 1.0)
-        ),
-    ],
-    ["Trajectory", "RPO", "Gap start to end"],
-    handler_map={tuple: HandlerTuple(ndivide=None, pad=0.4)},
-    loc="center left",
-    bbox_to_anchor=(1.02, 0.5),
-)
-
-# %%
-# Panel (f): running sum of the squared field deviation across the domain at
-# each column's peak timestep.
-ax = axes[2, 1]
-ax.axhline(1.0, color="0.7", linewidth=0.6, linestyle="--")
-for column, color, label in zip(
-    columns, ("0.55", "black"), ("PHA gap (c)", "SSA gap (d)"), strict=True
-):
-    cumulative = (
-        np.cumsum((column["trajectory_field"] - column["rpo_field"]) ** 2)
-        / ssa_metadata.threshold**2
-    )
-    ax.plot(space, cumulative, color=color, label=label)
-ax.set_title("(f)", loc="left")
-ax.set_xlabel("$x$")
-ax.set_ylabel(r"Cumulative $(\Delta u)^2$ / SSA threshold$^2$")
-ax.legend()
+handles, labels = axes[0].get_legend_handles_labels()
+figure.legend(handles, labels, loc="outside upper right", ncols=2)
+axes[-1].set_xlabel("$x$")
 plt.show()

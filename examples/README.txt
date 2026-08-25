@@ -24,15 +24,17 @@ single-snapshot Wasserstein value whatever the setting. Writing
 
 .. math::
 
-   D_{w,\lambda}(i, j) = \frac{1}{w\lambda} \sum_{l=0}^{w-1}
+   W_{w,\lambda}(i, j) = \frac{1}{w\lambda} \sum_{l=0}^{w-1}
    \sum_{m=0}^{\lambda-1} W_m\bigl(i + l - c,\ (j + l - c) \bmod J\bigr),
 
 where :math:`W_m` is the order-:math:`m` Wasserstein matrix, :math:`J` the
 RPO period, and :math:`T` the trajectory length in timesteps. The window mean
-is attributed to its center, so :math:`D_{w,\lambda}(i, j)` is defined for
-:math:`c \le i \le T - 1 - \lfloor w/2 \rfloor`.
+is attributed to its center, so :math:`W_{w,\lambda}(i, j)` is defined for
+:math:`c \le i \le T - 1 - \lfloor w/2 \rfloor`. Matrix names follow the
+paper: :math:`W` is the PHA distance matrix, :math:`D` the SSA one, and
+:math:`d_{W^2}` the Wasserstein metric itself.
 
-Each entry of :math:`W_m` is the :math:`W_2` distance between full
+Each entry of :math:`W_m` is the :math:`d_{W^2}` distance between full
 sublevel-set persistence diagrams. A diagram holds the finite :math:`H_0`
 pairs plus two essential classes with infinite death: the component born as the
 state minimum and the loop born at the field maximum. Infinite points cannot be
@@ -41,9 +43,9 @@ other at cost equal to their birth difference, and
 
 .. math::
 
-   W_2^2 = W_{\mathrm{fin}}^2 + (\min u - \min u')^2 + (\max u - \max u')^2,
+   d_{W^2}^2 = d_{\mathrm{fin}}^2 + (\min u - \min u')^2 + (\max u - \max u')^2,
 
-where :math:`W_{\mathrm{fin}}` is the :math:`W_2` matching of the finite
+where :math:`d_{\mathrm{fin}}` is the :math:`d_{W^2}` matching of the finite
 pairs alone.
 
 These map onto the API and the fixture filenames as:
@@ -58,4 +60,11 @@ while :math:`\lambda` **counts** the orders averaged over, so
 
 Figures that plot a quantity per individual derivative order, rather than per
 embedding, label that axis "Derivative order" and index it from 0: it is an
-order index, not a count.
+order index, not a count. Axes over :math:`\lambda` are labeled "Embedding
+order".
+
+Detection strategies are named as the paper's ``\texttt`` macros render them:
+monospace ``SSA``, ``PHA`` (no embedding), ``PHA--DELAY`` (delay embedding) and
+``PHA--DERIV`` (derivative embedding), where the dash renders as a single en
+dash in figure text (written as the escape ``\u2013``). Figure text one-indexes
+RPOs; the API, filenames and result files are zero-indexed.

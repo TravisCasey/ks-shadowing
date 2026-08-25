@@ -82,7 +82,7 @@ figure, axes = plt.subplots(2, 1, figsize=(7.0, 3.7), sharey=True)
 
 panels = (
     ("(a)", "Chaotic trajectory", trajectory_physical, times, event.start_timestep * dt),
-    ("(b)", f"RPO {event.rpo_index} (aligned)", aligned_rpo, relative_times, 0.0),
+    ("(b)", f"RPO {event.rpo_index + 1} (aligned)", aligned_rpo, relative_times, 0.0),
 )
 for ax, (tag, name, field, x_values, event_start) in zip(axes, panels, strict=True):
     mesh = ax.pcolormesh(

@@ -15,21 +15,22 @@ co-moving frame removes the orbit's drift, so the RPO is exactly periodic in it
 and panel (b) visibly repeats. Inside the event the two fields are nearly
 identical; outside it they diverge.
 
-Panels (c) and (d) hold the SSA and PHA distance matrices over the same window,
-indexed by trajectory timestep and RPO phase. Both detectors index the RPO by
-absolute phase, so the two panels share axes exactly. A shadowing event appears
-in both as a diagonal streak, because the RPO phase advances one step per
-trajectory timestep; when an event runs longer than one orbital period its
-streak wraps the phase axis, which is the recurrence made visible. The dashed
-lines carry across all four panels, so the streak between them is the event that
-panels (a) and (b) show.
+Panels (c) and (d) hold the SSA distance matrix :math:`D` and the PHA distance
+matrix :math:`W` over the same window, indexed by trajectory timestep and RPO
+phase. Both detectors index the RPO by absolute phase, so the two panels share
+axes exactly. A shadowing event appears in both as a diagonal streak, because
+the RPO phase advances one step per trajectory timestep; when an event runs
+longer than one orbital period its streak wraps the phase axis, which is the
+recurrence made visible. The dashed lines carry across all four panels, so the
+streak between them is the event that panels (a) and (b) show.
 
-The SSA matrix is the :math:`L_2` distance minimized over spatial shift; the PHA
-matrix is the Wasserstein distance between persistence diagrams, which carries
-no shift axis because persistence quotients out the spatial symmetry. Reducing
-the shift axis is what makes the two commensurable. Both use a logarithmic color
-scale. The fainter streaks elsewhere in the window are near recurrences, though
-not sufficiently close or sufficiently long to be their own events.
+The SSA matrix :math:`D` holds the :math:`L_2` distance minimized over spatial
+shift; the PHA matrix :math:`W` holds the Wasserstein distance :math:`d_{W^2}`
+between persistence diagrams, and carries no shift axis because persistence
+quotients out the spatial symmetry. Reducing the shift axis makes the two
+visualy comparable. Both use a logarithmic color scale. The fainter streaks
+elsewhere in the window are near recurrences, though not sufficiently close or
+sufficiently long to be their own events.
 
 The
 :ref:`persistence-diagram example <sphx_glr_auto_examples_plot_shadowing_diagrams.py>`
@@ -161,7 +162,7 @@ phases = np.arange(period)
 field_limit = float(max(np.abs(trajectory_field).max(), np.abs(rpo_field).max()))
 field_panels = (
     ("(a)", "Chaotic trajectory", trajectory_field),
-    ("(b)", f"RPO {event.rpo_index} (aligned)", rpo_field),
+    ("(b)", f"RPO {event.rpo_index + 1} (aligned)", rpo_field),
 )
 for ax, (tag, name, field) in zip(axes[:2], field_panels, strict=True):
     field_mesh = ax.pcolormesh(
@@ -180,13 +181,8 @@ for ax, (tag, name, field) in zip(axes[:2], field_panels, strict=True):
 figure.colorbar(field_mesh, ax=axes[:2], label="$u(x, t)$", pad=0.02)
 
 distance_panels = (
-    ("(c)", "SSA Distance matrix", "$L_2$ distance", l2_distances),
-    (
-        "(d)",
-        "PHA Distance matrix",
-        "$W_2$ distance",
-        wasserstein_distances,
-    ),
+    ("(c)", r"$\mathtt{SSA}$ distance matrix $D$", "$L_2$ distance", l2_distances),
+    ("(d)", r"$\mathtt{PHA}$ distance matrix $W$", "$d_{W^2}$ distance", wasserstein_distances),
 )
 for ax, (tag, name, label, matrix) in zip(axes[2:], distance_panels, strict=True):
     distance_mesh = ax.pcolormesh(

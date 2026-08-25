@@ -123,14 +123,14 @@ figure, (ax_agreement, ax_attribution) = plt.subplots(2, 1, figsize=(3.4, 4.6))
 for name, values in (("Precision", precision), ("F1", f1), ("Recall", recall)):
     ax_agreement.plot(lambdas, values, label=name, **METRIC_STYLES[name])
 ax_agreement.set_title("(a)", loc="left")
-ax_agreement.set_xlabel(r"Derivative orders $\lambda$")
+ax_agreement.set_xlabel(r"Embedding order $\lambda$")
 ax_agreement.set_ylabel("Agreement with SSA grid")
 ax_agreement.set_xticks(lambdas)
 ax_agreement.legend(loc="lower right")
 
 ax_attribution.plot(lambdas, attribution, color="black", marker="o")
 ax_attribution.set_title("(b)", loc="left")
-ax_attribution.set_xlabel(r"Derivative orders $\lambda$")
+ax_attribution.set_xlabel(r"Embedding order $\lambda$")
 ax_attribution.set_ylabel("Per-RPO attribution vs. SSA")
 ax_attribution.set_xticks(lambdas)
 

@@ -16,9 +16,9 @@ same RPO are identical under both pairings and appear in the "unmatched" strips
 beside the axes: a strip left of the vertical axis for PHA-only events and a
 strip below the horizontal axis for SSA-only events.
 
-Both figures share one layout. Rows are the two embedding axes, matched
-against the same SSA run: the delay-axis setting (:math:`w = 17`,
-:math:`\lambda = 1`) and the derivative-axis setting (:math:`w = 1`,
+Both figures share one column-width layout. Rows are the two embedding
+strategies, matched against the same ``SSA`` run: ``PHA--DELAY``
+(:math:`w = 17`, :math:`\lambda = 1`) and ``PHA--DERIV`` (:math:`w = 1`,
 :math:`\lambda = 2`). :math:`w` is the delay window and :math:`\lambda` the
 number of derivative orders averaged over; the two embedding axes are shown
 independently (:math:`w > 1` only at :math:`\lambda = 1`). The left column draws
@@ -54,6 +54,8 @@ PHA_PATHS = [
 ]
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
+PHA_DELAY = "PHA\u2013DELAY"
+PHA_DERIV = "PHA\u2013DERIV"
 
 # %%
 # Load the SSA reference and match each PHA run against it under both pairings.
@@ -129,8 +131,8 @@ def draw_frame(ax, tag: str, pha_metadata) -> None:
     ax.set_aspect("equal", adjustable="box")
     ax.set_title(tag, loc="left")
     ax.set_title(
-        rf"$w = {pha_metadata.delay}$, "
-        rf"$\lambda = {pha_metadata.max_derivative_order + 1}$"
+        PHA_DELAY if pha_metadata.delay > 1 else PHA_DERIV,
+        fontfamily="monospace",
     )
 
 
@@ -146,7 +148,7 @@ def draw_scatter(ax, run, transitive: bool, rng) -> PathCollection:
         cmap="viridis",
         vmin=0,
         vmax=1,
-        s=6,
+        s=4,
         linewidths=0,
     )
     ax.scatter(
@@ -156,7 +158,7 @@ def draw_scatter(ax, run, transitive: bool, rng) -> PathCollection:
         cmap="viridis",
         vmin=0,
         vmax=1,
-        s=6,
+        s=4,
         linewidths=0,
     )
     ax.scatter(
@@ -166,7 +168,7 @@ def draw_scatter(ax, run, transitive: bool, rng) -> PathCollection:
         cmap="viridis",
         vmin=0,
         vmax=1,
-        s=6,
+        s=4,
         linewidths=0,
     )
     ax.annotate(
@@ -175,15 +177,7 @@ def draw_scatter(ax, run, transitive: bool, rng) -> PathCollection:
         xycoords="axes fraction",
         ha="right",
         va="top",
-    )
-    ax.annotate(
-        "unmatched",
-        xy=(low - gap - strip / 2, HIGH - 0.02 * (HIGH - strip_low)),
-        ha="center",
-        va="top",
-        rotation=90,
         fontsize=6,
-        color="0.3",
     )
     ax.annotate(
         "unmatched",
@@ -233,7 +227,7 @@ def draw_density(ax, run, transitive: bool) -> QuadMesh:
 
 def render_figure(transitive: bool, label: str) -> plt.Figure:
     """One 2x2 figure: rows are embedding settings, columns scatter/density."""
-    figure, axes = plt.subplots(2, 2, figsize=(7.0, 7.6), sharex=True, sharey=True)
+    figure, axes = plt.subplots(2, 2, figsize=(3.4, 4.4), sharex=True, sharey=True)
     rng = np.random.default_rng(0)
     tags = np.array([["(a)", "(b)"], ["(c)", "(d)"]])
     for row, run in enumerate(matched_runs):
@@ -241,9 +235,9 @@ def render_figure(transitive: bool, label: str) -> plt.Figure:
         mesh = draw_density(axes[row, 1], run, transitive)
         for column in range(2):
             draw_frame(axes[row, column], tags[row, column], run[0])
-        axes[row, 0].set_ylabel("PHA length (time units)")
+        axes[row, 0].set_ylabel(r"$\mathtt{PHA}$ length (time units)")
     for column in range(2):
-        axes[1, column].set_xlabel("SSA length (time units)")
+        axes[1, column].set_xlabel(r"$\mathtt{SSA}$ length (time units)")
     figure.suptitle(label)
     figure.colorbar(
         scatter,
@@ -266,12 +260,12 @@ def render_figure(transitive: bool, label: str) -> plt.Figure:
 # Non-transitive matching: every overlapping SSA/PHA pair is one match, so an
 # event overlapping several events of the other method contributes several
 # points.
-figure = render_figure(transitive=False, label="Non-transitive matches")
+figure = render_figure(transitive=False, label="Matched events")
 plt.show()
 
 # %%
 # Transitive matching refines the same overlap graph into connected components:
 # events that jointly cover a partner merge into one composite match, so the
 # count drops and coverage-splitting no longer sabotages the Jaccard index.
-figure = render_figure(transitive=True, label="Transitive matches")
+figure = render_figure(transitive=True, label="Transitively matched events")
 plt.show()

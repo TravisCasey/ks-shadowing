@@ -28,9 +28,8 @@ select.
 Each diagram also has two essential classes that never die: the connected
 component born at the field's minimum and the loop born when the maximum closes
 the periodic domain. They are drawn on the dashed line marked infinity above the
-finite pairs, at their births: filled markers for the minimum (the essential
-:math:`H_0` class), open markers for the maximum (the essential :math:`H_1`
-class).
+finite pairs, at their births. The essential :math:`H_0` class keeps its series'
+marker; the essential :math:`H_1` class is drawn as a plus in the series' color.
 
 No spatial alignment is applied in either panel. The sublevel-set persistence
 diagram of a periodic field is invariant to spatial translation, so neither the
@@ -70,9 +69,9 @@ RPO_COLOR = "#EE6677"
 # black ring rather than one series erasing the other.
 TRAJECTORY_SIZE = 34.0
 RPO_SIZE = 11.0
+H1_MARKER = "P"
 AXIS_PAD = 0.05
 INFINITY_GAP = 0.15
-OPEN_LINEWIDTH = 0.6
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 
@@ -93,13 +92,14 @@ event = max(
 rpo_trajectory = rpo_trajectories[event.rpo_index]
 period = rpo_trajectory.num_timesteps
 duration = event.end_timestep - event.start_timestep
+num_window_timesteps = min(duration, period)
 
 # %%
 # Diagrams of the RPO over its full period, and of the trajectory over the
 # event. The RPO's are computed once and gathered by phase in each panel.
 rpo_persistence = KSPersistenceTrajectory.from_trajectory(rpo_trajectory)
 event_persistence = KSPersistenceTrajectory.from_trajectory(
-    trajectory[event.start_timestep : event.end_timestep]
+    trajectory[event.start_timestep : event.start_timestep + num_window_timesteps]
 )
 
 # %%
@@ -113,17 +113,18 @@ run_starts = np.flatnonzero(boundaries == 1)
 run_ends = np.flatnonzero(boundaries == -1)
 longest_run = int(np.argmax(run_ends - run_starts))
 control_start = int(
-    run_starts[longest_run] + (run_ends[longest_run] - run_starts[longest_run] - duration) // 2
+    run_starts[longest_run]
+    + (run_ends[longest_run] - run_starts[longest_run] - num_window_timesteps) // 2
 )
 control_persistence = KSPersistenceTrajectory.from_trajectory(
-    trajectory[control_start : control_start + duration]
+    trajectory[control_start : control_start + num_window_timesteps]
 )
 
 # %%
 # Place the RPO in the control window at the phase offset minimizing the mean
 # Wasserstein distance along the matrix diagonal.
 control_distances = wasserstein_matrix(control_persistence, rpo_persistence)
-window_steps = np.arange(duration)
+window_steps = np.arange(num_window_timesteps)
 offset_diagonals = control_distances[
     window_steps, (np.arange(period)[:, None] + window_steps) % period
 ]
@@ -132,7 +133,9 @@ control_phase = int(np.argmin(offset_diagonals.mean(axis=1)))
 # %%
 # Stack each panel's diagrams into point clouds, carrying each timestep's
 # opacity onto its own pairs. The pair count varies per timestep.
-step_alphas = ALPHA_FLOOR + (1.0 - ALPHA_FLOOR) * np.arange(duration) / max(duration - 1, 1)
+step_alphas = ALPHA_FLOOR + (1.0 - ALPHA_FLOOR) * np.arange(num_window_timesteps) / max(
+    num_window_timesteps - 1, 1
+)
 
 
 def _cloud(
@@ -183,25 +186,20 @@ for tag, name, window_persistence, phase in (
 # %%
 # Legend proxies. Per-point opacity is baked into the face colors, so an
 # automatic legend would draw its entries at the first point's opacity.
-def _proxy(color: str, marker: str, size: float, alpha: float = 1.0, filled: bool = True) -> Line2D:
-    proxy = Line2D(
+def _proxy(color: str, marker: str, size: float) -> Line2D:
+    return Line2D(
         [],
         [],
         linestyle="none",
         marker=marker,
         color=color,
-        alpha=alpha,
         markersize=float(np.sqrt(size)),
     )
-    if not filled:
-        proxy.set_markerfacecolor("none")
-        proxy.set_markeredgewidth(OPEN_LINEWIDTH)
-    return proxy
 
 
 # %%
 # Render.
-figure, axes = plt.subplots(2, 1, figsize=(3.4, 4.85), sharex=True, sharey=True)
+figure, axes = plt.subplots(2, 1, figsize=(3.4, 4.2), sharex=True, sharey=True)
 
 all_points = np.vstack([points for _, _, series, _ in panels for points, *_ in series])
 birth_low, death_low = all_points.min(axis=0)
@@ -214,7 +212,9 @@ all_births = np.concatenate(
     ]
 )
 pad = AXIS_PAD * max(birth_high - birth_low, death_high - death_low)
-infinity = death_high + INFINITY_GAP * (death_high - death_low)
+# The infinity line sits above every birth, so the essential classes stay
+# above the diagonal.
+infinity = max(death_high, float(all_births.max())) + INFINITY_GAP * (death_high - death_low)
 
 
 def _scatter(  # noqa: PLR0913, PLR0917
@@ -226,23 +226,10 @@ def _scatter(  # noqa: PLR0913, PLR0917
     marker: str,
     size: float,
     zorder: int,
-    filled: bool = True,
 ) -> None:
     colors = np.tile(to_rgba(color), (alphas.size, 1))
     colors[:, 3] = alphas
-    if filled:
-        ax.scatter(x, y, s=size, marker=marker, c=colors, linewidths=0.0, zorder=zorder)
-    else:
-        ax.scatter(
-            x,
-            y,
-            s=size,
-            marker=marker,
-            facecolors="none",
-            edgecolors=colors.tolist(),
-            linewidths=OPEN_LINEWIDTH,
-            zorder=zorder,
-        )
+    ax.scatter(x, y, s=size, marker=marker, c=colors, linewidths=0.0, zorder=zorder)
 
 
 for ax, (tag, name, finite_series, essential_series) in zip(axes, panels, strict=True):
@@ -253,7 +240,7 @@ for ax, (tag, name, finite_series, essential_series) in zip(axes, panels, strict
     for minima, maxima, alphas, color, marker, size, zorder in essential_series:
         line = np.full(minima.shape, infinity)
         _scatter(ax, minima, line, alphas, color, marker, size, zorder)
-        _scatter(ax, maxima, line, alphas, color, marker, size, zorder, filled=False)
+        _scatter(ax, maxima, line, alphas, color, H1_MARKER, size, zorder)
     ax.set_aspect("equal")
     ax.set_title(tag, loc="left")
     ax.set_title(name)
@@ -269,26 +256,38 @@ axes[0].set_yticks([*finite_ticks, infinity])
 axes[0].set_yticklabels([*(f"{tick:g}" for tick in finite_ticks), r"$\infty$"])
 axes[-1].set_xlabel("Birth")
 
-# The third entry is the opacity ramp itself, drawn as three circles so the time
-# encoding is readable without the caption.
+# Axis-break glyphs mark the compressed gap between the finite scale and the
+# infinity line.
+break_center = 0.5 * (death_high + pad + infinity)
+break_delta = 0.06 * (infinity - death_high)
+for ax in axes:
+    ax.plot(
+        [0.0, 0.0],
+        [break_center - break_delta, break_center + break_delta],
+        transform=ax.get_yaxis_transform(),
+        linestyle="none",
+        marker=[(-1.0, -0.5), (1.0, 0.5)],
+        markersize=5.0,
+        markeredgewidth=0.8,
+        markerfacecolor="none",
+        markeredgecolor="black",
+        clip_on=False,
+        zorder=5,
+    )
+
 axes[0].legend(
     [
         _proxy(TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE),
         _proxy(RPO_COLOR, "^", RPO_SIZE),
-        tuple(
-            _proxy(TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE, alpha)
-            for alpha in (ALPHA_FLOOR, 0.5 * (1.0 + ALPHA_FLOOR), 1.0)
-        ),
         (
-            _proxy(TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE),
-            _proxy(TRAJECTORY_COLOR, "o", TRAJECTORY_SIZE, filled=False),
+            _proxy(TRAJECTORY_COLOR, H1_MARKER, TRAJECTORY_SIZE),
+            _proxy(RPO_COLOR, H1_MARKER, RPO_SIZE),
         ),
     ],
     [
         "Chaotic trajectory",
-        f"RPO {event.rpo_index}",
-        "Window start to end",
-        "Essential $H_0$ (min), $H_1$ (max)",
+        f"RPO {event.rpo_index + 1}",
+        "$H_1$ class",
     ],
     handler_map={tuple: HandlerTuple(ndivide=None, pad=0.4)},
     loc="lower right",

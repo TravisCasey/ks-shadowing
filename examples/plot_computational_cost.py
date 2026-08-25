@@ -10,8 +10,8 @@ resolution and delay costs (panel a) are probed at :math:`\lambda = 1` and the
 derivative cost (panel c) at :math:`w = 1`.
 
 Panel (a): wall-clock detection time against the spatial resolution the
-trajectory is loaded at, for SSA and PHA at :math:`\lambda = 1` (the fixtures
-outside resolution 2048 are :math:`w = 17` runs). SSA evaluates L2 distances in
+trajectory is loaded at, for ``SSA`` and the delay-embedded ``PHA--DELAY``
+(the fixtures outside resolution 2048 are :math:`w = 17` runs). SSA evaluates L2 distances in
 physical space, so its cost grows with resolution; PHA computes Wasserstein
 distances between persistence diagrams, whose cost is dominated by trajectory
 length rather than grid size, so its curve stays nearly flat. The full
@@ -25,7 +25,7 @@ spatial resolution the trajectory is loaded at -- the 17-mode truncation fixes
 how many extrema a field can have, so the markers for every resolution
 coincide. That is also why the PHA curve in panel (a) stays flat.
 
-Panel (c): recorded runtimes of the :math:`w = 1` derivative sweep at
+Panel (c): recorded runtimes of the ``PHA--DERIV`` sweep (:math:`w = 1`) at
 resolution 2048 (:math:`\lambda = 4` to :math:`6` exist only in that sweep),
 against the cost the measured cardinalities predict. Hera's geometric auction
 scales empirically as :math:`n^{1.6}` in the number of pairs per diagram, which
@@ -71,6 +71,8 @@ plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 # black.
 ORDER_COLORS = plt.get_cmap("viridis")(np.linspace(0.78, 0.0, 6))
 ORDER_MARKERS = ("o", "s", "^", "v", "D", "P")
+PHA_DELAY = "PHA\u2013DELAY"
+PHA_DERIV = "PHA\u2013DERIV"
 
 
 def _elapsed_seconds(path: Path) -> float:
@@ -158,7 +160,7 @@ ax_runtime.plot(
     pha_means,
     color=ORDER_COLORS[0],
     marker=ORDER_MARKERS[0],
-    label=r"PHA, $\lambda = 1$",
+    label=PHA_DELAY,
 )
 # At resolutions with a delay sweep, scatter each delay to show the spread.
 for resolution in pha_resolutions:
@@ -178,7 +180,7 @@ for resolution in pha_resolutions:
 cluster_delays = sorted(pha_runtimes[0][REFERENCE_RESOLUTION])
 cluster_top = max(pha_runtimes[0][REFERENCE_RESOLUTION].values()) / SECONDS_PER_MINUTE
 ax_runtime.annotate(
-    f"odd delays {cluster_delays[0]}-{cluster_delays[-1]}",
+    rf"odd $w$ = {cluster_delays[0]}-{cluster_delays[-1]}",
     xy=(REFERENCE_RESOLUTION, cluster_top),
     xytext=(-4, 10),
     textcoords="offset points",
@@ -190,7 +192,7 @@ ax_runtime.set_ylim(bottom=0)
 ax_runtime.set_xticks((256, 1024, 2048))
 ax_runtime.set_xlabel("Spatial resolution (grid points)")
 ax_runtime.set_ylabel("Detection runtime (minutes)")
-ax_runtime.legend()
+ax_runtime.legend(prop={"family": "monospace"})
 
 # All resolutions produce the same cardinalities; concentric open markers of
 # decreasing size make the coincidence visible instead of hiding the
@@ -220,7 +222,7 @@ ax_cost.plot(
     predicted,
     color="0.45",
     linestyle="--",
-    label=f"predicted, $n^{{{HERA_EXPONENT}}}$",
+    label="predicted",
 )
 ax_cost.plot(
     list(LAMBDAS),
@@ -231,7 +233,8 @@ ax_cost.plot(
     label="recorded runtime",
 )
 ax_cost.set_title("(c)", loc="left")
-ax_cost.set_xlabel(r"Derivative orders $\lambda$")
+ax_cost.set_title(PHA_DERIV, fontfamily="monospace")
+ax_cost.set_xlabel(r"Embedding order $\lambda$")
 ax_cost.set_ylabel("Detection runtime (minutes)")
 ax_cost.set_ylim(bottom=0)
 ax_cost.set_xticks(list(LAMBDAS))

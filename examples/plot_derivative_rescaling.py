@@ -167,7 +167,7 @@ axes["difference"].set_title("(b)", loc="left")
 axes["difference"].set_ylabel("Rescaled $-$ raw")
 axes["attribution"].set_title("(c)", loc="left")
 axes["attribution"].set_ylabel("Per-RPO attribution vs. SSA")
-axes["attribution"].set_xlabel(r"Derivative orders $\lambda$")
+axes["attribution"].set_xlabel(r"Embedding order $\lambda$")
 axes["attribution"].set_xticks(lambdas)
 
 metric_handles = [Line2D([], [], label=name, **style) for name, style in METRIC_STYLES.items()]

@@ -2,15 +2,17 @@ r"""
 Event duration distributions: SSA vs. PHA
 ==========================================
 
-Per-bin event counts for SSA and three PHA settings on the same trajectory: no
-embedding (:math:`w = 1`, :math:`\lambda = 1`), the delay-axis setting
-(:math:`w = 17`, :math:`\lambda = 1`), and the derivative-axis setting
-(:math:`w = 1`, :math:`\lambda = 2`). Each is plotted as step histograms over a
-shared duration grid in trajectory-time units. :math:`w` is the delay window
-and :math:`\lambda` the number of derivative orders averaged over, one more
-than the ``max_derivative_order`` the filenames carry. The log count axis keeps
-both the peak and the long tail readable. The two embedding axes are shown
-independently: :math:`w > 1` is used only at :math:`\lambda = 1`.
+Duration survival curves for ``SSA`` and three PHA settings on the same
+trajectory: plain ``PHA`` with no embedding (:math:`w = 1`,
+:math:`\lambda = 1`), ``PHA--DELAY`` at the delay-axis setting (:math:`w = 17`,
+:math:`\lambda = 1`), and ``PHA--DERIV`` at the derivative-axis setting
+(:math:`w = 1`, :math:`\lambda = 2`). Each curve is the number of that
+strategy's events at least as long as the duration on the axis, in
+trajectory-time units. :math:`w` is the delay window and :math:`\lambda` the
+number of derivative orders averaged over, one more than the
+``max_derivative_order`` the filenames carry. The log count axis keeps both the
+bulk and the long tail readable. The two embedding axes are shown independently:
+:math:`w > 1` is used only at :math:`\lambda = 1`.
 """
 
 from pathlib import Path
@@ -36,12 +38,13 @@ PHA_PATHS = [
     DATA_DIR / "pha_r2048_d17_o0.h5",  # delay axis
     DATA_DIR / "pha_r2048_d1_o1.h5",  # derivative axis
 ]
-BIN_WIDTH_TIMESTEPS = 2
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 # One fixed color per derivative order, shared across the gallery figures:
 # viridis sampled light to dark with increasing order. SSA is always black.
 ORDER_COLORS = plt.get_cmap("viridis")(np.linspace(0.78, 0.0, 6))
+PHA_DELAY = "PHA\u2013DELAY"
+PHA_DERIV = "PHA\u2013DERIV"
 
 # %%
 # Load all result files and convert event lengths to durations in time units.
@@ -57,25 +60,19 @@ for pha_path in PHA_PATHS:
     pha_runs.append((pha_metadata, pha_durations))
 
 # %%
-# Compute per-bin event counts on a shared duration grid.
-bin_width = BIN_WIDTH_TIMESTEPS * dt
-max_duration = max(ssa_durations.max(), *(durations.max() for _, durations in pha_runs))
-bins = np.arange(0.0, max_duration + bin_width, bin_width)
-bin_centers = 0.5 * (bins[:-1] + bins[1:])
-
-# %%
-# Render.
+# Survival curves: for each strategy, the number of events at least this long.
 figure, ax = plt.subplots(figsize=(3.4, 2.4))
-ssa_counts, _ = np.histogram(ssa_durations, bins=bins)
-ax.plot(
-    bin_centers,
-    ssa_counts,
-    drawstyle="steps-mid",
-    color="black",
-    label=f"SSA ({len(ssa_durations)} events)",
-)
+
+
+def _survival(durations: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
+    """Return sorted durations and the count of events at least that long."""
+    ordered = np.sort(durations)
+    return ordered, np.arange(len(ordered), 0, -1)
+
+
+x, y = _survival(ssa_durations)
+ax.step(x, y, where="post", color="black", label="SSA")
 for pha_metadata, pha_durations in pha_runs:
-    pha_counts, _ = np.histogram(pha_durations, bins=bins)
     max_order = pha_metadata.max_derivative_order
     # The unembedded baseline takes the recessive dashed style: dashes vanish
     # where curves overlap, and the baseline is the one curve that stands
@@ -83,25 +80,19 @@ for pha_metadata, pha_durations in pha_runs:
     # color and the lambda = 2 run shares its w = 1 setting, so the dashes
     # are what separate the baseline from each; the embedded runs stay solid.
     if pha_metadata.delay > 1:
-        setting = rf"$w = {pha_metadata.delay}$"
+        label = PHA_DELAY
         linestyle = "-"
     elif max_order > 0:
-        setting = rf"$\lambda = {max_order + 1}$"
+        label = PHA_DERIV
         linestyle = "-"
     else:
-        setting = "no embedding"
+        label = "PHA"
         linestyle = "--"
-    ax.plot(
-        bin_centers,
-        pha_counts,
-        drawstyle="steps-mid",
-        color=ORDER_COLORS[max_order],
-        linestyle=linestyle,
-        label=f"PHA, {setting} ({len(pha_durations)} events)",
-    )
+    x, y = _survival(pha_durations)
+    ax.step(x, y, where="post", color=ORDER_COLORS[max_order], linestyle=linestyle, label=label)
 ax.set_yscale("log")
-ax.set_xlim(0, bins[-1])
+ax.set_xlim(0, None)
 ax.set_xlabel("Event duration (time units)")
-ax.set_ylabel("Number of events")
-ax.legend()
+ax.set_ylabel("Events at least this long")
+ax.legend(prop={"family": "monospace"})
 plt.show()
