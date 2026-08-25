@@ -76,3 +76,28 @@ def test_transitive_chaining() -> None:
     assert match.pha_length == 19
     assert match.intersection_length == 9
     assert match.union_length == 30
+
+
+def test_non_transitive_pairwise_matches() -> None:
+    """With ``transitive=False`` the chain scenario yields one singleton match
+    per overlap edge, with per-pair intersection and union arithmetic, and an
+    event overlapping two partners appears in two matches."""
+    ssa = [_event(0, 0, 10), _event(0, 20, 30)]
+    pha = [_event(0, 0, 5), _event(0, 8, 22)]
+
+    matches = match_events(ssa, pha, transitive=False)
+    assert len(matches) == 3
+    pairs = [
+        (id(match.ssa_events[0]), id(match.pha_events[0]))
+        for match in matches
+        if len(match.ssa_events) == 1 and len(match.pha_events) == 1
+    ]
+    assert pairs == [
+        (id(ssa[0]), id(pha[0])),
+        (id(ssa[0]), id(pha[1])),
+        (id(ssa[1]), id(pha[1])),
+    ]
+    assert [match.intersection_length for match in matches] == [5, 2, 2]
+    assert [match.union_length for match in matches] == [10, 22, 22]
+    assert [match.ssa_length for match in matches] == [10, 10, 10]
+    assert [match.pha_length for match in matches] == [5, 14, 14]

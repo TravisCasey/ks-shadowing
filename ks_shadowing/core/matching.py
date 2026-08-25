@@ -10,10 +10,11 @@ from ks_shadowing.core.event import ShadowingEvent
 class EventMatch:
     """A matched group of SSA and PHA shadowing events on one RPO.
 
-    A match is a connected component of the bipartite overlap graph: SSA and PHA
-    events with the same ``rpo_index`` are linked whenever their
-    ``[start_timestep, end_timestep)`` ranges overlap, and the match contains
-    every event reachable through such links.
+    SSA and PHA events with the same ``rpo_index`` are linked whenever their
+    ``[start_timestep, end_timestep)`` ranges overlap. A transitive match is a
+    connected component of this bipartite overlap graph and contains every
+    event reachable through such links; a non-transitive match is a single
+    overlap edge, holding exactly one event per side.
 
     Attributes
     ----------
@@ -54,34 +55,13 @@ def _covered_length(intervals: list[tuple[int, int]]) -> int:
     return total
 
 
-def match_events(
-    ssa_events: list[ShadowingEvent],
-    pha_events: list[ShadowingEvent],
-) -> list[EventMatch]:
-    """Group SSA and PHA events into matches by overlap on each RPO.
+def _connected_components(
+    edges: list[tuple[int, int]],
+) -> list[tuple[list[int], list[int]]]:
+    """Group overlap edges into connected components of the bipartite graph.
 
-    Builds the bipartite overlap graph made up of SSA and PHA events with the
-    same ``rpo_index``, linked whenever their ``[start_timestep, end_timestep)``
-    ranges overlap, and returns one :class:`EventMatch` per connected component.
-    An event that overlaps no event of the other method appears in no match.
-
-    Parameters
-    ----------
-    ssa_events : list[ShadowingEvent]
-        Events from SSA detection.
-    pha_events : list[ShadowingEvent]
-        Events from PHA detection.
-
-    Returns
-    -------
-    list[EventMatch]
-        One match per connected component, sorted by ``rpo_index`` and then by
-        the first timestep either composite window covers.
+    Returns one ``(ssa_indices, pha_indices)`` pair per component.
     """
-    pha_by_rpo: dict[int, list[int]] = defaultdict(list)
-    for pha_index, event in enumerate(pha_events):
-        pha_by_rpo[event.rpo_index].append(pha_index)
-
     # Union-find over ("s", index) / ("p", index) nodes; only events with at
     # least one overlap edge enter the forest.
     parent: dict[tuple[str, int], tuple[str, int]] = {}
@@ -92,28 +72,76 @@ def match_events(
             node = parent[node]
         return node
 
+    for ssa_index, pha_index in edges:
+        ssa_node, pha_node = ("s", ssa_index), ("p", pha_index)
+        parent.setdefault(ssa_node, ssa_node)
+        parent.setdefault(pha_node, pha_node)
+        ssa_root, pha_root = find(ssa_node), find(pha_node)
+        if ssa_root != pha_root:
+            parent[ssa_root] = pha_root
+
+    members: dict[tuple[str, int], tuple[list[int], list[int]]] = defaultdict(lambda: ([], []))
+    for node in parent:
+        side, index = node
+        members[find(node)][0 if side == "s" else 1].append(index)
+    return list(members.values())
+
+
+def match_events(
+    ssa_events: list[ShadowingEvent],
+    pha_events: list[ShadowingEvent],
+    *,
+    transitive: bool = True,
+) -> list[EventMatch]:
+    """Group SSA and PHA events into matches by overlap on each RPO.
+
+    Builds the bipartite overlap graph made up of SSA and PHA events with the
+    same ``rpo_index``, linked whenever their ``[start_timestep, end_timestep)``
+    ranges overlap. With ``transitive=True`` (the default), returns one
+    :class:`EventMatch` per connected component; with ``transitive=False``,
+    returns one :class:`EventMatch` per overlap edge, each holding exactly one
+    event per side, so an event overlapping several events of the other method
+    appears in several matches. An event that overlaps no event of the other
+    method appears in no match, either way.
+
+    Parameters
+    ----------
+    ssa_events : list[ShadowingEvent]
+        Events from SSA detection.
+    pha_events : list[ShadowingEvent]
+        Events from PHA detection.
+    transitive : bool, optional
+        Whether to group matches into connected components (True, default) or
+        report each overlapping pair separately (False). Keyword-only.
+
+    Returns
+    -------
+    list[EventMatch]
+        One match per connected component or per overlap edge, sorted by
+        ``rpo_index`` and then by the first timestep either composite window
+        covers.
+    """
+    pha_by_rpo: dict[int, list[int]] = defaultdict(list)
+    for pha_index, event in enumerate(pha_events):
+        pha_by_rpo[event.rpo_index].append(pha_index)
+
+    edges: list[tuple[int, int]] = []
     for ssa_index, ssa_event in enumerate(ssa_events):
         for pha_index in pha_by_rpo.get(ssa_event.rpo_index, []):
             pha_event = pha_events[pha_index]
             overlap = min(ssa_event.end_timestep, pha_event.end_timestep) - max(
                 ssa_event.start_timestep, pha_event.start_timestep
             )
-            if overlap <= 0:
-                continue
-            ssa_node, pha_node = ("s", ssa_index), ("p", pha_index)
-            parent.setdefault(ssa_node, ssa_node)
-            parent.setdefault(pha_node, pha_node)
-            ssa_root, pha_root = find(ssa_node), find(pha_node)
-            if ssa_root != pha_root:
-                parent[ssa_root] = pha_root
+            if overlap > 0:
+                edges.append((ssa_index, pha_index))
 
-    members: dict[tuple[str, int], tuple[list[int], list[int]]] = defaultdict(lambda: ([], []))
-    for node in parent:
-        side, index = node
-        members[find(node)][0 if side == "s" else 1].append(index)
+    if transitive:
+        groups = _connected_components(edges)
+    else:
+        groups = [([ssa_index], [pha_index]) for ssa_index, pha_index in edges]
 
     matches: list[EventMatch] = []
-    for ssa_indices, pha_indices in members.values():
+    for ssa_indices, pha_indices in groups:
         ssa_side = sorted(
             (ssa_events[index] for index in ssa_indices),
             key=lambda event: event.start_timestep,
