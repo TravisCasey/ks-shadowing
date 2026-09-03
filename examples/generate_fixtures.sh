@@ -17,6 +17,8 @@
 #   - 6 PHA rescaled twins:   pha_r2048_d1_o{0..5}_rescaled.h5
 #   - 16 PHA delay axis:      pha_r2048_d{3,5,...,33}_o0.h5
 #   - 7 PHA cross-resolution: pha_r{256,512,768,1024,1280,1536,1792}_d17_o0.h5
+#   - 14 PHA cross-resolution derivative:
+#                             pha_r{256,...,1792}_d1_o{1,2}.h5
 #
 # N_JOBS can be overridden via the environment; defaults to -1 (all CPUs).
 
@@ -66,6 +68,13 @@ uv run ks-detect "${pha_common[@]}" --resolution 1024 --delay 17 --max-derivativ
 uv run ks-detect "${pha_common[@]}" --resolution 1280 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1280_d17_o0.h5"
 uv run ks-detect "${pha_common[@]}" --resolution 1536 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1536_d17_o0.h5"
 uv run ks-detect "${pha_common[@]}" --resolution 1792 --delay 17 --max-derivative-order 0 --output "${DATA_DIR}/pha_r1792_d17_o0.h5"
+
+# pha_r{256..1792}_d1_o{1,2}
+for resolution in 256 512 768 1024 1280 1536 1792; do
+  for order in 1 2; do
+    uv run ks-detect "${pha_common[@]}" --resolution "${resolution}" --delay 1 --max-derivative-order "${order}" --output "${DATA_DIR}/pha_r${resolution}_d1_o${order}.h5"
+  done
+done
 
 # ssa_r{256..1792}
 uv run ks-detect "${ssa_common[@]}" --resolution 256 --output "${DATA_DIR}/ssa_r256.h5"

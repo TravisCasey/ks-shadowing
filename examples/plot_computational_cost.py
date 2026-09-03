@@ -5,19 +5,23 @@ Computational cost: resolution, diagram size, derivative order
 Three views of detection cost. :math:`w` is the delay window and
 :math:`\lambda` the number of derivative orders averaged over, one more than
 the ``max_derivative_order`` the filenames carry. The two embedding axes are
-shown independently: :math:`w > 1` is used only at :math:`\lambda = 1`, so the
-resolution and delay costs (panel a) are probed at :math:`\lambda = 1` and the
-derivative cost (panel c) at :math:`w = 1`.
+shown independently: :math:`w > 1` is used only at :math:`\lambda = 1`, and the
+derivative-embedded runs are all :math:`w = 1`.
 
 Panel (a): wall-clock detection time against the spatial resolution the
-trajectory is loaded at, for ``SSA`` and the delay-embedded ``PHA--DELAY``
-(the fixtures outside resolution 2048 are :math:`w = 17` runs). SSA evaluates L2 distances in
-physical space, so its cost grows with resolution; PHA computes Wasserstein
-distances between persistence diagrams, whose cost is dominated by trajectory
-length rather than grid size, so its curve stays nearly flat. The full
-:math:`\lambda = 1` :math:`w` sweep at resolution 2048 is overlaid as a vertical
-cluster whose small variance shows that :math:`w` has little effect on runtime;
-the curve passes through the per-resolution mean.
+trajectory is loaded at, for ``SSA``, the delay-embedded ``PHA--DELAY``
+(the fixtures outside resolution 2048 are :math:`w = 17` runs), and the
+derivative-embedded ``PHA--DERIV`` at :math:`\lambda = 2` and
+:math:`\lambda = 3`. SSA evaluates L2 distances in physical space, so its cost
+grows with resolution; PHA computes Wasserstein distances between persistence
+diagrams, whose cost is dominated by trajectory length rather than grid size, so
+its curves stay nearly flat. Each extra derivative order adds one Wasserstein
+matrix per phase, having rougher fields with more pairs per diagram (panel b),
+so the :math:`\lambda = 2` and :math:`\lambda = 3` curves repeat the flat
+resolution profile at higher cost. The full :math:`\lambda = 1` :math:`w` sweep
+at resolution 2048 is overlaid as a vertical cluster whose small variance shows
+that :math:`w` has little effect on runtime; the ``PHA--DELAY`` curve passes
+through the per-resolution mean.
 
 Panel (b): higher spatial derivatives introduce more critical points, so the
 sublevel-set diagrams carry more pairs. Cardinality does not depend on the
@@ -175,6 +179,22 @@ for resolution in pha_resolutions:
         marker=ORDER_MARKERS[0],
         s=6,
         zorder=3,
+    )
+
+# Derivative-embedded runs (w = 1) across the same resolutions.
+for order in (1, 2):
+    by_resolution_order = pha_runtimes[order]
+    deriv_resolutions = np.array(sorted(by_resolution_order))
+    deriv_minutes = (
+        np.array([by_resolution_order[resolution][1] for resolution in deriv_resolutions])
+        / SECONDS_PER_MINUTE
+    )
+    ax_runtime.plot(
+        deriv_resolutions,
+        deriv_minutes,
+        color=ORDER_COLORS[order],
+        marker=ORDER_MARKERS[order],
+        label=rf"{PHA_DERIV} $\lambda={order + 1}$",
     )
 
 cluster_delays = sorted(pha_runtimes[0][REFERENCE_RESOLUTION])
