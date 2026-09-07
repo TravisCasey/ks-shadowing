@@ -2,13 +2,13 @@ r"""
 Computational cost: resolution, diagram size, derivative order
 ==============================================================
 
-Three views of detection cost. :math:`w` is the delay window and
-:math:`\lambda` the number of derivative orders averaged over, one more than
-the ``max_derivative_order`` the filenames carry. The two embedding axes are
-shown independently: :math:`w > 1` is used only at :math:`\lambda = 1`, and the
-derivative-embedded runs are all :math:`w = 1`.
+Three views of detection cost, across two figures. :math:`w` is the delay
+window and :math:`\lambda` the number of derivative orders averaged over, one
+more than the ``max_derivative_order`` the filenames carry. The two embedding
+axes are shown independently: :math:`w > 1` is used only at :math:`\lambda = 1`,
+and the derivative-embedded runs are all :math:`w = 1`.
 
-Panel (a): wall-clock detection time against the spatial resolution the
+The first figure: wall-clock detection time against the spatial resolution the
 trajectory is loaded at, for ``SSA``, the delay-embedded ``PHA--DELAY``
 (the fixtures outside resolution 2048 are :math:`w = 17` runs), and the
 derivative-embedded ``PHA--DERIV`` at :math:`\lambda = 2` and
@@ -16,26 +16,28 @@ derivative-embedded ``PHA--DERIV`` at :math:`\lambda = 2` and
 grows with resolution; PHA computes Wasserstein distances between persistence
 diagrams, whose cost is dominated by trajectory length rather than grid size, so
 its curves stay nearly flat. Each extra derivative order adds one Wasserstein
-matrix per phase, having rougher fields with more pairs per diagram (panel b),
-so the :math:`\lambda = 2` and :math:`\lambda = 3` curves repeat the flat
-resolution profile at higher cost. The full :math:`\lambda = 1` :math:`w` sweep
-at resolution 2048 is overlaid as a vertical cluster whose small variance shows
-that :math:`w` has little effect on runtime; the ``PHA--DELAY`` curve passes
-through the per-resolution mean.
+matrix per phase, having rougher fields with more pairs per diagram (panel (a)
+of the second figure), so the :math:`\lambda = 2` and :math:`\lambda = 3` curves
+repeat the flat resolution profile at higher cost. The full :math:`\lambda = 1`
+:math:`w` sweep at resolution 2048 is overlaid as a vertical cluster whose small
+variance shows that :math:`w` has little effect on runtime; the ``PHA--DELAY``
+curve passes through the per-resolution mean.
 
-Panel (b): higher spatial derivatives introduce more critical points, so the
+The second figure stacks the two derivative-cost views.
+
+Panel (a): higher spatial derivatives introduce more critical points, so the
 sublevel-set diagrams carry more pairs. Cardinality does not depend on the
 spatial resolution the trajectory is loaded at -- the 17-mode truncation fixes
 how many extrema a field can have, so the markers for every resolution
-coincide. That is also why the PHA curve in panel (a) stays flat.
+coincide. That is also why the PHA curves in the first figure stay flat.
 
-Panel (c): recorded runtimes of the ``PHA--DERIV`` sweep (:math:`w = 1`) at
+Panel (b): recorded runtimes of the ``PHA--DERIV`` sweep (:math:`w = 1`) at
 resolution 2048 (:math:`\lambda = 4` to :math:`6` exist only in that sweep),
 against the cost the measured cardinalities predict. Hera's geometric auction
 scales empirically as :math:`n^{1.6}` in the number of pairs per diagram, which
 accounts for runtimes growing faster than the derivative count alone. The
 predicted curve has no fitted parameters: it takes the measured cardinalities
-from panel (b), applies the published exponent, and anchors to the
+from panel (a), applies the published exponent, and anchors to the
 0-derivative runtime. It therefore inherits that run's fixed setup cost and
 then multiplies it, which is why it sits above the recorded times at the top
 of the range.
@@ -96,7 +98,8 @@ for path in DATA_DIR.glob("ssa_r*.h5"):
 
 # %%
 # PHA: runtimes grouped by max_derivative_order, then resolution, then delay.
-# Panel (a) draws the lambda = 1 runs; the higher orders feed panel (c) at w = 1.
+# The runtime figure draws the lambda = 1 runs; the higher orders feed the
+# derivative-sweep panel at w = 1.
 pha_runtimes: dict[int, dict[int, dict[int, float]]] = defaultdict(lambda: defaultdict(dict))
 for path in DATA_DIR.glob("pha_r*_d*_o*.h5"):
     match = PHA_PATTERN.match(path.name)
@@ -143,8 +146,8 @@ predicted = np.cumsum(np.array(cardinalities[REFERENCE_RESOLUTION]) ** HERA_EXPO
 predicted = predicted / predicted[0] * observed_minutes[0]
 
 # %%
-# Render.
-figure, (ax_runtime, ax_pairs, ax_cost) = plt.subplots(1, 3, figsize=(7.0, 2.6))
+# Runtime against spatial resolution.
+figure_runtime, ax_runtime = plt.subplots(figsize=(3.4, 2.6))
 
 ssa_resolutions = np.array(sorted(ssa_runtimes))
 ssa_minutes = (
@@ -207,12 +210,18 @@ ax_runtime.annotate(
     ha="right",
     arrowprops={"arrowstyle": "->", "color": "0.4", "linewidth": 0.6},
 )
-ax_runtime.set_title("(a)", loc="left")
 ax_runtime.set_ylim(bottom=0)
 ax_runtime.set_xticks((256, 1024, 2048))
 ax_runtime.set_xlabel("Spatial resolution (grid points)")
 ax_runtime.set_ylabel("Detection runtime (minutes)")
 ax_runtime.legend(prop={"family": "monospace"})
+
+plt.show()
+
+# %%
+# Diagram cardinality per derivative order, and the derivative-sweep runtime
+# it predicts.
+figure_derivative, (ax_pairs, ax_cost) = plt.subplots(2, 1, figsize=(3.4, 4.8))
 
 # All resolutions produce the same cardinalities; concentric open markers of
 # decreasing size make the coincidence visible instead of hiding the
@@ -230,7 +239,7 @@ for resolution, size in zip(RESOLUTIONS, (7.0, 4.5, 2.0), strict=True):
         markeredgewidth=0.8,
         label=f"resolution {resolution}",
     )
-ax_pairs.set_title("(b)", loc="left")
+ax_pairs.set_title("(a)", loc="left")
 ax_pairs.set_xlabel("Derivative order")
 ax_pairs.set_ylabel("Mean pairs per diagram")
 ax_pairs.set_ylim(bottom=0)
@@ -252,7 +261,7 @@ ax_cost.plot(
     linestyle="none",
     label="recorded runtime",
 )
-ax_cost.set_title("(c)", loc="left")
+ax_cost.set_title("(b)", loc="left")
 ax_cost.set_title(PHA_DERIV, fontfamily="monospace")
 ax_cost.set_xlabel(r"Embedding order $\lambda$")
 ax_cost.set_ylabel("Detection runtime (minutes)")
