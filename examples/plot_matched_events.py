@@ -27,7 +27,7 @@ window and :math:`\lambda` the number of derivative orders averaged over; the
 two embedding axes are shown independently (:math:`w > 1` only at
 :math:`\lambda = 1`). Scatter columns draw each match as one point at its SSA
 and PHA lengths, colored by the panel's measure, with the unmatched events
-jittered within their strip; the last column of each figure bins the same
+jittered within their strip; the leftmost column of each figure bins the same
 matches into square pixels colored by the number of matches per bin on a
 logarithmic scale.
 """
@@ -129,7 +129,7 @@ count_norm = LogNorm(vmin=1, vmax=max_count)
 
 
 def draw_frame(ax, tag: str, pha_metadata, transitive: bool) -> None:
-    """Strip separators, diagonal, limits, and titles shared by every panel.
+    """Strip separators and labels, diagonal, limits, and titles for every panel.
 
     The transitive figure omits the unmatched strips (identical to the
     non-transitive figure's), so its panels start at ``low``.
@@ -137,6 +137,24 @@ def draw_frame(ax, tag: str, pha_metadata, transitive: bool) -> None:
     if not transitive:
         ax.axvline(low, color="0.3", linewidth=0.6)
         ax.axhline(low, color="0.3", linewidth=0.6)
+        ax.annotate(
+            "unmatched",
+            xy=(HIGH - 0.02 * (HIGH - strip_low), low - gap - strip / 2),
+            ha="right",
+            va="center",
+            fontsize=6,
+            color="0.3",
+        )
+        ax.annotate(
+            "unmatched",
+            xy=(low - gap - strip / 2, HIGH - 0.02 * (HIGH - strip_low)),
+            ha="right",
+            va="center",
+            rotation=90,
+            rotation_mode="anchor",
+            fontsize=6,
+            color="0.3",
+        )
     ax.plot([low, HIGH], [low, HIGH], color="0.5", linestyle="--", linewidth=0.8, zorder=0)
     lower = low if transitive else strip_low
     ax.set_xlim(lower, HIGH)
@@ -150,10 +168,7 @@ def draw_frame(ax, tag: str, pha_metadata, transitive: bool) -> None:
 
 
 def draw_scatter(ax, run, transitive: bool, rng, metric: str = "jaccard") -> PathCollection:
-    """Metric-colored scatter, with jittered unmatched strips when non-transitive.
-
-    The match count annotation goes on the Jaccard panels only.
-    """
+    """Metric-colored scatter, with jittered unmatched strips when non-transitive."""
     _pha_metadata, by_mode, unmatched_ssa, unmatched_pha = run
     ssa_lengths, pha_lengths, jaccard, overlap = by_mode[transitive]
     values = jaccard if metric == "jaccard" else overlap
@@ -188,23 +203,6 @@ def draw_scatter(ax, run, transitive: bool, rng, metric: str = "jaccard") -> Pat
             vmax=1,
             s=2,
             linewidths=0,
-        )
-        ax.annotate(
-            "unmatched",
-            xy=(HIGH - 0.02 * (HIGH - strip_low), low - gap - strip / 2),
-            ha="right",
-            va="center",
-            fontsize=6,
-            color="0.3",
-        )
-    if metric == "jaccard":
-        ax.annotate(
-            f"{len(values)} matches",
-            xy=(0.84, 0.94),
-            xycoords="axes fraction",
-            ha="right",
-            va="top",
-            fontsize=6,
         )
     return scatter
 
@@ -286,7 +284,7 @@ def render_figure(
 # points.
 figure = render_figure(
     transitive=False,
-    columns=("jaccard", "overlap", "density"),
+    columns=("density", "jaccard", "overlap"),
     figsize=(7.0, 5.8),
     label="Matched events",
 )
@@ -298,7 +296,7 @@ plt.show()
 # count drops and coverage-splitting no longer sabotages the Jaccard index.
 figure = render_figure(
     transitive=True,
-    columns=("jaccard", "density"),
+    columns=("density", "jaccard"),
     figsize=(3.4, 4.4),
     label="Transitively matched events",
 )
