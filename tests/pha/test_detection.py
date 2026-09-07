@@ -9,7 +9,7 @@ from ks_shadowing.core import INTEGRATION_DT
 from ks_shadowing.core.event import ShadowingEvent
 from ks_shadowing.core.rpo import RPO
 from ks_shadowing.core.trajectory import KSTrajectory
-from ks_shadowing.pha.detection import _apply_delay_embedding, _center_events
+from ks_shadowing.pha.detection import _center_events, apply_delay_embedding
 
 
 def test_detect_deterministic_and_sorted(
@@ -125,24 +125,24 @@ def test_derivatives_affects_min_distances(
 
 
 def test_apply_delay_embedding_explicit() -> None:
-    """``_apply_delay_embedding(matrix, delay=2)`` averages entries along
+    """``apply_delay_embedding(matrix, delay=2)`` averages entries along
     diagonals ``(t + l, (j + l) mod J)`` for ``l in range(delay)``."""
     matrix = np.arange(12, dtype=np.float64).reshape(4, 3)
     expected = np.array(
         [[2.0, 3.0, 2.5], [5.0, 6.0, 5.5], [8.0, 9.0, 8.5]],
         dtype=np.float64,
     )
-    np.testing.assert_allclose(_apply_delay_embedding(matrix, delay=2), expected)
+    np.testing.assert_allclose(apply_delay_embedding(matrix, delay=2), expected)
 
 
 def test_apply_delay_embedding_invalid_delay_raises() -> None:
-    """``_apply_delay_embedding`` raises ``ValueError`` when ``delay`` is
+    """``apply_delay_embedding`` raises ``ValueError`` when ``delay`` is
     less than 1 or exceeds the trajectory length."""
     matrix = np.zeros((10, 5), dtype=np.float64)
     with pytest.raises(ValueError):
-        _apply_delay_embedding(matrix, delay=0)
+        apply_delay_embedding(matrix, delay=0)
     with pytest.raises(ValueError):
-        _apply_delay_embedding(matrix, delay=11)
+        apply_delay_embedding(matrix, delay=11)
 
 
 def test_center_events_shifts_timesteps_and_phase() -> None:

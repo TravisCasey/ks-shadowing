@@ -1,41 +1,38 @@
 r"""
-Distance margins at method disagreement
-=======================================
+Close-pass margins at method disagreement
+=========================================
 
-Where one method reports shadowing against an RPO and the other does not, how
-far past its threshold is the non-detecting method? For each timestep inside an
-event, the missing method's distance to the RPO, minimized over that RPO's
-phases, is normalized by that method's detection threshold. Each panel splits
-these margins into three populations: timesteps the other method also covers
-(both detect), timesteps it does not (disagreement), and a background of
-(timestep, RPO) pairs inside neither method's events. Solid curves use the
-delay-embedding reference ``PHA--DELAY`` (:math:`w = 17`); dashed curves the
-derivative-embedding reference ``PHA--DERIV`` (:math:`\lambda = 2`).
+At a grid cell (timestep, RPO phase), a method registers a close pass when its
+distance is below its own threshold. For SSA we minimize over spatial shifts,
+which projects away the third axis not present in PHA never had. A disagreeing
+cell is one where only one method's criterion holds. Each panel shows the
+probability density of the failing method's distance over its own threshold at
+those cells. Solid ticks on the baseline mark each curve's median.
 
-Disagreement concentrates just above the threshold, well separated from the
-background: the states one method misses are near-misses, not states the
-missing method scores as far from the orbit. The part of each disagreement
-curve left of the threshold line was below threshold and excluded instead by the
-minimal-duration filter.
+Every density peaks at the threshold itself and decays monotonically. Cells are
+subsampled with a fixed seed, and densities are Gaussian kernel estimates
+reflected about the boundary at 1.
 """
 
-from collections import defaultdict
 from pathlib import Path
-from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.lines import Line2D
 from numpy.typing import NDArray
+from scipy.stats import gaussian_kde
 
 from ks_shadowing import (
     DetectionMetadata,
-    ShadowingEvent,
+    KSTrajectory,
     assert_same_trajectory,
     load_results,
     load_rpos,
-    pha,
-    ssa,
+    shift_distances_sq,
+)
+from ks_shadowing.pha import (
+    KSPersistenceTrajectory,
+    apply_delay_embedding,
+    wasserstein_matrix,
 )
 
 try:
@@ -44,181 +41,162 @@ except NameError:
     REPO_ROOT = Path.cwd().parent
 DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
-# (paper name, result file, linestyle) per embedding-axis reference setting.
-SETTINGS: list[tuple[str, Path, Literal["-", "--"]]] = [
-    ("PHA\u2013DELAY", DATA_DIR / "pha_r2048_d17_o0.h5", "-"),
-    ("PHA\u2013DERIV", DATA_DIR / "pha_r2048_d1_o1.h5", "--"),
+# (paper name, result file, color) per embedding-axis reference setting.
+SETTINGS = [
+    ("PHA\u2013DELAY", DATA_DIR / "pha_r2048_d17_o0.h5", "#EE6677"),
+    ("PHA\u2013DERIV", DATA_DIR / "pha_r2048_d1_o1.h5", "#CCBB44"),
 ]
-# Events sampled per panel, and the cap on how much of each is scored.
-NUM_EVENTS = 100
-MAX_WINDOW_TIMESTEPS = 40
-# Background (timestep, RPO) samples are drawn as short blocks, shared
-# between the two settings so their background curves differ only where the
-# embedding does.
-NUM_BACKGROUND_BLOCKS = 50
-BACKGROUND_BLOCK_TIMESTEPS = 8
-CATEGORY_COLORS = {
-    "Both detect": "#4477AA",
-    "Disagreement": "#EE6677",
-    "Neither detects": "0.5",
-}
+# Rows are (timestep, RPO) pairs. The SSA-pass direction scans many rows with
+# the cheap SSA distance and evaluates PHA only where SSA passes; the PHA-pass
+# direction, whose cells are several times more common, evaluates a smaller
+# sample outright.
+NUM_SCAN_ROWS = 12000
+NUM_BRUTE_ROWS = 6000
+GRID = np.linspace(1.0, 3.0, 400)
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 rng = np.random.default_rng(0)
 
 # %%
-# Load the SSA result and the trajectory both methods share.
-ssa_metadata, trajectory, ssa_events = load_results(SSA_PATH)
+# Load the SSA result, the shared trajectory, and both PHA settings; build
+# each RPO's co-moving modes and per-order persistence diagrams once.
+ssa_metadata, trajectory, _ = load_results(SSA_PATH)
 num_timesteps = trajectory.num_timesteps
+resolution = trajectory.resolution
 rpos = load_rpos(REPO_ROOT / ssa_metadata.rpo_file)
 
-
-def _per_rpo_masks(events: list[ShadowingEvent]) -> dict[int, NDArray[np.bool_]]:
-    """Union coverage mask per RPO index; missing RPOs read as all-False."""
-    events_by_rpo: dict[int, list[ShadowingEvent]] = defaultdict(list)
-    for event in events:
-        events_by_rpo[event.rpo_index].append(event)
-    masks: dict[int, NDArray[np.bool_]] = defaultdict(lambda: np.zeros(num_timesteps, dtype=bool))
-    for rpo_index, rpo_events in events_by_rpo.items():
-        mask = np.zeros(num_timesteps, dtype=bool)
-        for event in rpo_events:
-            mask[event.start_timestep : event.end_timestep] = True
-        masks[rpo_index] = mask
-    return masks
-
-
-ssa_masks = _per_rpo_masks(ssa_events)
-
-
-# %%
-# Margins on a trajectory window against a single RPO. Slicing is exact for
-# both methods: the SSA minimum is taken over all spatial shifts, so the
-# constant co-moving offset a nonzero window start introduces drops out, and
-# the Wasserstein distance never leaves the window (beyond the delay padding).
-def _ssa_margins(window_start: int, window_end: int, rpo_index: int) -> NDArray[np.float64]:
-    """SSA min-over-phase distances on the window, over the SSA threshold."""
-    distances = ssa.compute_min_distances(trajectory[window_start:window_end], [rpos[rpo_index]])
-    return distances / ssa_metadata.threshold
-
-
-def _pha_margins(
-    window_start: int, window_end: int, rpo_index: int, metadata: DetectionMetadata
-) -> NDArray[np.float64] | None:
-    """Embedded PHA min-over-phase margins, or None if the delay padding
-    would leave the trajectory."""
-    pad_left = (metadata.delay - 1) // 2
-    start = window_start - pad_left
-    end = window_end + metadata.delay // 2
-    if start < 0 or end > num_timesteps:
-        return None
-    distances = pha.compute_min_distances(
-        trajectory[start:end],
-        [rpos[rpo_index]],
-        delay=metadata.delay,
-        max_derivative_order=metadata.max_derivative_order,
-    )
-    return distances[pad_left : pad_left + window_end - window_start] / metadata.threshold
-
-
-def _sample(pool: list, size: int) -> list:
-    """Uniform subsample without replacement."""
-    if len(pool) <= size:
-        return pool
-    return [pool[index] for index in rng.choice(len(pool), size=size, replace=False)]
-
-
-# %%
-# Collect the three populations for both settings. Host events supply the
-# both-detect and disagreement margins, split by the other method's per-RPO
-# coverage; background blocks are (timestep, RPO) pairs neither method covers.
-curves: dict[tuple[str, str, str], NDArray[np.float64]] = {}
-setting_data = []
-for setting_name, pha_path, _ in SETTINGS:
-    pha_metadata, pha_trajectory, pha_events = load_results(pha_path)
+setting_metadata: list[DetectionMetadata] = []
+for _, pha_path, _ in SETTINGS:
+    pha_metadata, pha_trajectory, _ = load_results(pha_path)
     assert_same_trajectory(trajectory, pha_trajectory)
-    setting_data.append((setting_name, pha_metadata, pha_events, _per_rpo_masks(pha_events)))
+    setting_metadata.append(pha_metadata)
+max_order = max(metadata.max_derivative_order for metadata in setting_metadata)
 
-for setting_name, pha_metadata, pha_events, pha_masks in setting_data:
-    for panel, host_events, other_masks in (
-        ("a", ssa_events, pha_masks),
-        ("b", pha_events, ssa_masks),
-    ):
-        agree: list[NDArray[np.float64]] = []
-        disagree: list[NDArray[np.float64]] = []
-        for event in _sample(host_events, NUM_EVENTS):
-            window_end = min(event.end_timestep, event.start_timestep + MAX_WINDOW_TIMESTEPS)
-            if panel == "a":
-                margins = _pha_margins(
-                    event.start_timestep, window_end, event.rpo_index, pha_metadata
-                )
-            else:
-                margins = _ssa_margins(event.start_timestep, window_end, event.rpo_index)
-            if margins is None:
-                continue
-            covered = other_masks[event.rpo_index][event.start_timestep : window_end]
-            agree.append(margins[covered])
-            disagree.append(margins[~covered])
-        curves[setting_name, panel, "Both detect"] = np.concatenate(agree)
-        curves[setting_name, panel, "Disagreement"] = np.concatenate(disagree)
-
-max_delay = max(metadata.delay for _, metadata, _, _ in setting_data)
-blocks: list[tuple[int, int]] = []
-while len(blocks) < NUM_BACKGROUND_BLOCKS:
-    block_start = int(rng.integers(max_delay, num_timesteps - MAX_WINDOW_TIMESTEPS))
-    block_end = block_start + BACKGROUND_BLOCK_TIMESTEPS
-    rpo_index = int(rng.integers(0, len(rpos)))
-    if ssa_masks[rpo_index][block_start:block_end].any() or any(
-        pha_masks[rpo_index][block_start:block_end].any() for _, _, _, pha_masks in setting_data
-    ):
-        continue
-    blocks.append((block_start, rpo_index))
-
-ssa_background = np.concatenate(
+rpo_trajectories = [
+    KSTrajectory.from_rpo(rpo, resolution, ssa_metadata.downsample, ssa_metadata.native)
+    for rpo in rpos
+]
+rpo_comoving = [
+    rpo_trajectory.to_comoving(rpo.drift_rate).modes
+    for rpo, rpo_trajectory in zip(rpos, rpo_trajectories, strict=True)
+]
+rpo_persistence = [
     [
-        _ssa_margins(block_start, block_start + BACKGROUND_BLOCK_TIMESTEPS, rpo_index)
-        for block_start, rpo_index in blocks
+        KSPersistenceTrajectory.from_trajectory(rpo_trajectory, order=order)
+        for rpo_trajectory in rpo_trajectories
     ]
-)
-for setting_name, pha_metadata, _, _ in setting_data:
-    pha_background: list[NDArray[np.float64]] = []
-    for block_start, rpo_index in blocks:
-        pha_margins = _pha_margins(
-            block_start, block_start + BACKGROUND_BLOCK_TIMESTEPS, rpo_index, pha_metadata
-        )
-        assert pha_margins is not None
-        pha_background.append(pha_margins)
-    curves[setting_name, "a", "Neither detects"] = np.concatenate(pha_background)
-    curves[setting_name, "b", "Neither detects"] = ssa_background
+    for order in range(max_order + 1)
+]
+periods = [rpo_trajectory.num_timesteps for rpo_trajectory in rpo_trajectories]
+
 
 # %%
-# Render: empirical CDFs of the margins, one panel per disagreement direction,
-# one linestyle per embedding setting.
-figure, axes = plt.subplots(2, 1, figsize=(3.4, 4.6), sharex=True)
+# One row of each method's distance grid: the distance to every phase of one
+# RPO at one timestep.
+def _ssa_row(timestep: int, rpo_index: int) -> NDArray[np.float64]:
+    """SSA L2 distance, minimized over spatial shifts, at every RPO phase."""
+    window = trajectory[timestep : timestep + 1]
+    modes = window.to_comoving(rpos[rpo_index].drift_rate, start_time=timestep * trajectory.dt)
+    repeated = np.broadcast_to(modes.modes[0], (periods[rpo_index], 17))
+    distances_sq = shift_distances_sq(repeated, rpo_comoving[rpo_index], resolution)
+    return np.sqrt(np.maximum(distances_sq.min(axis=1), 0.0))
+
+
+def _pha_row(timestep: int, rpo_index: int, metadata: DetectionMetadata) -> NDArray[np.float64]:
+    """Embedded PHA distance at every RPO phase, attributed to window centers."""
+    center = (metadata.delay - 1) // 2
+    window = trajectory[timestep - center : timestep + metadata.delay - center]
+    raw = np.mean(
+        [
+            wasserstein_matrix(
+                KSPersistenceTrajectory.from_trajectory(window, order=order),
+                rpo_persistence[order][rpo_index],
+            )
+            for order in range(metadata.max_derivative_order + 1)
+        ],
+        axis=0,
+    )
+    embedded = apply_delay_embedding(raw, metadata.delay)
+    period = periods[rpo_index]
+    return embedded[0][(np.arange(period) - center) % period]
+
+
+margin = max(metadata.delay for metadata in setting_metadata)
+
+
+def _draw_rows(count: int) -> list[tuple[int, int]]:
+    """Uniformly random (timestep, RPO) rows, clear of the delay padding."""
+    return [
+        (int(rng.integers(margin, num_timesteps - margin)), int(rng.integers(0, len(rpos))))
+        for _ in range(count)
+    ]
+
+
+# %%
+# Sample disagreeing cells. Scanning rows with the SSA distance first is an
+# exact filter for the SSA-pass direction: the kept rows are precisely those
+# containing cells of its population.
+margins: dict[tuple[str, str], NDArray[np.float64]] = {}
+
+scan_hits = []
+for timestep, rpo_index in _draw_rows(NUM_SCAN_ROWS):
+    ssa_distances = _ssa_row(timestep, rpo_index)
+    passes = ssa_distances < ssa_metadata.threshold
+    if passes.any():
+        scan_hits.append((timestep, rpo_index, passes))
+for (setting_name, _, _), metadata in zip(SETTINGS, setting_metadata, strict=True):
+    values = []
+    for timestep, rpo_index, passes in scan_hits:
+        pha_distances = _pha_row(timestep, rpo_index, metadata)
+        fails = passes & (pha_distances >= metadata.threshold)
+        values.append(pha_distances[fails] / metadata.threshold)
+    margins[setting_name, "a"] = np.concatenate(values)
+
+brute_rows = _draw_rows(NUM_BRUTE_ROWS)
+brute_ssa = [_ssa_row(timestep, rpo_index) for timestep, rpo_index in brute_rows]
+for (setting_name, _, _), metadata in zip(SETTINGS, setting_metadata, strict=True):
+    values = []
+    for (timestep, rpo_index), ssa_distances in zip(brute_rows, brute_ssa, strict=True):
+        pha_distances = _pha_row(timestep, rpo_index, metadata)
+        fails = (pha_distances < metadata.threshold) & (ssa_distances >= ssa_metadata.threshold)
+        values.append(ssa_distances[fails] / ssa_metadata.threshold)
+    margins[setting_name, "b"] = np.concatenate(values)
+
+
+# %%
+# Render: one panel per disagreement direction, densities filled, colored by
+# embedding setting.
+def _reflected_pdf(values: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Gaussian KDE on ``GRID``, reflected about the boundary at 1."""
+    kde = gaussian_kde(values)
+    return kde(GRID) + kde(2.0 - GRID)
+
+
+figure, axes = plt.subplots(2, 1, figsize=(3.4, 3.9), sharex=True, sharey=True)
 panel_titles = {
-    "a": r"$\mathtt{SSA}$ detects; $\mathtt{PHA}$ distance",
-    "b": r"$\mathtt{PHA}$ detects; $\mathtt{SSA}$ distance",
+    "a": r"$\mathtt{SSA}$ close pass; $\mathtt{PHA}$ distance",
+    "b": r"$\mathtt{PHA}$ close pass; $\mathtt{SSA}$ distance",
 }
 for ax, panel in zip(axes, ("a", "b"), strict=True):
-    for setting_name, _, linestyle in SETTINGS:
-        for category, color in CATEGORY_COLORS.items():
-            values = np.sort(curves[setting_name, panel, category])
-            fractions = np.arange(1, values.size + 1) / values.size
-            ax.step(values, fractions, where="post", color=color, linestyle=linestyle)
-    ax.axvline(1.0, color="0.15", linewidth=0.7, linestyle=":")
-    ax.set_xlim(0, 6)
-    ax.set_ylim(0, 1)
+    for setting_name, _, color in SETTINGS:
+        values = margins[setting_name, panel]
+        density = _reflected_pdf(values)
+        ax.fill_between(GRID, density, color=color, alpha=0.22, linewidth=0)
+        ax.plot(GRID, density, color=color, label=setting_name)
+        ax.plot(
+            [np.median(values)],
+            [0],
+            marker="|",
+            markersize=7,
+            markeredgewidth=1.3,
+            color=color,
+            clip_on=False,
+        )
+    ax.set_xlim(1, 3)
+    ax.set_ylim(bottom=0)
     ax.set_title(f"({panel})", loc="left")
     ax.set_title(panel_titles[panel])
-    ax.set_ylabel("Fraction of timesteps")
-axes[-1].set_xlabel("Distance / threshold (min over RPO phase)")
-
-category_handles = [
-    Line2D([], [], color=color, label=category) for category, color in CATEGORY_COLORS.items()
-]
-setting_handles = [
-    Line2D([], [], color="0.15", linestyle=linestyle, label=setting_name)
-    for setting_name, _, linestyle in SETTINGS
-]
-axes[0].legend(handles=category_handles, loc="lower right")
-axes[1].legend(handles=setting_handles, loc="lower right", prop={"family": "monospace"})
+    ax.set_ylabel("Probability density")
+axes[0].legend(prop={"family": "monospace"}, loc="upper right")
+axes[-1].set_xlabel("Distance / threshold")
 plt.show()

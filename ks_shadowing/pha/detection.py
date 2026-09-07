@@ -693,7 +693,7 @@ def _stream_distance_matrices(  # noqa: PLR0913, PLR0917
                     outer_bar.update(rpo.time_steps)
 
                 wasserstein_matrix /= num_orders
-                yield rpo.index, _apply_delay_embedding(wasserstein_matrix, delay)
+                yield rpo.index, apply_delay_embedding(wasserstein_matrix, delay)
         return
 
     # Parallel branch: open three shared-memory blocks per order (finite pairs,
@@ -755,7 +755,7 @@ def _stream_distance_matrices(  # noqa: PLR0913, PLR0917
             for phase_index, column in column_results:
                 wasserstein_matrix[:, phase_index] = column
 
-            yield rpo.index, _apply_delay_embedding(wasserstein_matrix, delay)
+            yield rpo.index, apply_delay_embedding(wasserstein_matrix, delay)
             outer_bar.update(rpo.time_steps * num_orders)
 
 
@@ -855,7 +855,7 @@ def _compute_wasserstein_column(
     return inputs.phase_index, column
 
 
-def _apply_delay_embedding(
+def apply_delay_embedding(
     wasserstein_matrix: NDArray[np.float64],
     delay: int,
 ) -> NDArray[np.float64]:
