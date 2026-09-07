@@ -21,15 +21,15 @@ strips beside the first figure's axes: a strip left of the vertical axis for
 PHA-only events and a strip below the horizontal axis for SSA-only events.
 
 Rows of both figures are the two embedding strategies, matched against the same
-``SSA`` run: ``PHA--DELAY`` (:math:`w = 17`, :math:`\lambda = 1`) and
-``PHA--DERIV`` (:math:`w = 1`, :math:`\lambda = 2`). :math:`w` is the delay
-window and :math:`\lambda` the number of derivative orders averaged over; the
-two embedding axes are shown independently (:math:`w > 1` only at
-:math:`\lambda = 1`). Scatter columns draw each match as one point at its SSA
-and PHA lengths, colored by the panel's measure, with the unmatched events
-jittered within their strip; the leftmost column of each figure bins the same
-matches into square pixels colored by the number of matches per bin on a
-logarithmic scale.
+``SSA`` run: ``PHA--DELAY`` (:math:`m = 17`) and ``PHA--DERIV``
+(:math:`m = 2`), where the embedding length :math:`m` is the number of
+persistence diagrams each comparison averages over, taken from consecutive
+timesteps (``PHA--DELAY``) or from derivative orders :math:`0` to :math:`m - 1`
+(``PHA--DERIV``); the two methods are never combined. Scatter columns draw
+each match as one point at its SSA and PHA lengths, colored by the panel's
+measure, with the unmatched events jittered within their strip; the leftmost
+column of each figure bins the same matches into square pixels colored by the
+number of matches per bin on a logarithmic scale.
 """
 
 from pathlib import Path

@@ -39,7 +39,7 @@ try:
     REPO_ROOT = Path(__file__).resolve().parent.parent
 except NameError:
     REPO_ROOT = Path.cwd().parent
-# w = 1, lambda = 1: both PHA embedding stages reduce to the identity, so the
+# m = 1: both PHA embedding methods reduce to the identity, so the
 # matrix recomputed below is exactly the one detection thresholded. At any other
 # setting the detector averages over orders or along the delay diagonal, and a
 # bare Wasserstein matrix would not be comparable with the recorded threshold.

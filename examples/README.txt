@@ -9,32 +9,39 @@ comparisons are consistent.
 Notation
 --------
 
-PHA has two embedding parameters, written throughout the gallery as:
+PHA compares length-:math:`m` sequences of persistence diagrams, obtained by
+one of two embedding methods, written throughout the gallery as:
 
-- :math:`w`: the **delay window**: the number of consecutive Wasserstein
-  distances averaged along the diagonal of the per-RPO distance matrix.
-  :math:`w = 1` applies no delay embedding.
-- :math:`\lambda`: the **number of spatial-derivative orders** averaged over.
-  :math:`\lambda = 1` uses the field alone; :math:`\lambda = 3` averages orders
-  0, 1 and 2.
+- ``PHA--DELAY``: the diagrams of :math:`m` consecutive trajectory timesteps.
+- ``PHA--DERIV``: the diagrams of the spatial-derivative fields of orders
+  :math:`0` to :math:`m - 1` of a single snapshot, where order 0 is the field
+  itself.
 
-Both stages average rather than sum, so a distance stays on the scale of a
-single-snapshot Wasserstein value whatever the setting. Writing
-:math:`c = \lfloor (w-1)/2 \rfloor` for the window-centering offset:
+:math:`m = 1` reduces both to plain ``PHA``. Either way the :math:`m`
+Wasserstein distances are averaged rather than summed, so a distance stays on
+the scale of a single-snapshot value whatever the setting. Writing
+:math:`c = \lfloor (m-1)/2 \rfloor` for the window-centering offset, the delay
+embedding averages along the diagonal of the per-RPO distance matrix,
 
 .. math::
 
-   W_{w,\lambda}(i, j) = \frac{1}{w\lambda} \sum_{l=0}^{w-1}
-   \sum_{m=0}^{\lambda-1} W_m\bigl(i + l - c,\ (j + l - c) \bmod J\bigr),
+   W_m(i, j) = \frac{1}{m} \sum_{l=0}^{m-1}
+   W\bigl(i + l - c,\ (j + l - c) \bmod J\bigr),
 
-where :math:`W_m` is the order-:math:`m` Wasserstein matrix, :math:`J` the
+and the derivative embedding averages across the per-order matrices,
+
+.. math::
+
+   W_m(i, j) = \frac{1}{m} \sum_{l=0}^{m-1} W^{(l)}(i, j),
+
+where :math:`W^{(l)}` is the order-:math:`l` Wasserstein matrix, :math:`J` the
 RPO period, and :math:`T` the trajectory length in timesteps. The window mean
-is attributed to its center, so :math:`W_{w,\lambda}(i, j)` is defined for
-:math:`c \le i \le T - 1 - \lfloor w/2 \rfloor`. Matrix names follow the
-paper: :math:`W` is the PHA distance matrix, :math:`D` the SSA one, and
-:math:`d_{W^2}` the Wasserstein metric itself.
+is attributed to its center, so the delay-embedded :math:`W_m(i, j)` is
+defined for :math:`c \le i \le T - 1 - \lfloor m/2 \rfloor`. Matrix names
+follow the paper: :math:`W` is the PHA distance matrix, :math:`D` the SSA one,
+and :math:`d_{W^2}` the Wasserstein metric itself.
 
-Each entry of :math:`W_m` is the :math:`d_{W^2}` distance between full
+Each entry of :math:`W^{(l)}` is the :math:`d_{W^2}` distance between full
 sublevel-set persistence diagrams. A diagram holds the finite :math:`H_0`
 pairs plus two essential classes with infinite death: the component born as the
 state minimum and the loop born at the field maximum. Infinite points cannot be
@@ -50,18 +57,21 @@ pairs alone.
 
 These map onto the API and the fixture filenames as:
 
-- :math:`w` is the ``delay`` parameter, and appears in filenames as ``d{w}``.
-- :math:`\lambda` is ``max_derivative_order`` **plus one**, and appears in
-  filenames as ``o{lambda - 1}``.
+- For ``PHA--DELAY``, :math:`m` is the ``delay`` parameter, and appears in
+  filenames as ``d{m}``.
+- For ``PHA--DERIV``, :math:`m` is ``max_derivative_order`` **plus one**, and
+  appears in filenames as ``o{m - 1}``.
 
 Note the offset: ``max_derivative_order`` is the **highest** order included,
-while :math:`\lambda` **counts** the orders averaged over, so
-:math:`\lambda =` ``max_derivative_order`` :math:`+\ 1`.
+while :math:`m` **counts** the orders averaged over, so
+:math:`m =` ``max_derivative_order`` :math:`+\ 1`. The two embeddings compose
+freely in the API (``delay`` and ``max_derivative_order`` are independent
+parameters), but the gallery never combines them.
 
 Figures that plot a quantity per individual derivative order, rather than per
 embedding, label that axis "Derivative order" and index it from 0: it is an
-order index, not a count. Axes over :math:`\lambda` are labeled "Embedding
-order".
+order index, not a count. Axes over :math:`m` are labeled "Embedding
+length".
 
 Detection strategies are named as the paper's ``\texttt`` macros render them:
 monospace ``SSA``, ``PHA`` (no embedding), ``PHA--DELAY`` (delay embedding) and

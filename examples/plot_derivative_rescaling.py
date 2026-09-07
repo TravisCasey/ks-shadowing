@@ -5,22 +5,22 @@ Per-order rescaling of the derivative sweep
 The ``rescale_orders`` option divides each spatial-derivative order's
 Wasserstein column by a per-order median scale before the orders are averaged
 together. The ``pha_r2048_d1_o{0..5}_rescaled.h5`` files repeat the
-:math:`\lambda = 1` through :math:`6` sweep with that option on; the
-``pha_r2048_d1_o{0..5}.h5`` files are the raw sweep with it off. Here
-:math:`\lambda` is the number of derivative orders averaged over, one more than
-the ``max_derivative_order`` the filenames carry.
+:math:`m = 1` through :math:`6` sweep with that option on; the
+``pha_r2048_d1_o{0..5}.h5`` files are the raw sweep with it off. Here the
+embedding length :math:`m` is the number of derivative orders averaged over,
+one more than the ``max_derivative_order`` the filenames carry.
 
 Agreement is scored over the (RPO, timestep) cell grid, so a run that flags the
 right timestep against the wrong orbit is penalized; the
 :ref:`agreement example
 <sphx_glr_auto_examples_plot_coverage_vs_embedding.py>` defines the measure.
 
-The two sweeps track each other closely. At :math:`\lambda = 1` they are
-identical; through :math:`\lambda = 3` the rescaled precision, F1, and
+The two sweeps track each other closely. At :math:`m = 1` they are
+identical; through :math:`m = 3` the rescaled precision, F1, and
 correct-RPO attribution differ from the raw curves only at the third decimal.
-The sweeps separate only at high order: from :math:`\lambda = 4` onward
+The sweeps separate only at high order: from :math:`m = 4` onward
 rescaling makes the decline gentler, but it does not lift the peak, which both
-sweeps reach at :math:`\lambda = 2`.
+sweeps reach at :math:`m = 2`.
 
 Every quantity plotted here is agreement with the SSA reference, not absolute
 correctness: the SSA detector is the yardstick, not ground truth. Rescaling
@@ -48,7 +48,7 @@ DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
 RAW_PATHS = [DATA_DIR / f"pha_r2048_d1_o{order}.h5" for order in range(6)]
 RESCALED_PATHS = [DATA_DIR / f"pha_r2048_d1_o{order}_rescaled.h5" for order in range(6)]
-LAMBDAS = range(1, 7)
+EMBEDDING_LENGTHS = range(1, 7)
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 # One fixed color and marker per agreement metric, shared with the saturation
@@ -138,7 +138,7 @@ rescaled_attribution = np.array([_attribution(rpo) for rpo in rescaled_rpo_masks
 # Render: agreement curves (a), their rescaled-minus-raw difference (b), and
 # correct-RPO attribution (c). The difference panel carries the size of the
 # rescaling effect, which the near-coincident curves in (a) cannot show.
-lambdas = list(LAMBDAS)
+embedding_lengths = list(EMBEDDING_LENGTHS)
 figure, axes = plt.subplot_mosaic(
     [["agreement"], ["difference"], ["attribution"]],
     figsize=(3.4, 6.6),
@@ -153,13 +153,15 @@ metrics = {
 }
 for name, (raw_values, rescaled_values) in metrics.items():
     style = METRIC_STYLES[name]
-    axes["agreement"].plot(lambdas, raw_values, **style)
-    axes["agreement"].plot(lambdas, rescaled_values, **style, **RESCALED_STYLE)
-    axes["difference"].plot(lambdas, rescaled_values - raw_values, **style)
+    axes["agreement"].plot(embedding_lengths, raw_values, **style)
+    axes["agreement"].plot(embedding_lengths, rescaled_values, **style, **RESCALED_STYLE)
+    axes["difference"].plot(embedding_lengths, rescaled_values - raw_values, **style)
 axes["difference"].axhline(0, color="0.6", linewidth=0.6, zorder=0)
 
-axes["attribution"].plot(lambdas, raw_attribution, color="black", marker="o")
-axes["attribution"].plot(lambdas, rescaled_attribution, color="black", **RESCALED_STYLE, marker="o")
+axes["attribution"].plot(embedding_lengths, raw_attribution, color="black", marker="o")
+axes["attribution"].plot(
+    embedding_lengths, rescaled_attribution, color="black", **RESCALED_STYLE, marker="o"
+)
 
 axes["agreement"].set_title("(a)", loc="left")
 axes["agreement"].set_ylabel("Agreement with SSA grid")
@@ -167,8 +169,8 @@ axes["difference"].set_title("(b)", loc="left")
 axes["difference"].set_ylabel("Rescaled $-$ raw")
 axes["attribution"].set_title("(c)", loc="left")
 axes["attribution"].set_ylabel("Per-RPO attribution vs. SSA")
-axes["attribution"].set_xlabel(r"Embedding order $\lambda$")
-axes["attribution"].set_xticks(lambdas)
+axes["attribution"].set_xlabel(r"Embedding length $m$")
+axes["attribution"].set_xticks(embedding_lengths)
 
 metric_handles = [Line2D([], [], label=name, **style) for name, style in METRIC_STYLES.items()]
 sweep_handles = [

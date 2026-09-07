@@ -28,8 +28,8 @@ toward the end of the sweep. Recall rises steeply from ``delay = 1`` and
 saturates. :math:`F_1` inherits recall's early rise, then peaks narrowly around
 ``delay`` 15 to 21 before declining toward ``delay = 33``. Along the derivative
 axis, :math:`F_1` has a sharp maximum at ``max_derivative_order = 1``. Vertical
-guides mark the reference settings the rest of the gallery uses: :math:`w = 17`
-on the delay axis and :math:`\lambda = 2` on the derivative axis.
+guides mark the reference settings the rest of the gallery uses: :math:`m = 17`
+on the delay axis and :math:`m = 2` on the derivative axis.
 """
 
 import re
@@ -56,7 +56,7 @@ SSA_PATH = DATA_DIR / "ssa_r2048.h5"
 DELAY_PATTERN = re.compile(r"^pha_r2048_d(\d+)_o0\.h5$")
 ORDER_PATHS = [DATA_DIR / f"pha_r2048_d1_o{order}.h5" for order in range(6)]
 REFERENCE_DELAY = 17
-REFERENCE_LAMBDA = 2
+REFERENCE_EMBEDDING_LENGTH = 2
 
 plt.style.use(REPO_ROOT / "examples" / "gallery.mplstyle")
 # One fixed color and marker per agreement metric, shared with the saturation
@@ -116,9 +116,9 @@ delays = np.array([row[0] for row in delay_rows])
 delay_scores: NDArray[np.float64] = np.array([row[1:] for row in delay_rows])
 
 # %%
-# Derivative axis: the w = 1 sweep, one point per lambda. ORDER_PATHS is indexed
-# by max_derivative_order, so lambda is that index plus one.
-lambdas = [order + 1 for order in range(len(ORDER_PATHS))]
+# Derivative axis: one point per embedding length m. ORDER_PATHS is indexed
+# by max_derivative_order, so m is that index plus one.
+embedding_lengths = [order + 1 for order in range(len(ORDER_PATHS))]
 order_scores: NDArray[np.float64] = np.array([_scores(path) for path in ORDER_PATHS])
 
 # %%
@@ -139,32 +139,32 @@ axes["delay"].set_title(PHA_DELAY, fontfamily="monospace")
 axes["delay"].set_ylabel(r"$F_1$")
 axes["delay"].tick_params(labelbottom=False)
 
-axes["order"].plot(lambdas, order_scores[:, 2], **METRIC_STYLES["F1"])
+axes["order"].plot(embedding_lengths, order_scores[:, 2], **METRIC_STYLES["F1"])
 axes["order"].set_title("(b)", loc="left")
 axes["order"].set_title(PHA_DERIV, fontfamily="monospace")
-axes["order"].set_xticks(lambdas)
+axes["order"].set_xticks(embedding_lengths)
 axes["order"].tick_params(labelleft=False, labelbottom=False)
 
 for panel, x_values, scores in (
     ("parts_delay", delays, delay_scores),
-    ("parts_order", lambdas, order_scores),
+    ("parts_order", embedding_lengths, order_scores),
 ):
     for metric, column in (("Precision", 0), ("Recall", 1)):
         axes[panel].plot(x_values, scores[:, column], label=metric, **METRIC_STYLES[metric])
 
 axes["parts_delay"].set_title("(c)", loc="left")
 axes["parts_delay"].set_ylabel("Precision, recall")
-axes["parts_delay"].set_xlabel(r"Delay window $w$")
+axes["parts_delay"].set_xlabel(r"Embedding length $m$")
 axes["parts_delay"].set_xticks((1, 9, 17, 25, 33))
 axes["parts_delay"].legend()
 axes["parts_order"].set_title("(d)", loc="left")
-axes["parts_order"].set_xlabel(r"Embedding order $\lambda$")
+axes["parts_order"].set_xlabel(r"Embedding length $m$")
 axes["parts_order"].tick_params(labelleft=False)
 
 # Vertical guides mark the reference settings, beneath the data.
 for panel in ("delay", "parts_delay"):
     axes[panel].axvline(REFERENCE_DELAY, color="0.82", linewidth=0.8, zorder=0)
 for panel in ("order", "parts_order"):
-    axes[panel].axvline(REFERENCE_LAMBDA, color="0.82", linewidth=0.8, zorder=0)
+    axes[panel].axvline(REFERENCE_EMBEDDING_LENGTH, color="0.82", linewidth=0.8, zorder=0)
 
 plt.show()

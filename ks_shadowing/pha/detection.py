@@ -859,12 +859,13 @@ def apply_delay_embedding(
     wasserstein_matrix: NDArray[np.float64],
     delay: int,
 ) -> NDArray[np.float64]:
-    r"""Apply time-delay embedding to a Wasserstein distance matrix.
+    """Apply time-delay embedding to a Wasserstein distance matrix.
 
-    Computes :math:`W^w(i, j) = \frac{1}{w} \sum_{l=0}^{w-1}
-    W(i+l, (j+l) \bmod J)` where :math:`w` is the delay window. This
-    increases the effective dimensionality of the comparison by considering
-    consecutive timesteps rather than single snapshots.
+    Row ``i``, column ``j`` of the result is the mean of
+    ``wasserstein_matrix[i + l, (j + l) % J]`` over ``l`` in ``0..delay - 1``,
+    where ``J`` is the number of columns. This increases the effective
+    dimensionality of the comparison by considering consecutive timesteps rather
+    than single snapshots.
 
     Row ``i`` of the returned matrix aggregates input rows ``i`` through
     ``i + delay - 1``; callers attribute it to the window center
@@ -877,7 +878,7 @@ def apply_delay_embedding(
     wasserstein_matrix : NDArray[np.float64], shape (I, J)
         Original Wasserstein distance matrix.
     delay : int
-        Time-delay embedding window size (:math:`w`).
+        Time-delay embedding window size.
 
     Returns
     -------

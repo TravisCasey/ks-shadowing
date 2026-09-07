@@ -63,7 +63,7 @@ except NameError:
     REPO_ROOT = Path.cwd().parent
 DATA_DIR = REPO_ROOT / "examples" / "data"
 SSA_PATH = DATA_DIR / "ssa_r2048.h5"
-# w = 1, lambda = 1: both PHA embedding stages reduce to the identity, so
+# m = 1: both PHA embedding methods reduce to the identity, so
 # panel (d) is a snapshot-to-snapshot distance, the same kind of quantity panel
 # (c) holds.
 PHA_PATH = DATA_DIR / "pha_r2048_d1_o0.h5"

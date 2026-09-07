@@ -3,16 +3,16 @@ Event duration distributions: SSA vs. PHA
 ==========================================
 
 Duration survival curves for ``SSA`` and three PHA settings on the same
-trajectory: plain ``PHA`` with no embedding (:math:`w = 1`,
-:math:`\lambda = 1`), ``PHA--DELAY`` at the delay-axis setting (:math:`w = 17`,
-:math:`\lambda = 1`), and ``PHA--DERIV`` at the derivative-axis setting
-(:math:`w = 1`, :math:`\lambda = 2`). Each curve is the number of that
+trajectory: plain ``PHA`` with no embedding (:math:`m = 1`), ``PHA--DELAY`` at
+the delay-axis setting (:math:`m = 17`), and ``PHA--DERIV`` at the
+derivative-axis setting (:math:`m = 2`). Each curve is the number of that
 strategy's events at least as long as the duration on the axis, in
-trajectory-time units. :math:`w` is the delay window and :math:`\lambda` the
-number of derivative orders averaged over, one more than the
-``max_derivative_order`` the filenames carry. The log count axis keeps both the
-bulk and the long tail readable. The two embedding axes are shown independently:
-:math:`w > 1` is used only at :math:`\lambda = 1`.
+trajectory-time units. :math:`m` is the embedding length: the number of
+persistence diagrams each comparison averages over, taken from consecutive
+timesteps (``PHA--DELAY``) or from derivative orders :math:`0` to
+:math:`m - 1` (``PHA--DERIV``, one more than the ``max_derivative_order`` the
+filenames carry). The log count axis keeps both the bulk and the long tail
+readable. The two embedding methods are never combined.
 """
 
 from pathlib import Path
@@ -76,8 +76,8 @@ for pha_metadata, pha_durations in pha_runs:
     max_order = pha_metadata.max_derivative_order
     # The unembedded baseline takes the recessive dashed style: dashes vanish
     # where curves overlap, and the baseline is the one curve that stands
-    # clear of the cluster. The w = 17 run shares the baseline's lambda = 1
-    # color and the lambda = 2 run shares its w = 1 setting, so the dashes
+    # clear of the cluster. The delay run shares the baseline's order-0 color
+    # and the derivative run shares its delay-1 setting, so the dashes
     # are what separate the baseline from each; the embedded runs stay solid.
     if pha_metadata.delay > 1:
         label = PHA_DELAY
