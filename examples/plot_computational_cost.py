@@ -10,19 +10,15 @@ taken from consecutive timesteps (``PHA--DELAY``) or from derivative orders
 shown separately, never combined.
 
 The first figure: wall-clock detection time against the spatial resolution the
-trajectory is loaded at, for ``SSA``, the delay-embedded ``PHA--DELAY``
-(the fixtures outside resolution 2048 are :math:`m = 17` runs), and the
-derivative-embedded ``PHA--DERIV`` at :math:`m = 2` and
-:math:`m = 3`. SSA evaluates L2 distances in physical space, so its cost
+trajectory is loaded at, for ``SSA``, the delay-embedded ``PHA--DELAY`` at
+:math:`m = 17`, and the derivative-embedded ``PHA--DERIV`` at :math:`m = 2`
+and :math:`m = 3`. SSA evaluates L2 distances in physical space, so its cost
 grows with resolution; PHA computes Wasserstein distances between persistence
 diagrams, whose cost is dominated by trajectory length rather than grid size, so
 its curves stay nearly flat. Each extra derivative order adds one Wasserstein
 matrix per phase, having rougher fields with more pairs per diagram (panel (a)
 of the second figure), so the :math:`m = 2` and :math:`m = 3` curves
-repeat the flat resolution profile at higher cost. The full delay sweep at
-resolution 2048 is overlaid as a vertical cluster whose small variance shows
-that :math:`m` has little effect on ``PHA--DELAY`` runtime; the ``PHA--DELAY``
-curve passes through the per-resolution mean.
+repeat the flat resolution profile at higher cost.
 
 The second figure stacks the two derivative-cost views.
 
@@ -67,6 +63,7 @@ DERIVATIVE_ORDERS = range(6)
 EMBEDDING_LENGTHS = range(1, 7)
 RESOLUTIONS = (256, 512, 2048)
 REFERENCE_RESOLUTION = 2048
+DELAY_EMBEDDING_LENGTH = 17
 SAMPLE_TIMESTEPS = 400
 SAMPLE_START = 20000
 HERA_EXPONENT = 1.6
@@ -99,8 +96,8 @@ for path in DATA_DIR.glob("ssa_r*.h5"):
 
 # %%
 # PHA: runtimes grouped by max_derivative_order, then resolution, then delay.
-# The max-order-0 runs feed the PHA--DELAY curve; the higher orders feed the
-# PHA--DERIV curves and the derivative-sweep panel.
+# The max-order-0 runs at delay 17 feed the PHA--DELAY curve; the higher orders
+# feed the PHA--DERIV curves and the derivative-sweep panel.
 pha_runtimes: dict[int, dict[int, dict[int, float]]] = defaultdict(lambda: defaultdict(dict))
 for path in DATA_DIR.glob("pha_r*_d*_o*.h5"):
     match = PHA_PATTERN.match(path.name)
@@ -158,32 +155,17 @@ ax_runtime.plot(ssa_resolutions, ssa_minutes, color="black", marker="o", label="
 
 by_resolution = pha_runtimes[0]
 pha_resolutions = np.array(sorted(by_resolution))
-# Curve through the per-resolution mean over available delays.
-pha_means = (
-    np.array([np.mean(list(by_resolution[resolution].values())) for resolution in pha_resolutions])
+pha_minutes = (
+    np.array([by_resolution[resolution][DELAY_EMBEDDING_LENGTH] for resolution in pha_resolutions])
     / SECONDS_PER_MINUTE
 )
 ax_runtime.plot(
     pha_resolutions,
-    pha_means,
+    pha_minutes,
     color=ORDER_COLORS[0],
     marker=ORDER_MARKERS[0],
-    label=PHA_DELAY,
+    label=rf"{PHA_DELAY} $m={DELAY_EMBEDDING_LENGTH}$",
 )
-# At resolutions with a delay sweep, scatter each delay to show the spread.
-for resolution in pha_resolutions:
-    delays = by_resolution[resolution]
-    if len(delays) == 1:
-        continue
-    minutes = np.array(list(delays.values())) / SECONDS_PER_MINUTE
-    ax_runtime.scatter(
-        np.full(len(minutes), resolution),
-        minutes,
-        color=ORDER_COLORS[0],
-        marker=ORDER_MARKERS[0],
-        s=6,
-        zorder=3,
-    )
 
 # Derivative-embedded runs across the same resolutions.
 for order in (1, 2):
@@ -201,16 +183,6 @@ for order in (1, 2):
         label=rf"{PHA_DERIV} $m={order + 1}$",
     )
 
-cluster_delays = sorted(pha_runtimes[0][REFERENCE_RESOLUTION])
-cluster_top = max(pha_runtimes[0][REFERENCE_RESOLUTION].values()) / SECONDS_PER_MINUTE
-ax_runtime.annotate(
-    rf"odd $m$ = {cluster_delays[0]}-{cluster_delays[-1]}",
-    xy=(REFERENCE_RESOLUTION, cluster_top),
-    xytext=(-4, 10),
-    textcoords="offset points",
-    ha="right",
-    arrowprops={"arrowstyle": "->", "color": "0.4", "linewidth": 0.6},
-)
 ax_runtime.set_ylim(bottom=0)
 ax_runtime.set_xticks((256, 1024, 2048))
 ax_runtime.set_xlabel("Spatial resolution (grid points)")
