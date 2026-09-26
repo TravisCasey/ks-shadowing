@@ -24,13 +24,15 @@ longer than one orbital period its streak wraps the phase axis, which is the
 recurrence made visible. The dashed lines carry across all four panels, so the
 streak between them is the event that panels (a) and (b) show.
 
-The SSA matrix :math:`D` holds the :math:`L_2` distance minimized over spatial
-shift; the PHA matrix :math:`W` holds the Wasserstein distance :math:`d_{W^2}`
-between persistence diagrams, and carries no shift axis because persistence
-quotients out the spatial symmetry. Reducing the shift axis makes the two
-visualy comparable. Both use a logarithmic color scale. The fainter streaks
-elsewhere in the window are near recurrences, though not sufficiently close or
-sufficiently long to be their own events.
+SSA searches a three-dimensional cube of :math:`L_2` distances indexed by
+trajectory timestep, RPO phase, and spatial shift. Panel (c) is one slice of
+that cube at a fixed shift: the shift with the smallest mean distance along
+the event's own phase track, which the title reports in grid cells. The PHA
+matrix :math:`W` holds the Wasserstein distance :math:`d_{W^2}` between
+persistence diagrams, and carries no shift axis because persistence quotients
+out the spatial symmetry. Both use a logarithmic color scale. The fainter
+streaks elsewhere in the window are near recurrences, though not sufficiently
+close or sufficiently long to be their own events.
 
 The
 :ref:`persistence-diagram example <sphx_glr_auto_examples_plot_shadowing_diagrams.py>`
@@ -125,19 +127,32 @@ for row in range(num_window_timesteps):
     rpo_field[row] = np.roll(rpo_physical[event_phases[row]], -int(event_shifts[row]))
 
 # %%
-# Panel (c): the SSA distance matrix, minimized over spatial shift. One
-# ``shift_distances_sq`` call per RPO phase evaluates every shift at once; the
-# clamp absorbs the numerical noise that can push a near-zero squared distance
-# slightly negative.
-l2_distances = np.empty((num_window_timesteps, period), dtype=np.float64)
-for phase_index in range(period):
-    rpo_slice_modes = np.broadcast_to(
-        rpo_comoving.modes[phase_index], trajectory_comoving.modes.shape
+# Panel (c): one spatial-shift slice of the SSA distance cube. The slice shown
+# is the shift with the smallest mean distance along the event's own phase
+# track, found by evaluating every shift along that track at once.
+in_event = (window_timesteps >= event.start_timestep) & (window_timesteps < event.end_timestep)
+track_distances_sq = shift_distances_sq(
+    trajectory_comoving.modes[in_event],
+    rpo_comoving.modes[event_phases[in_event]],
+    trajectory.resolution,
+)
+best_shift = int(np.argmin(np.sqrt(np.maximum(track_distances_sq, 0.0)).mean(axis=0)))
+# Shifts are circular; the title reports the nearest signed representative.
+half_resolution = trajectory.resolution // 2
+signed_shift = (best_shift + half_resolution) % trajectory.resolution - half_resolution
+
+# At a fixed shift the slice is a plain pairwise L2 distance over the grid, the
+# same sum ``shift_distances_sq`` evaluates, expanded as
+# ``|u|^2 + |v|^2 - 2 u.v`` so every (timestep, phase) pair is one product.
+rpo_shifted = np.roll(rpo_physical, -best_shift, axis=1)
+l2_distances = np.sqrt(
+    np.maximum(
+        np.sum(trajectory_field**2, axis=1)[:, np.newaxis]
+        + np.sum(rpo_shifted**2, axis=1)[np.newaxis, :]
+        - 2.0 * trajectory_field @ rpo_shifted.T,
+        0.0,
     )
-    distances_sq = shift_distances_sq(
-        trajectory_comoving.modes, rpo_slice_modes, trajectory.resolution
-    )
-    l2_distances[:, phase_index] = np.sqrt(np.maximum(distances_sq.min(axis=1), 0.0))
+)
 
 # %%
 # Panel (d): the PHA Wasserstein matrix over the same window. Persistence
@@ -181,7 +196,12 @@ for ax, (tag, name, field) in zip(axes[:2], field_panels, strict=True):
 figure.colorbar(field_mesh, ax=axes[:2], label="$u(x, t)$", pad=0.02)
 
 distance_panels = (
-    ("(c)", r"$\mathtt{SSA}$ distance matrix $D$", "$L_2$ distance", l2_distances),
+    (
+        "(c)",
+        rf"$\mathtt{{SSA}}$ distance matrix $D$, shift $s = {signed_shift}$",
+        "$L_2$ distance",
+        l2_distances,
+    ),
     ("(d)", r"$\mathtt{PHA}$ distance matrix $W$", "$d_{W^2}$ distance", wasserstein_distances),
 )
 for ax, (tag, name, label, matrix) in zip(axes[2:], distance_panels, strict=True):

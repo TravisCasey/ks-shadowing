@@ -9,16 +9,16 @@ taken from consecutive timesteps (``PHA--DELAY``) or from derivative orders
 ``max_derivative_order`` the filenames carry). The two embedding methods are
 shown separately, never combined.
 
-The first figure: wall-clock detection time against the spatial resolution the
-trajectory is loaded at, for ``SSA``, the delay-embedded ``PHA--DELAY`` at
-:math:`m = 17`, and the derivative-embedded ``PHA--DERIV`` at :math:`m = 2`
-and :math:`m = 3`. SSA evaluates L2 distances in physical space, so its cost
-grows with resolution; PHA computes Wasserstein distances between persistence
-diagrams, whose cost is dominated by trajectory length rather than grid size, so
-its curves stay nearly flat. Each extra derivative order adds one Wasserstein
-matrix per phase, having rougher fields with more pairs per diagram (panel (a)
-of the second figure), so the :math:`m = 2` and :math:`m = 3` curves
-repeat the flat resolution profile at higher cost.
+The first figure: wall-clock detection time against the spatial resolution
+:math:`N`, the number of grid points the trajectory is loaded at, for ``SSA``,
+the delay-embedded ``PHA--DELAY`` at :math:`m = 17`, and the derivative-embedded
+``PHA--DERIV`` at :math:`m = 2`. SSA evaluates L2 distances in physical space,
+so its cost grows with resolution; PHA computes Wasserstein distances between
+persistence diagrams, whose cost is dominated by trajectory length rather than
+grid size, so its curves stay nearly flat. Each extra derivative order adds one
+Wasserstein matrix per phase, having rougher fields with more pairs per diagram
+(panel (a) of the second figure), so the :math:`m = 2` curve repeats the flat
+resolution profile at higher cost.
 
 The second figure stacks the two derivative-cost views.
 
@@ -97,7 +97,7 @@ for path in DATA_DIR.glob("ssa_r*.h5"):
 # %%
 # PHA: runtimes grouped by max_derivative_order, then resolution, then delay.
 # The max-order-0 runs at delay 17 feed the PHA--DELAY curve; the higher orders
-# feed the PHA--DERIV curves and the derivative-sweep panel.
+# feed the PHA--DERIV curve and the derivative-sweep panel.
 pha_runtimes: dict[int, dict[int, dict[int, float]]] = defaultdict(lambda: defaultdict(dict))
 for path in DATA_DIR.glob("pha_r*_d*_o*.h5"):
     match = PHA_PATTERN.match(path.name)
@@ -167,26 +167,25 @@ ax_runtime.plot(
     label=rf"{PHA_DELAY} $m={DELAY_EMBEDDING_LENGTH}$",
 )
 
-# Derivative-embedded runs across the same resolutions.
-for order in (1, 2):
-    by_resolution_order = pha_runtimes[order]
-    deriv_resolutions = np.array(sorted(by_resolution_order))
-    deriv_minutes = (
-        np.array([by_resolution_order[resolution][1] for resolution in deriv_resolutions])
-        / SECONDS_PER_MINUTE
-    )
-    ax_runtime.plot(
-        deriv_resolutions,
-        deriv_minutes,
-        color=ORDER_COLORS[order],
-        marker=ORDER_MARKERS[order],
-        label=rf"{PHA_DERIV} $m={order + 1}$",
-    )
+# The derivative-embedded reference setting across the same resolutions.
+deriv_by_resolution = pha_runtimes[1]
+deriv_resolutions = np.array(sorted(deriv_by_resolution))
+deriv_minutes = (
+    np.array([deriv_by_resolution[resolution][1] for resolution in deriv_resolutions])
+    / SECONDS_PER_MINUTE
+)
+ax_runtime.plot(
+    deriv_resolutions,
+    deriv_minutes,
+    color=ORDER_COLORS[1],
+    marker=ORDER_MARKERS[1],
+    label=rf"{PHA_DERIV} $m=2$",
+)
 
 ax_runtime.set_ylim(bottom=0)
 ax_runtime.set_xticks((256, 1024, 2048))
-ax_runtime.set_xlabel("Spatial resolution (grid points)")
-ax_runtime.set_ylabel("Detection runtime (minutes)")
+ax_runtime.set_xlabel("$N$")
+ax_runtime.set_ylabel("Runtime (minutes)")
 ax_runtime.legend(prop={"family": "monospace"})
 
 plt.show()
@@ -237,7 +236,7 @@ ax_cost.plot(
 ax_cost.set_title("(b)", loc="left")
 ax_cost.set_title(PHA_DERIV, fontfamily="monospace")
 ax_cost.set_xlabel(r"Embedding length $m$")
-ax_cost.set_ylabel("Detection runtime (minutes)")
+ax_cost.set_ylabel("Runtime (minutes)")
 ax_cost.set_ylim(bottom=0)
 ax_cost.set_xticks(list(EMBEDDING_LENGTHS))
 ax_cost.legend(loc="upper left")

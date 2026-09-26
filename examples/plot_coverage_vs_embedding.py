@@ -156,15 +156,23 @@ axes["parts_delay"].set_title("(c)", loc="left")
 axes["parts_delay"].set_ylabel("Precision, recall")
 axes["parts_delay"].set_xlabel(r"Embedding length $m$")
 axes["parts_delay"].set_xticks((1, 9, 17, 25, 33))
-axes["parts_delay"].legend()
+delay_legend = axes["parts_delay"].legend()
 axes["parts_order"].set_title("(d)", loc="left")
 axes["parts_order"].set_xlabel(r"Embedding length $m$")
 axes["parts_order"].tick_params(labelleft=False)
 
-# Vertical guides mark the reference settings, beneath the data.
-for panel in ("delay", "parts_delay"):
-    axes[panel].axvline(REFERENCE_DELAY, color="0.82", linewidth=0.8, zorder=0)
+# Vertical guides mark the reference settings, beneath the data. Panel (c)'s
+# legend sits under its guide, so that guide starts just above the legend. The
+# legend's extent is only known once constrained layout has sized the axes,
+# hence the layout pass before measuring it.
+figure.draw_without_rendering()
+legend_top = (
+    delay_legend.get_window_extent().transformed(axes["parts_delay"].transAxes.inverted()).y1
+)
+guide_style: dict[str, Any] = {"color": "0.82", "linewidth": 0.8, "zorder": 0}
+axes["delay"].axvline(REFERENCE_DELAY, **guide_style)
+axes["parts_delay"].axvline(REFERENCE_DELAY, ymin=legend_top + 0.02, **guide_style)
 for panel in ("order", "parts_order"):
-    axes[panel].axvline(REFERENCE_EMBEDDING_LENGTH, color="0.82", linewidth=0.8, zorder=0)
+    axes[panel].axvline(REFERENCE_EMBEDDING_LENGTH, **guide_style)
 
 plt.show()

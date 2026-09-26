@@ -17,8 +17,9 @@ transitively: a match is a connected component of the bipartite overlap graph,
 gathering every event reachable through overlap links and scored by the Jaccard
 index of the two composite windows. Events with no overlapping partner on the
 same RPO are identical under both pairings and appear once, in the "unmatched"
-strips beside the first figure's axes: a strip left of the vertical axis for
-PHA-only events and a strip below the horizontal axis for SSA-only events.
+strips beside the axes of the first figure's density column: a strip left of
+the vertical axis for PHA-only events and a strip below the horizontal axis for
+SSA-only events.
 
 Rows of both figures are the two embedding strategies, matched against the same
 ``SSA`` run: ``PHA--DELAY`` (:math:`m = 17`) and ``PHA--DERIV``
@@ -27,9 +28,8 @@ persistence diagrams each comparison averages over, taken from consecutive
 timesteps (``PHA--DELAY``) or from derivative orders :math:`0` to :math:`m - 1`
 (``PHA--DERIV``); the two methods are never combined. Scatter columns draw
 each match as one point at its SSA and PHA lengths, colored by the panel's
-measure, with the unmatched events jittered within their strip; the leftmost
-column of each figure bins the same matches into square pixels colored by the
-number of matches per bin on a logarithmic scale.
+measure. The leftmost column of each figure bins the same matches into square
+pixels colored by the number of matches per bin on a logarithmic scale.
 """
 
 from pathlib import Path
@@ -128,13 +128,13 @@ for _pha_metadata, by_mode, unmatched_ssa, unmatched_pha in matched_runs:
 count_norm = LogNorm(vmin=1, vmax=max_count)
 
 
-def draw_frame(ax, tag: str, pha_metadata, transitive: bool) -> None:
-    """Strip separators and labels, diagonal, limits, and titles for every panel.
+def draw_frame(ax, tag: str, pha_metadata, strips: bool) -> None:
+    """Diagonal, limits, and titles for every panel, plus the strip frame.
 
-    The transitive figure omits the unmatched strips (identical to the
-    non-transitive figure's), so its panels start at ``low``.
+    With ``strips``, the axes extend down to ``strip_low`` and the strips get
+    separators and labels; otherwise the panel starts at ``low``.
     """
-    if not transitive:
+    if strips:
         ax.axvline(low, color="0.3", linewidth=0.6)
         ax.axhline(low, color="0.3", linewidth=0.6)
         ax.annotate(
@@ -156,7 +156,7 @@ def draw_frame(ax, tag: str, pha_metadata, transitive: bool) -> None:
             color="0.3",
         )
     ax.plot([low, HIGH], [low, HIGH], color="0.5", linestyle="--", linewidth=0.8, zorder=0)
-    lower = low if transitive else strip_low
+    lower = strip_low if strips else low
     ax.set_xlim(lower, HIGH)
     ax.set_ylim(lower, HIGH)
     ax.set_aspect("equal", adjustable="box")
@@ -167,13 +167,13 @@ def draw_frame(ax, tag: str, pha_metadata, transitive: bool) -> None:
     )
 
 
-def draw_scatter(ax, run, transitive: bool, rng, metric: str = "jaccard") -> PathCollection:
-    """Metric-colored scatter, with jittered unmatched strips when non-transitive."""
-    _pha_metadata, by_mode, unmatched_ssa, unmatched_pha = run
+def draw_scatter(ax, run, transitive: bool, metric: str = "jaccard") -> PathCollection:
+    """Metric-colored scatter of the matches."""
+    _pha_metadata, by_mode, _, _ = run
     ssa_lengths, pha_lengths, jaccard, overlap = by_mode[transitive]
     values = jaccard if metric == "jaccard" else overlap
     draw_order = np.argsort(values)
-    scatter = ax.scatter(
+    return ax.scatter(
         ssa_lengths[draw_order],
         pha_lengths[draw_order],
         c=values[draw_order],
@@ -183,37 +183,17 @@ def draw_scatter(ax, run, transitive: bool, rng, metric: str = "jaccard") -> Pat
         s=2,
         linewidths=0,
     )
-    if not transitive:
-        ax.scatter(
-            low - gap - strip * rng.random(len(unmatched_pha)),
-            unmatched_pha,
-            c=np.zeros(len(unmatched_pha)),
-            cmap="viridis",
-            vmin=0,
-            vmax=1,
-            s=2,
-            linewidths=0,
-        )
-        ax.scatter(
-            unmatched_ssa,
-            low - gap - strip * rng.random(len(unmatched_ssa)),
-            c=np.zeros(len(unmatched_ssa)),
-            cmap="viridis",
-            vmin=0,
-            vmax=1,
-            s=2,
-            linewidths=0,
-        )
-    return scatter
 
 
-def draw_density(ax, run, transitive: bool) -> QuadMesh:
-    """Binned pixels colored by matches per bin on the shared log scale."""
+def draw_density(ax, run, transitive: bool, strips: bool) -> QuadMesh:
+    """Binned pixels colored by matches per bin on the shared log scale.
+
+    With ``strips``, the unmatched events are binned into the strips beside the
+    axes on the same scale.
+    """
     _pha_metadata, by_mode, unmatched_ssa, unmatched_pha = run
     ssa_lengths, pha_lengths, _jaccard, _overlap = by_mode[transitive]
     counts, _, _ = np.histogram2d(ssa_lengths, pha_lengths, bins=[bin_edges, bin_edges])
-    pha_strip_counts, _ = np.histogram(unmatched_pha, bins=bin_edges)
-    ssa_strip_counts, _ = np.histogram(unmatched_ssa, bins=bin_edges)
 
     # pcolormesh maps C rows to y, so the (x, y)-indexed histogram transposes;
     # empty bins become NaN so they render as background rather than count 0.
@@ -224,8 +204,10 @@ def draw_density(ax, run, transitive: bool) -> QuadMesh:
         cmap=DENSITY_CMAP,
         norm=count_norm,
     )
-    if not transitive:
-        strip_edges = np.array([low - gap - strip, low - gap])
+    if strips:
+        pha_strip_counts, _ = np.histogram(unmatched_pha, bins=bin_edges)
+        ssa_strip_counts, _ = np.histogram(unmatched_ssa, bins=bin_edges)
+        strip_edges = np.array([strip_low, low - gap])
         ax.pcolormesh(
             strip_edges,
             bin_edges,
@@ -252,17 +234,19 @@ def render_figure(
         "overlap": "Overlap coefficient",
         "density": "Matches per bin",
     }
-    figure, axes = plt.subplots(2, len(columns), figsize=figsize, sharex=True, sharey=True)
-    rng = np.random.default_rng(0)
+    figure, axes = plt.subplots(2, len(columns), figsize=figsize, sharex="col", sharey="col")
     mappables: dict[str, PathCollection | QuadMesh] = {}
     for row, run in enumerate(matched_runs):
         for column, kind in enumerate(columns):
+            # The unmatched events are the same under both pairings, so only the
+            # non-transitive figure's density column shows them.
+            strips = kind == "density" and not transitive
             if kind == "density":
-                mappables[kind] = draw_density(axes[row, column], run, transitive)
+                mappables[kind] = draw_density(axes[row, column], run, transitive, strips)
             else:
-                mappables[kind] = draw_scatter(axes[row, column], run, transitive, rng, metric=kind)
+                mappables[kind] = draw_scatter(axes[row, column], run, transitive, metric=kind)
             tag = f"({'abcdef'[row * len(columns) + column]})"
-            draw_frame(axes[row, column], tag, run[0], transitive)
+            draw_frame(axes[row, column], tag, run[0], strips)
         axes[row, 0].set_ylabel(r"$\mathtt{PHA}$ length (time units)")
     for column in range(len(columns)):
         axes[1, column].set_xlabel(r"$\mathtt{SSA}$ length (time units)")

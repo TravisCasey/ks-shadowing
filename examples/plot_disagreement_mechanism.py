@@ -26,7 +26,6 @@ so the :math:`L_2` distance exceeds the SSA threshold.
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -157,12 +156,13 @@ def _track_distances(
 
 
 # %%
-# Select each column's gap: the one whose missing-method normalized distance
-# peaks highest over the gap itself.
-columns: list[dict[str, Any]] = []
-for name, host_events, other_events, missing in (
-    (r"$\mathtt{SSA}$ detects shadowing; $\mathtt{PHA}$ does not", ssa_events, pha_events, "pha"),
-    (r"$\mathtt{PHA}$ detects shadowing; $\mathtt{SSA}$ does not", pha_events, ssa_events, "ssa"),
+# Select each panel's gap: the one whose missing-method normalized distance
+# peaks highest over the gap itself. Each panel keeps the trajectory and
+# aligned-RPO fields at that gap's peak timestep.
+panel_fields: list[tuple[NDArray[np.float64], NDArray[np.float64]]] = []
+for host_events, other_events, missing in (
+    (ssa_events, pha_events, "pha"),
+    (pha_events, ssa_events, "ssa"),
 ):
     other_masks = _per_rpo_masks(other_events)
     candidates = [
@@ -189,20 +189,19 @@ for name, host_events, other_events, missing in (
     peak_index = gap_slice.start + int(np.argmax(missing_normalized[gap_slice]))
     peak_timestep = window_start + peak_index
 
-    columns.append(
-        {
-            "name": name,
-            "trajectory_field": trajectory[peak_timestep : peak_timestep + 1].to_physical()[0],
-            "rpo_field": align_rpo_to_window(
+    panel_fields.append(
+        (
+            trajectory[peak_timestep : peak_timestep + 1].to_physical()[0],
+            align_rpo_to_window(
                 rpos[best_host.rpo_index], best_host, peak_timestep, peak_timestep + 1, trajectory
             )[0],
-        }
+        )
     )
 
 
 # %%
-# Render. Each panel overlays the two fields at its column's peak timestep;
-# the shaded band is their pointwise deviation.
+# Render. Each panel overlays the two fields at its gap's peak timestep; the
+# shaded band is their pointwise deviation.
 figure, axes = plt.subplots(2, 1, figsize=(3.4, 4.3), sharex=True, sharey=True)
 space = np.linspace(0.0, DOMAIN_SIZE, resolution, endpoint=False)
 
@@ -220,58 +219,50 @@ def _extrema(field: NDArray[np.float64], kind: str) -> NDArray[np.intp]:
 
 def _max_value_offset_extremum(
     trajectory_field: NDArray[np.float64], rpo_field: NDArray[np.float64]
-) -> tuple[int, int]:
-    """Index pair (trajectory, RPO) of the extremum with the largest value gap."""
+) -> int:
+    """Trajectory index of the extremum whose nearest RPO counterpart differs most in value."""
     half = resolution // 2
-    best = (-np.inf, 0, 0)
+    best_gap, best_index = -np.inf, 0
     for kind in ("max", "min"):
         rpo_extrema = _extrema(rpo_field, kind)
         for i in _extrema(trajectory_field, kind):
             offsets = ((rpo_extrema - i + half) % resolution) - half
             j = rpo_extrema[np.argmin(np.abs(offsets))]
             gap = abs(rpo_field[j] - trajectory_field[i])
-            if gap > best[0]:
-                best = (gap, i, j)
-    return int(best[1]), int(best[2])
+            if gap > best_gap:
+                best_gap, best_index = gap, int(i)
+    return best_index
 
 
-for ax, tag, column in zip(axes, ("(a)", "(b)"), columns, strict=True):
-    ax.plot(space, column["trajectory_field"], color=TRAJECTORY_COLOR, label="Trajectory")
-    ax.plot(space, column["rpo_field"], color=RPO_COLOR, linewidth=0.9, label="RPO")
-    ax.fill_between(
-        space,
-        column["trajectory_field"],
-        column["rpo_field"],
-        color=RPO_COLOR,
-        alpha=0.3,
-        linewidth=0,
-    )
+for ax, tag, (trajectory_field, rpo_field) in zip(axes, ("(a)", "(b)"), panel_fields, strict=True):
+    ax.plot(space, trajectory_field, color=TRAJECTORY_COLOR, label="Trajectory")
+    ax.plot(space, rpo_field, color=RPO_COLOR, linewidth=0.9, label="RPO")
+    ax.fill_between(space, trajectory_field, rpo_field, color=RPO_COLOR, alpha=0.3, linewidth=0)
     ax.set_title(tag, loc="left")
-    ax.set_title(column["name"])
     ax.set_ylabel("$u$")
-    if tag != "(a)":
-        continue
 
-    i_best, _ = _max_value_offset_extremum(column["trajectory_field"], column["rpo_field"])
-    low = max(space[i_best] - INSET_HALF_WINDOW, 0.0)
-    high = min(space[i_best] + INSET_HALF_WINDOW, DOMAIN_SIZE)
-    mask = (space >= low) & (space <= high)
-    inset = ax.inset_axes([0.33, 0.12, 0.28, 0.42])
-    inset.plot(space[mask], column["trajectory_field"][mask], color=TRAJECTORY_COLOR)
-    inset.plot(space[mask], column["rpo_field"][mask], color=RPO_COLOR, linewidth=0.9)
-    values = np.concatenate([column["trajectory_field"][mask], column["rpo_field"][mask]])
-    value_pad = 0.1 * (values.max() - values.min())
-    inset.set_xlim(low, high)
-    inset.set_ylim(values.min() - value_pad, values.max() + value_pad)
-    inset.set_xticks([])
-    inset.set_yticks([])
+# The inset in panel (a) magnifies the extremum with the largest value gap.
+trajectory_field, rpo_field = panel_fields[0]
+i_best = _max_value_offset_extremum(trajectory_field, rpo_field)
+low = max(space[i_best] - INSET_HALF_WINDOW, 0.0)
+high = min(space[i_best] + INSET_HALF_WINDOW, DOMAIN_SIZE)
+mask = (space >= low) & (space <= high)
+inset = axes[0].inset_axes([0.33, 0.12, 0.28, 0.42])
+inset.plot(space[mask], trajectory_field[mask], color=TRAJECTORY_COLOR)
+inset.plot(space[mask], rpo_field[mask], color=RPO_COLOR, linewidth=0.9)
+values = np.concatenate([trajectory_field[mask], rpo_field[mask]])
+value_pad = 0.1 * (values.max() - values.min())
+inset.set_xlim(low, high)
+inset.set_ylim(values.min() - value_pad, values.max() + value_pad)
+inset.set_xticks([])
+inset.set_yticks([])
+for spine in inset.spines.values():
+    spine.set_visible(True)
+    spine.set_linewidth(0.6)
+axes[0].indicate_inset_zoom(inset, edgecolor="0.3", linewidth=0.7)
 
-    for spine in inset.spines.values():
-        spine.set_visible(True)
-        spine.set_linewidth(0.6)
-    ax.indicate_inset_zoom(inset, edgecolor="0.3", linewidth=0.7)
-
-handles, labels = axes[0].get_legend_handles_labels()
-figure.legend(handles, labels, loc="outside upper right", ncols=2)
+# One legend serves both panels; panel (b)'s upper right corner is clear of
+# both fields, and sits near the middle of the figure.
+axes[1].legend(loc="upper right")
 axes[-1].set_xlabel("$x$")
 plt.show()
