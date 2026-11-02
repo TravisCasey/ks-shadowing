@@ -27,8 +27,9 @@ streak between them is the event that panels (a) and (b) show.
 SSA searches a three-dimensional cube of :math:`L_2` distances indexed by
 trajectory timestep, RPO phase, and spatial shift. Panel (c) is one slice of
 that cube at a fixed shift: the shift with the smallest mean distance along
-the event's own phase track, which the title reports in grid cells. The PHA
-matrix :math:`W` holds the Wasserstein distance :math:`d_{W^2}` between
+the event's own phase track, which the title reports as the grid-cell index
+:math:`n` of the cube's shift axis, from 0 to the resolution minus one. The
+PHA matrix :math:`W` holds the Wasserstein distance :math:`d_{W^2}` between
 persistence diagrams, and carries no shift axis because persistence quotients
 out the spatial symmetry. Both use a logarithmic color scale. The fainter
 streaks elsewhere in the window are near recurrences, though not sufficiently
@@ -137,9 +138,6 @@ track_distances_sq = shift_distances_sq(
     trajectory.resolution,
 )
 best_shift = int(np.argmin(np.sqrt(np.maximum(track_distances_sq, 0.0)).mean(axis=0)))
-# Shifts are circular; the title reports the nearest signed representative.
-half_resolution = trajectory.resolution // 2
-signed_shift = (best_shift + half_resolution) % trajectory.resolution - half_resolution
 
 # At a fixed shift the slice is a plain pairwise L2 distance over the grid, the
 # same sum ``shift_distances_sq`` evaluates, expanded as
@@ -198,7 +196,7 @@ figure.colorbar(field_mesh, ax=axes[:2], label="$u(x, t)$", pad=0.02)
 distance_panels = (
     (
         "(c)",
-        rf"$\mathtt{{SSA}}$ distance matrix $D$, shift $s = {signed_shift}$",
+        rf"$\mathtt{{SSA}}$ distance matrix $D$, shift $n = {best_shift}$",
         "$L_2$ distance",
         l2_distances,
     ),
