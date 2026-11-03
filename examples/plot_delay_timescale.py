@@ -56,10 +56,9 @@ try:
     REPO_ROOT = Path(__file__).resolve().parent.parent
 except NameError:
     REPO_ROOT = Path.cwd().parent
-# Provisional: this sweep is not yet part of the committed fixtures, and unlike
-# the rest of the gallery it needs four trajectories rather than one.
-DATA_DIR = REPO_ROOT / "results" / "dt_study" / "phase1"
-RESOLUTION = 512
+
+DATA_DIR = REPO_ROOT / "examples" / "data" / "delay_timescale"
+RESOLUTION = 2048
 # Sampling step in time units, and the subdirectory holding its runs.
 SAMPLING_STEPS = ((0.92, "s46"), (0.46, "s23"), (0.24, "s12"), (0.12, "s6"))
 # Diagram drift is a property of the trajectory, so any one sampling step
