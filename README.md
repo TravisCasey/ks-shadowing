@@ -17,16 +17,11 @@ Requires Python 3.12, 3.13, or 3.14, CMake, and the following system libraries:
 - **Eigen3** -- Linear algebra (for the KS integrator)
 - **Boost** -- Headers only (for the Hera Wasserstein distance library)
 
-Clone with submodules and install:
+Clone and install:
 ```bash
-git clone --recurse-submodules https://github.com/TravisCasey/ks-shadowing.git
+git clone https://github.com/TravisCasey/ks-shadowing.git
 cd ks-shadowing
 uv sync
-```
-
-If you already cloned without `--recurse-submodules`:
-```bash
-git submodule update --init --recursive
 ```
 
 ## How to cite
@@ -37,6 +32,10 @@ that is [10.5281/zenodo.21695319](https://doi.org/10.5281/zenodo.21695319)
 use the **concept DOI**
 [10.5281/zenodo.21695318](https://doi.org/10.5281/zenodo.21695318), which
 always resolves to the newest release.
+
+## Third-party code
+
+`csrc/hera/vendor/` holds a subset of [Hera](https://github.com/anigmetov/hera) under the BSD 3-Clause License. See its `README.md` and `license.txt`.
 
 ## RPO Data
 
@@ -79,7 +78,7 @@ uv run ruff check .
 uv run ruff format .
 
 # C++ style and lint configuration: .clang-format and .clang-tidy (project files
-# under csrc/, excluding the csrc/hera/upstream submodule)
+# under csrc/, excluding the vendored csrc/hera/vendor)
 
 # Type checking
 uv run ty check

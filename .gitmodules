@@ -1,3 +1,0 @@
-[submodule "csrc/hera/upstream"]
-	path = csrc/hera/upstream
-	url = https://github.com/anigmetov/hera.git

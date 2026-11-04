@@ -3,7 +3,7 @@ find_package(Boost REQUIRED CONFIG)
 add_library(hera2py SHARED hera2py.cpp)
 
 target_include_directories(hera2py PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/upstream/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/include
     ${Boost_INCLUDE_DIRS}
 )
 

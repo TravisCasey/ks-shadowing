@@ -27,8 +27,6 @@ jobs:
             python: "3.13"
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -59,8 +57,6 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -88,8 +84,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - name: Install system dependencies
         run: |
@@ -123,8 +117,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - name: Install system dependencies
         run: |
@@ -158,8 +150,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - name: Install system dependencies
         run: |
@@ -181,8 +171,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - name: Install system dependencies
         run: |
