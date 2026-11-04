@@ -7,7 +7,7 @@ Two detection methods are implemented:
 - **State Space Approach (SSA)**: L2 distance in physical space with spatial shift optimization.
 - **Persistent Homology Approach (PHA)**: shift-invariant Wasserstein distance between persistence diagrams.
 
-The [examples gallery](https://traviscasey.github.io/ks-shadowing/) shows both methods on committed result files.
+The [examples gallery](https://traviscasey.github.io/ks-shadowing/auto_examples/index.html) shows both methods on committed result files.
 
 ## Installation
 
